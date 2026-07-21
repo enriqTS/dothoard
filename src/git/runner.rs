@@ -378,6 +378,10 @@ impl GitRunner {
 
 /// Wait for a child process with a timeout, killing the process group on
 /// expiry.
+///
+/// This spawns reader threads for stdout and stderr to prevent pipe deadlocks
+/// (where the child blocks on write because the pipe buffer is full, and we
+/// block on wait because the child hasn't exited).
 fn wait_with_timeout(
     child: &mut std::process::Child,
     timeout: Duration,
@@ -386,23 +390,30 @@ fn wait_with_timeout(
     use std::thread;
     use std::time::Instant;
 
+    // Take ownership of the pipes and read them in background threads to
+    // prevent pipe-buffer deadlocks.
+    let stdout_handle = child.stdout.take().map(|mut pipe| {
+        thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = std::io::Read::read_to_end(&mut pipe, &mut buf);
+            buf
+        })
+    });
+    let stderr_handle = child.stderr.take().map(|mut pipe| {
+        thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = std::io::Read::read_to_end(&mut pipe, &mut buf);
+            buf
+        })
+    });
+
     let deadline = Instant::now() + timeout;
     let poll_interval = Duration::from_millis(50);
 
-    loop {
+    let status = loop {
         match child.try_wait() {
-            Ok(Some(status)) => {
-                // Process exited; collect output.
-                let stdout = read_pipe(child.stdout.take());
-                let stderr = read_pipe(child.stderr.take());
-                return Ok(Output {
-                    status,
-                    stdout,
-                    stderr,
-                });
-            }
+            Ok(Some(status)) => break status,
             Ok(None) => {
-                // Still running; check timeout.
                 if Instant::now() >= deadline {
                     kill_process_tree(child);
                     return Err(GitError::Timeout {
@@ -414,17 +425,20 @@ fn wait_with_timeout(
             }
             Err(source) => return Err(GitError::Wait { source }),
         }
-    }
-}
-
-/// Read all remaining bytes from an optional pipe.
-fn read_pipe(pipe: Option<impl std::io::Read>) -> Vec<u8> {
-    let Some(mut pipe) = pipe else {
-        return Vec::new();
     };
-    let mut buf = Vec::new();
-    let _ = std::io::Read::read_to_end(&mut pipe, &mut buf);
-    buf
+
+    let stdout = stdout_handle
+        .map(|h| h.join().unwrap_or_default())
+        .unwrap_or_default();
+    let stderr = stderr_handle
+        .map(|h| h.join().unwrap_or_default())
+        .unwrap_or_default();
+
+    Ok(Output {
+        status,
+        stdout,
+        stderr,
+    })
 }
 
 /// Kill the entire process group of a child process.
