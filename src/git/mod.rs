@@ -15,6 +15,7 @@
 //! - **Timeout enforcement**: A configurable deadline prevents Git transport
 //!   operations from blocking indefinitely.
 
+mod auth;
 mod commit;
 mod init;
 mod ownership;
@@ -22,8 +23,10 @@ mod repository;
 mod runner;
 mod staging;
 mod sync;
+mod tracked;
 mod worktree;
 
+pub use auth::{AuthCheckError, AuthStatus, check_auth};
 pub use commit::{CommitError, CommitResult, create_commit};
 pub use init::{InitAction, InitError, initialize_or_attach, require_usable_state};
 pub use ownership::{
@@ -35,4 +38,5 @@ pub use staging::{
     StagingError, has_staged_changes, stage_managed_namespace, verify_staged_boundaries,
 };
 pub use sync::{SyncError, SyncResult, sync_with_remote};
+pub use tracked::{TrackedIgnoredError, find_tracked_ignored};
 pub use worktree::{WorktreeError, WorktreeStatus, classify_worktree};
