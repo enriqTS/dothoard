@@ -15,10 +15,12 @@
 //! - **Timeout enforcement**: A configurable deadline prevents Git transport
 //!   operations from blocking indefinitely.
 
+mod init;
 mod ownership;
 mod repository;
 mod runner;
 
+pub use init::{InitAction, InitError, initialize_or_attach, require_usable_state};
 pub use ownership::{
     ManifestSourceInfo, OwnedManifest, OwnershipError, OwnershipState, classify_ownership,
 };
