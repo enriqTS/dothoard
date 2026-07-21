@@ -158,28 +158,28 @@ synchronize a backup using temporary Git repositories (455 tests).
 
 ## 5. Orchestration
 
-- [ ] **O01 - Implement exclusive locking.** Manual, timer, startup, and TUI
+- [x] **O01 - Implement exclusive locking.** Manual, timer, startup, and TUI
   backups must not overlap.
-- [ ] **O02 - Implement the backup coordinator.** Execute the complete workflow
+- [x] **O02 - Implement the backup coordinator.** Execute the complete workflow
   in the validated order specified by `PLAN.md`.
-- [ ] **O03 - Handle pending local commits.** Retry synchronization on later
+- [x] **O03 - Handle pending local commits.** Retry synchronization on later
   runs even when no new source files changed.
-- [ ] **O04 - Persist run status.** Atomically record every attempt and maintain
+- [x] **O04 - Persist run status.** Atomically record every attempt and maintain
   bounded current and historical status.
-- [ ] **O05 - Implement notification transitions.** Notify for failures and
+- [x] **O05 - Implement notification transitions.** Notify for failures and
   recovery, keep successful scheduled runs quiet, and tolerate unavailable
   notification tooling.
-- [ ] **O06 - Complete `config-sync backup`.** Provide useful exit codes,
+- [x] **O06 - Complete `config-sync backup`.** Provide useful exit codes,
   diagnostics, locking, persistence, and notifications.
-- [ ] **O07 - Complete `config-sync check`.** Report configuration, path,
+- [x] **O07 - Complete `config-sync check`.** Report configuration, path,
   ownership, repository, authentication, and automation-drift results
   together.
-- [ ] **O08 - Add headless end-to-end tests.** Cover initial backup, no-op
+- [x] **O08 - Add headless end-to-end tests.** Cover initial backup, no-op
   backup, failure recovery, concurrency, offline synchronization, and conflict
   behavior.
 
-**Milestone gate:** The application is fully usable and testable without the
-TUI.
+**Milestone gate: Complete.** The application is fully usable and testable
+without the TUI (498 tests).
 
 ## Automation Prerequisite
 

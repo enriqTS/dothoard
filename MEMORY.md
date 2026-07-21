@@ -7,17 +7,17 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Current Status
 
-- Active milestone: 4 - Git Layer (complete).
-- Active task: None; milestone 4 is complete.
-- Next task: O01 - Implement exclusive locking (Milestone 5, Orchestration).
-- Code state: The Git layer safely executes git commands with noninteractive
-  environment, validates repository structure and ownership, classifies
-  worktree changes, stages only managed paths with literal pathspecs,
-  verifies staged boundaries, creates unsigned commits (skipping empty),
-  preserves hook failures, pulls with rebase, pushes, detects and aborts
-  conflicts preserving local commits, detects tracked-ignored files, and
-  checks authentication readiness. All operations use direct argument arrays
-  with timeout-bounded process-tree cleanup.
+- Active milestone: 5 - Orchestration (complete).
+- Active task: None; milestone 5 is complete.
+- Next task: N01 - Finalize the permanent name (Automation Prerequisite).
+- Code state: The orchestration layer ties together all backend subsystems.
+  `config-sync backup` executes the full PLAN.md workflow: exclusive locking,
+  config validation, repository/ownership checks, overlap detection, worktree
+  classification, mirror planning and execution, restricted staging with
+  boundary verification, commit creation, remote sync with conflict recovery,
+  state persistence, and desktop notifications. `config-sync check` validates
+  all layers and reports results. Exit codes distinguish success (0), failure
+  (1), already-running (2), and config errors (3).
 - Blockers: None.
 
 ## Durable Decisions
@@ -69,6 +69,14 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new".
 - Commits are unsigned by default (--no-gpg-sign) and hooks are never bypassed.
 - Conflict recovery aborts rebase and preserves the local commit intact.
+- Exclusive locking uses fs2::try_lock_exclusive on
+  `$XDG_RUNTIME_DIR/config-sync.lock`. RAII guard releases on drop.
+- Notifications use notify-send with --urgency critical/normal. Recovery
+  notifies after a previously failing run succeeds. Quiet on normal success.
+- The backup coordinator auto-initializes new namespaces in headless mode
+  (the user chose the repo in config).
+- Commit messages use format `backup(<hostname>): <timestamp>`.
+- Orchestration tests require `--test-threads=1` due to git process contention.
 
 ## Open Decisions
 
@@ -78,25 +86,24 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - No explicit MSRV is selected; use the current stable Rust toolchain until one
   is chosen.
 
-These decisions do not block milestone 5.
+These decisions do not block the Automation Prerequisite or milestone 6.
 
 ## Next Steps
 
-1. Start O01, Implement exclusive locking, and record it as active.
-2. Build the backup coordinator that executes the complete workflow in the
-   validated order specified by PLAN.md.
+1. Start N01, Finalize the permanent name, and record it as active.
+2. Rename binary, crate, manifest identifier, XDG paths, and planned systemd
+   units together.
 
 ## Verification
 
 - `cargo fmt --check` — clean
 - `cargo clippy --all-targets --all-features -- -D warnings` — clean
-- `cargo test --all-targets --all-features` — 455 tests passed
-  (422 unit + 1 bootstrap + 12 git workflow + 20 mirror)
-- All milestone 4 tasks verified: git command runner, noninteractive execution,
-  repository validation, ownership classification, initialization/attachment,
-  worktree classification, restricted staging, staged boundary verification,
-  commits, remote reconciliation, conflict recovery, tracked-ignored detection,
-  authentication checks, and comprehensive integration tests.
+- `cargo test --lib --all-features` — 452 unit tests passed
+- `cargo test --test bootstrap` — 1 test passed
+- `cargo test --test git_workflow` — 12 tests passed
+- `cargo test --test mirror` — 20 tests passed
+- `cargo test --test orchestration -- --test-threads=1` — 13 tests passed
+- Total: 498 tests
 
 ## Update Protocol
 
