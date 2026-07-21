@@ -128,6 +128,9 @@ pub fn run_backup(paths: &AppPaths) -> Result<BackupOutcome, CoordinatorError> {
     let timeout = Duration::from_secs(u64::from(config.network_timeout_seconds));
     let runner = GitRunner::new(timeout);
 
+    // Load previous state for notification decisions (before we update it).
+    let previous_state = AppState::load(paths.state_dir()).unwrap_or_default();
+
     // Execute the backup workflow (steps 3-14).
     let outcome = execute_workflow(paths, &config, &repository, &runner, started_at);
 
@@ -136,6 +139,13 @@ pub fn run_backup(paths: &AppPaths) -> Result<BackupOutcome, CoordinatorError> {
         tracing::error!(error = %e, "failed to persist run state");
         // Non-fatal: we still return the outcome to the caller.
     }
+
+    // Step 16: Send notification on failure or recovery.
+    crate::notification::notify_if_needed(
+        outcome.success,
+        outcome.error.as_deref(),
+        &previous_state,
+    );
 
     Ok(outcome)
 }
