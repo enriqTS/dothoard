@@ -189,6 +189,7 @@ dependencies = [
  "clap",
  "directories",
  "ignore",
+ "libc",
  "serde",
  "serde_json",
  "tempfile",
