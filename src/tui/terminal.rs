@@ -38,6 +38,9 @@ fn run_loop(terminal: &mut Term) -> io::Result<()> {
     let mut app = App::new();
 
     loop {
+        // Poll for completed background tasks before drawing.
+        app.poll_tasks();
+
         terminal.draw(|frame| ui::draw(frame, &app))?;
 
         match next_event()? {
@@ -46,7 +49,7 @@ fn run_loop(terminal: &mut Term) -> io::Result<()> {
                 // Ratatui handles resize automatically on the next draw.
             }
             AppEvent::Tick => {
-                // Periodic refresh; nothing to do yet.
+                // Periodic refresh allows background task results to appear.
             }
         }
 

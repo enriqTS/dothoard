@@ -145,6 +145,13 @@ mod tests {
 
     use super::*;
 
+    /// Create a test App with a specific screen.
+    fn app_on(screen: Screen) -> App {
+        let mut app = App::new();
+        app.active_screen = screen;
+        app
+    }
+
     /// Verify that drawing does not panic for any screen.
     #[test]
     fn draw_all_screens_without_panic() {
@@ -152,10 +159,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
 
         for &screen in Screen::ALL {
-            let app = App {
-                active_screen: screen,
-                should_quit: false,
-            };
+            let app = app_on(screen);
 
             terminal
                 .draw(|frame| draw(frame, &app))
@@ -169,10 +173,7 @@ mod tests {
         let backend = TestBackend::new(100, 30);
         let mut terminal = Terminal::new(backend).unwrap();
 
-        let app = App {
-            active_screen: Screen::Automation,
-            should_quit: false,
-        };
+        let app = app_on(Screen::Automation);
 
         // Just verify it doesn't panic with a specific selection.
         terminal
@@ -186,10 +187,7 @@ mod tests {
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
 
-        let app = App {
-            active_screen: Screen::Dashboard,
-            should_quit: false,
-        };
+        let app = app_on(Screen::Dashboard);
 
         terminal
             .draw(|frame| draw(frame, &app))
