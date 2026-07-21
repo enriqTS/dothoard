@@ -6,6 +6,28 @@
 //! writes and deletions remain beneath the repository root and that no parent
 //! component in the destination path is a symbolic link.
 //!
+//! # Recovery from interrupted runs
+//!
+//! The mirror is self-healing by design. If a run is interrupted (crash,
+//! timeout, signal), the managed namespace may contain:
+//! - Partially updated files (the old version remains because atomic rename
+//!   never happened).
+//! - Stale temporary files with random names (left by `NamedTempFile`).
+//! - Files that should have been deleted but weren't yet.
+//!
+//! On the next run, the planner re-reads source and destination state from
+//! scratch, detects all discrepancies, and the executor applies the correct
+//! operations to normalize the namespace. No special recovery logic is needed
+//! because:
+//! - `copy_file_atomic` replaces any existing destination atomically.
+//! - `copy_symlink` removes and recreates the destination.
+//! - `delete_entry` is idempotent for already-removed paths.
+//! - The planner is stateless and compares source truth to destination state.
+//!
+//! Stale temporary files (`.tmpXXXXXX` pattern) in the destination directory
+//! are harmless — they have random names that don't match source paths and
+//! are not staged by Git (the Git layer stages only managed paths).
+//!
 //! Safety invariants enforced by this module:
 //! - Every destination write and deletion must remain beneath the repository.
 //! - No existing parent component in the managed namespace may be a symlink.
@@ -1854,5 +1876,198 @@ mod tests {
         assert!(result.may_publish);
         let meta = std::fs::metadata(repo.join("home/bin/script.sh")).unwrap();
         assert!(meta.permissions().mode() & 0o111 != 0);
+    }
+
+    // --- Interrupted-run recovery ---
+
+    #[test]
+    fn recovery_stale_destination_is_overwritten() {
+        // Simulates an interrupted run that left an outdated file at the
+        // destination. A subsequent mirror corrects it.
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(home.join(".config/fish")).unwrap();
+        std::fs::create_dir_all(repo.join("home/.config/fish")).unwrap();
+
+        // Source has the correct content.
+        std::fs::write(home.join(".config/fish/config.fish"), "correct content").unwrap();
+        // Destination has stale content from a previous interrupted copy.
+        std::fs::write(
+            repo.join("home/.config/fish/config.fish"),
+            "stale from interrupted run",
+        )
+        .unwrap();
+
+        let sources = vec![crate::config::SourceConfig {
+            path: ".config/fish".to_string(),
+            ignore: vec![],
+        }];
+
+        // The planner would detect this as a modification.
+        let mut changeset = super::super::changeset::ChangeSet::new();
+        changeset
+            .modifications
+            .push(super::super::changeset::Modification {
+                source: home.join(".config/fish/config.fish"),
+                destination: repo.join("home/.config/fish/config.fish"),
+                change: super::super::changeset::ChangeKind::ContentChanged,
+            });
+
+        let result = execute_mirror(&home, &repo, &sources, &changeset).unwrap();
+
+        assert!(result.may_publish);
+        assert_eq!(result.copies_completed, 1);
+        assert_eq!(
+            std::fs::read_to_string(repo.join("home/.config/fish/config.fish")).unwrap(),
+            "correct content"
+        );
+    }
+
+    #[test]
+    fn recovery_pending_deletion_completes() {
+        // Simulates a file that should have been deleted in a previous run
+        // but the run was interrupted before the deletion happened.
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(home.join(".config/fish")).unwrap();
+        std::fs::create_dir_all(repo.join("home/.config/fish")).unwrap();
+
+        // File exists in destination but not in source — deletion was pending.
+        std::fs::write(repo.join("home/.config/fish/stale.fish"), "should be gone").unwrap();
+
+        let sources = vec![crate::config::SourceConfig {
+            path: ".config/fish".to_string(),
+            ignore: vec![],
+        }];
+
+        let mut changeset = super::super::changeset::ChangeSet::new();
+        changeset.deletions.push(super::super::changeset::Deletion {
+            destination: repo.join("home/.config/fish/stale.fish"),
+            reason: super::super::changeset::DeletionReason::SourceRemoved,
+        });
+
+        let result = execute_mirror(&home, &repo, &sources, &changeset).unwrap();
+
+        assert!(result.may_publish);
+        assert_eq!(result.deletions_completed, 1);
+        assert!(!repo.join("home/.config/fish/stale.fish").exists());
+    }
+
+    #[test]
+    fn recovery_symlink_replaced_with_file() {
+        // Simulates a type change: destination has a symlink from a previous
+        // run, but source is now a regular file.
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(home.join(".config")).unwrap();
+        std::fs::create_dir_all(repo.join("home/.config")).unwrap();
+
+        // Source is now a file.
+        std::fs::write(home.join(".config/entry"), "file content").unwrap();
+        // Destination has a symlink from before.
+        std::os::unix::fs::symlink("/old/target", repo.join("home/.config/entry")).unwrap();
+
+        let sources = vec![crate::config::SourceConfig {
+            path: ".config".to_string(),
+            ignore: vec![],
+        }];
+
+        let mut changeset = super::super::changeset::ChangeSet::new();
+        changeset
+            .modifications
+            .push(super::super::changeset::Modification {
+                source: home.join(".config/entry"),
+                destination: repo.join("home/.config/entry"),
+                change: super::super::changeset::ChangeKind::TypeChanged {
+                    old_type: super::super::changeset::EntryType::Symlink,
+                    new_type: super::super::changeset::EntryType::RegularFile,
+                },
+            });
+
+        let result = execute_mirror(&home, &repo, &sources, &changeset).unwrap();
+
+        assert!(result.may_publish);
+        assert_eq!(result.copies_completed, 1);
+        let meta = std::fs::symlink_metadata(repo.join("home/.config/entry")).unwrap();
+        assert!(meta.file_type().is_file());
+        assert_eq!(
+            std::fs::read_to_string(repo.join("home/.config/entry")).unwrap(),
+            "file content"
+        );
+    }
+
+    #[test]
+    fn recovery_file_replaced_with_symlink() {
+        // Simulates a type change: destination has a regular file, source is
+        // now a symlink.
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(home.join(".config")).unwrap();
+        std::fs::create_dir_all(repo.join("home/.config")).unwrap();
+
+        // Source is now a symlink.
+        std::os::unix::fs::symlink("/new/target", home.join(".config/entry")).unwrap();
+        // Destination has a regular file from before.
+        std::fs::write(repo.join("home/.config/entry"), "old file").unwrap();
+
+        let sources = vec![crate::config::SourceConfig {
+            path: ".config".to_string(),
+            ignore: vec![],
+        }];
+
+        let mut changeset = super::super::changeset::ChangeSet::new();
+        changeset
+            .modifications
+            .push(super::super::changeset::Modification {
+                source: home.join(".config/entry"),
+                destination: repo.join("home/.config/entry"),
+                change: super::super::changeset::ChangeKind::TypeChanged {
+                    old_type: super::super::changeset::EntryType::RegularFile,
+                    new_type: super::super::changeset::EntryType::Symlink,
+                },
+            });
+
+        let result = execute_mirror(&home, &repo, &sources, &changeset).unwrap();
+
+        assert!(result.may_publish);
+        let meta = std::fs::symlink_metadata(repo.join("home/.config/entry")).unwrap();
+        assert!(meta.file_type().is_symlink());
+        assert_eq!(
+            std::fs::read_link(repo.join("home/.config/entry")).unwrap(),
+            PathBuf::from("/new/target")
+        );
+    }
+
+    #[test]
+    fn recovery_already_deleted_file_is_idempotent() {
+        // Simulates a deletion that already happened (e.g., partial previous
+        // run deleted the file but crashed before finishing other operations).
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(home.join(".config/fish")).unwrap();
+        std::fs::create_dir_all(repo.join("home/.config/fish")).unwrap();
+
+        // The file to delete doesn't exist — already cleaned up.
+        let sources = vec![crate::config::SourceConfig {
+            path: ".config/fish".to_string(),
+            ignore: vec![],
+        }];
+
+        let mut changeset = super::super::changeset::ChangeSet::new();
+        changeset.deletions.push(super::super::changeset::Deletion {
+            destination: repo.join("home/.config/fish/already-gone.fish"),
+            reason: super::super::changeset::DeletionReason::SourceRemoved,
+        });
+
+        let result = execute_mirror(&home, &repo, &sources, &changeset).unwrap();
+
+        // Idempotent: deletion of missing file succeeds.
+        assert!(result.may_publish);
+        assert_eq!(result.deletions_completed, 1);
     }
 }
