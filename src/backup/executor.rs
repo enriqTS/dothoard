@@ -504,6 +504,102 @@ pub fn update_manifest(
     Ok(())
 }
 
+/// Result of preflighting a single source.
+#[derive(Debug)]
+pub enum PreflightStatus {
+    /// Source root exists and its destination path is valid.
+    Ready,
+
+    /// Source root is missing. The backup for this source is preserved (not
+    /// deleted) and a warning is emitted, but mirroring can still proceed
+    /// for other sources.
+    Missing,
+}
+
+/// Result of preflighting all sources.
+#[derive(Debug)]
+pub struct PreflightResult {
+    /// Per-source statuses in the same order as the input sources.
+    pub statuses: Vec<PreflightStatus>,
+
+    /// Hard errors that prevent the mirror from proceeding at all.
+    /// If this is non-empty, no mutation should occur.
+    pub errors: Vec<ExecutorError>,
+}
+
+impl PreflightResult {
+    /// Returns `true` if the preflight passed — no hard errors prevent mirroring.
+    pub fn is_ok(&self) -> bool {
+        self.errors.is_empty()
+    }
+
+    /// Returns `true` if a specific source (by index) is ready for mirroring.
+    pub fn source_is_ready(&self, index: usize) -> bool {
+        matches!(self.statuses.get(index), Some(PreflightStatus::Ready))
+    }
+}
+
+/// Validate all source roots and their destination paths before any mutation.
+///
+/// Preflight checks performed for each source:
+/// 1. Whether the source root exists (missing is non-fatal — backup preserved).
+/// 2. Whether the destination root path is within the repository boundary.
+/// 3. Whether existing destination parent components contain symlinks.
+///
+/// A missing source root is recorded as [`PreflightStatus::Missing`] and does
+/// not block mirroring of other sources. A boundary or symlink violation is a
+/// hard error that prevents all mirroring for that run.
+///
+/// The preflight also validates the manifest destination.
+pub fn preflight_sources(
+    home: &Path,
+    repository: &Path,
+    sources: &[crate::config::SourceConfig],
+) -> PreflightResult {
+    use super::mapping;
+
+    let mut statuses = Vec::with_capacity(sources.len());
+    let mut errors = Vec::new();
+
+    for source_config in sources {
+        let source_root = mapping::source_absolute(home, &source_config.path);
+        let destination_root = mapping::destination_root(repository, &source_config.path);
+
+        // Check if source root exists (symlink_metadata to not follow links).
+        match fs::symlink_metadata(&source_root) {
+            Ok(_) => {
+                // Source exists — validate destination path.
+                if let Err(e) = validate_destination(repository, &destination_root) {
+                    errors.push(e);
+                    statuses.push(PreflightStatus::Missing); // Mark as not ready.
+                } else {
+                    statuses.push(PreflightStatus::Ready);
+                }
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                // Missing source root — non-fatal, backup is preserved.
+                statuses.push(PreflightStatus::Missing);
+            }
+            Err(_) => {
+                // Permission denied or other OS error accessing source root.
+                errors.push(ExecutorError::Preflight {
+                    source_path: source_config.path.clone(),
+                    reason: format!("cannot access source root: {}", source_root.display()),
+                });
+                statuses.push(PreflightStatus::Missing);
+            }
+        }
+    }
+
+    // Also validate the manifest path is within bounds.
+    let manifest_path = repository.join(crate::app::MANIFEST_FILE_NAME);
+    if let Err(e) = validate_boundary(repository, &manifest_path) {
+        errors.push(e);
+    }
+
+    PreflightResult { statuses, errors }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1264,5 +1360,132 @@ mod tests {
         assert_eq!(loaded.sources[0].ignore, vec!["id_*"]);
         assert_eq!(loaded.sources[1].path, ".config/waybar");
         assert_eq!(loaded.sources[1].ignore, vec!["cache/", "*token*"]);
+    }
+
+    // --- preflight_sources ---
+
+    #[test]
+    fn preflight_passes_with_existing_sources() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(home.join(".config/fish")).unwrap();
+        std::fs::create_dir_all(&repo).unwrap();
+
+        let sources = vec![crate::config::SourceConfig {
+            path: ".config/fish".to_string(),
+            ignore: vec![],
+        }];
+
+        let result = preflight_sources(&home, &repo, &sources);
+        assert!(result.is_ok());
+        assert!(result.source_is_ready(0));
+    }
+
+    #[test]
+    fn preflight_marks_missing_source_as_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::create_dir_all(&repo).unwrap();
+
+        let sources = vec![crate::config::SourceConfig {
+            path: ".config/nonexistent".to_string(),
+            ignore: vec![],
+        }];
+
+        let result = preflight_sources(&home, &repo, &sources);
+        // Missing source is non-fatal.
+        assert!(result.is_ok());
+        assert!(!result.source_is_ready(0));
+    }
+
+    #[test]
+    fn preflight_multiple_sources_mixed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(home.join(".config/fish")).unwrap();
+        std::fs::create_dir_all(&repo).unwrap();
+        // .bashrc exists as a file.
+        std::fs::write(home.join(".bashrc"), "# bash").unwrap();
+
+        let sources = vec![
+            crate::config::SourceConfig {
+                path: ".config/fish".to_string(),
+                ignore: vec![],
+            },
+            crate::config::SourceConfig {
+                path: ".config/missing".to_string(),
+                ignore: vec![],
+            },
+            crate::config::SourceConfig {
+                path: ".bashrc".to_string(),
+                ignore: vec![],
+            },
+        ];
+
+        let result = preflight_sources(&home, &repo, &sources);
+        assert!(result.is_ok());
+        assert!(result.source_is_ready(0)); // .config/fish exists
+        assert!(!result.source_is_ready(1)); // .config/missing is missing
+        assert!(result.source_is_ready(2)); // .bashrc exists
+    }
+
+    #[test]
+    fn preflight_detects_symlinked_destination_parent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let repo = tmp.path().join("repo");
+        let escape = tmp.path().join("escape");
+        std::fs::create_dir_all(home.join(".config/fish")).unwrap();
+        std::fs::create_dir_all(repo.join("home")).unwrap();
+        std::fs::create_dir_all(&escape).unwrap();
+
+        // Create a symlink at repo/home/.config -> escape directory
+        std::os::unix::fs::symlink(&escape, repo.join("home").join(".config")).unwrap();
+
+        let sources = vec![crate::config::SourceConfig {
+            path: ".config/fish".to_string(),
+            ignore: vec![],
+        }];
+
+        let result = preflight_sources(&home, &repo, &sources);
+        // Symlinked parent is a hard error.
+        assert!(!result.is_ok());
+        assert_eq!(result.errors.len(), 1);
+    }
+
+    #[test]
+    fn preflight_accepts_single_file_source() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::write(home.join(".bashrc"), "content").unwrap();
+
+        let sources = vec![crate::config::SourceConfig {
+            path: ".bashrc".to_string(),
+            ignore: vec![],
+        }];
+
+        let result = preflight_sources(&home, &repo, &sources);
+        assert!(result.is_ok());
+        assert!(result.source_is_ready(0));
+    }
+
+    #[test]
+    fn preflight_with_no_sources_is_ok() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::create_dir_all(&repo).unwrap();
+
+        let result = preflight_sources(&home, &repo, &[]);
+        assert!(result.is_ok());
+        assert_eq!(result.statuses.len(), 0);
     }
 }
