@@ -7,5 +7,6 @@ pub mod ignore;
 pub mod inventory;
 pub mod manifest;
 pub mod mapping;
+pub mod planner;
 pub mod secrets;
 pub mod walker;

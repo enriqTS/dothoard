@@ -144,7 +144,6 @@ pub fn make_modification(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
 
     fn source_meta(path: &Path, relative: &str, entry_type: EntryType, size: u64) -> EntryMeta {
