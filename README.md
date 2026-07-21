@@ -84,4 +84,4 @@ untested.
 
 ## License
 
-TBD
+GPL-3.0-or-later. See [LICENSE](LICENSE) for the full text.

@@ -1,7 +1,20 @@
 [package]
 name = "dothoard"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
+authors = ["Henrique"]
+description = "Automatically back up dotfiles to a Git repository with scheduled commits and pushes"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/henrique/dothoard"
+homepage = "https://github.com/henrique/dothoard"
+readme = "README.md"
+keywords = ["dotfiles", "backup", "git", "automation", "tui"]
+categories = ["command-line-utilities", "filesystem"]
+rust-version = "1.85"
+
+[[bin]]
+name = "dothoard"
+path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0"
@@ -21,5 +34,10 @@ thiserror = "2.0"
 toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1
 
 [dev-dependencies]
