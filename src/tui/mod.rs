@@ -88,6 +88,8 @@ pub struct App {
     pub repo_screen: screens::repository::RepoScreen,
     /// Sources management screen state.
     pub sources_screen: screens::sources::SourcesScreen,
+    /// Ignore editor screen state.
+    pub ignore_screen: screens::ignore::IgnoreScreen,
 }
 
 impl Default for App {
@@ -126,6 +128,7 @@ impl App {
             status_message: None,
             repo_screen,
             sources_screen: screens::sources::SourcesScreen::new(),
+            ignore_screen: screens::ignore::IgnoreScreen::new(),
         }
     }
 
@@ -252,6 +255,60 @@ impl App {
         self.sources_screen.mode = screens::sources::Mode::List;
     }
 
+    /// Add a pattern to the source at the given index.
+    fn handle_add_pattern(&mut self, src_idx: usize, pattern: String) {
+        if let Some(ref mut config) = self.config {
+            if let Some(source) = config.sources.get_mut(src_idx) {
+                source.ignore.push(pattern.clone());
+                if let Some(ref paths) = self.paths {
+                    let _ = config.save(paths.config_file());
+                }
+                self.ignore_screen.mode = screens::ignore::Mode::List;
+                self.ignore_screen.preview_stale = true;
+                self.ignore_screen.message = Some(format!("Added pattern '{pattern}'."));
+            }
+        }
+    }
+
+    /// Remove a pattern from the source.
+    fn handle_remove_pattern(&mut self, src_idx: usize, pat_idx: usize) {
+        if let Some(ref mut config) = self.config {
+            if let Some(source) = config.sources.get_mut(src_idx) {
+                if pat_idx < source.ignore.len() {
+                    let removed = source.ignore.remove(pat_idx);
+                    self.ignore_screen.preview_stale = true;
+                    self.ignore_screen.message = Some(format!("Removed pattern '{removed}'."));
+                    // Adjust selection.
+                    if self.ignore_screen.pattern_idx >= source.ignore.len()
+                        && !source.ignore.is_empty()
+                    {
+                        self.ignore_screen.pattern_idx = source.ignore.len() - 1;
+                    }
+                }
+            }
+            // Save config after mutation is complete.
+            if let Some(ref paths) = self.paths {
+                let _ = config.save(paths.config_file());
+            }
+        }
+    }
+
+    /// Refresh the ignore preview for a source.
+    fn handle_refresh_preview(&mut self, src_idx: usize) {
+        if let Some(ref config) = self.config {
+            if let Some(source) = config.sources.get(src_idx) {
+                if let Some(ref paths) = self.paths {
+                    self.ignore_screen.preview = screens::ignore::IgnoreScreen::generate_preview(
+                        &source.path,
+                        &source.ignore,
+                        paths.home(),
+                    );
+                    self.ignore_screen.preview_stale = false;
+                }
+            }
+        }
+    }
+
     /// Handle a key event and update application state.
     pub fn handle_key(&mut self, key: crossterm::event::KeyEvent) {
         use crossterm::event::{KeyCode, KeyModifiers};
@@ -335,6 +392,38 @@ impl App {
                     return;
                 }
                 screens::sources::Action::NotConsumed => {
+                    // Fall through to global key handling.
+                }
+            }
+        }
+
+        // Ignore screen key handling.
+        if self.active_screen == Screen::Ignore {
+            let source_count = self.config.as_ref().map(|c| c.sources.len()).unwrap_or(0);
+            let pattern_count = self
+                .config
+                .as_ref()
+                .and_then(|c| c.sources.get(self.ignore_screen.source_idx))
+                .map(|s| s.ignore.len())
+                .unwrap_or(0);
+            let action = self
+                .ignore_screen
+                .handle_key(key, pattern_count, source_count);
+            match action {
+                screens::ignore::Action::Consumed => return,
+                screens::ignore::Action::AddPattern(src_idx, pattern) => {
+                    self.handle_add_pattern(src_idx, pattern);
+                    return;
+                }
+                screens::ignore::Action::RemovePattern(src_idx, pat_idx) => {
+                    self.handle_remove_pattern(src_idx, pat_idx);
+                    return;
+                }
+                screens::ignore::Action::RefreshPreview(src_idx) => {
+                    self.handle_refresh_preview(src_idx);
+                    return;
+                }
+                screens::ignore::Action::NotConsumed => {
                     // Fall through to global key handling.
                 }
             }
@@ -432,6 +521,7 @@ mod tests {
             status_message: None,
             repo_screen: screens::repository::RepoScreen::new(),
             sources_screen: screens::sources::SourcesScreen::new(),
+            ignore_screen: screens::ignore::IgnoreScreen::new(),
         }
     }
 

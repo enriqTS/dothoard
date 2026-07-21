@@ -70,7 +70,7 @@ fn draw_screen(frame: &mut Frame, area: Rect, app: &App) {
         Screen::Dashboard => draw_dashboard(frame, area, app),
         Screen::Repository => draw_repository(frame, area, app),
         Screen::Sources => draw_sources(frame, area, app),
-        Screen::Ignore => draw_placeholder(frame, area, "Ignore Rules"),
+        Screen::Ignore => draw_ignore(frame, area, app),
         Screen::Preview => draw_placeholder(frame, area, "Backup Preview"),
         Screen::Automation => draw_placeholder(frame, area, "Automation"),
         Screen::History => draw_placeholder(frame, area, "History"),
@@ -339,6 +339,174 @@ fn dim_line(text: impl Into<String>) -> Line<'static> {
 /// Format a DateTime for display.
 fn format_time(ts: &chrono::DateTime<chrono::Utc>) -> String {
     ts.format("%Y-%m-%d %H:%M:%S UTC").to_string()
+}
+
+/// Draw the ignore rule editor screen.
+fn draw_ignore(frame: &mut Frame, area: Rect, app: &App) {
+    use crate::tui::screens::ignore::Mode;
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Ignore Rules ");
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let sources = app
+        .config
+        .as_ref()
+        .map(|c| c.sources.as_slice())
+        .unwrap_or(&[]);
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    if sources.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(dim_line("  No sources configured. Add sources first."));
+        let paragraph = Paragraph::new(lines);
+        frame.render_widget(paragraph, inner);
+        return;
+    }
+
+    // Source selector.
+    lines.push(Line::from(""));
+    let source_tabs: Vec<Span> = sources
+        .iter()
+        .enumerate()
+        .flat_map(|(i, s)| {
+            let style = if i == app.ignore_screen.source_idx {
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::DarkGray)
+            };
+            vec![Span::styled(format!(" {} ", s.path), style), Span::raw("|")]
+        })
+        .collect();
+    lines.push(Line::from(source_tabs));
+    lines.push(Line::from(""));
+
+    // Current source's patterns.
+    let current_source = &sources[app.ignore_screen.source_idx];
+    if current_source.ignore.is_empty() {
+        lines.push(dim_line("  No ignore patterns. Press 'a' to add."));
+    } else {
+        lines.push(Line::from(Span::styled(
+            "  Patterns:",
+            Style::default().fg(Color::Cyan),
+        )));
+        for (i, pattern) in current_source.ignore.iter().enumerate() {
+            let marker = if i == app.ignore_screen.pattern_idx {
+                "▶ "
+            } else {
+                "  "
+            };
+            let style = if i == app.ignore_screen.pattern_idx {
+                Style::default().add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(marker, Style::default().fg(Color::Cyan)),
+                Span::styled(pattern.clone(), style),
+            ]));
+        }
+    }
+
+    // Input area in add mode.
+    if app.ignore_screen.mode == Mode::AddInput {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "  New pattern (gitignore syntax):",
+            Style::default().fg(Color::Cyan),
+        )));
+        let input_display = format!("  > {}", app.ignore_screen.input);
+        lines.push(Line::from(Span::raw(input_display)));
+    }
+
+    // Preview mode.
+    if app.ignore_screen.mode == Mode::Preview {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "  File Preview (Esc to close):",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )));
+        lines.push(Line::from(""));
+
+        if app.ignore_screen.preview.is_empty() {
+            lines.push(dim_line("    No files found."));
+        } else {
+            for entry in app.ignore_screen.preview.iter().take(20) {
+                let mut spans = vec![Span::raw("    ")];
+
+                if entry.ignored {
+                    spans.push(Span::styled("✗ ", Style::default().fg(Color::Red)));
+                    spans.push(Span::styled(
+                        entry.path.clone(),
+                        Style::default().fg(Color::DarkGray),
+                    ));
+                    if let Some(ref pat) = entry.matched_by {
+                        spans.push(Span::styled(
+                            format!("  ({})", pat),
+                            Style::default().fg(Color::DarkGray),
+                        ));
+                    }
+                } else {
+                    spans.push(Span::styled("✓ ", Style::default().fg(Color::Green)));
+                    spans.push(Span::raw(entry.path.clone()));
+                }
+
+                if entry.secret_warning {
+                    spans.push(Span::styled(
+                        "  ⚠ secret",
+                        Style::default().fg(Color::Yellow),
+                    ));
+                }
+
+                lines.push(Line::from(spans));
+            }
+            if app.ignore_screen.preview.len() > 20 {
+                lines.push(dim_line(format!(
+                    "    ...and {} more files",
+                    app.ignore_screen.preview.len() - 20
+                )));
+            }
+        }
+    }
+
+    // Feedback message.
+    if let Some(ref msg) = app.ignore_screen.message {
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled(msg.clone(), Style::default().fg(Color::Green)),
+        ]));
+    }
+
+    // Help.
+    if app.ignore_screen.mode == Mode::List {
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled("a", Style::default().fg(Color::DarkGray)),
+            Span::styled(" add  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("d", Style::default().fg(Color::DarkGray)),
+            Span::styled(" delete  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("p", Style::default().fg(Color::DarkGray)),
+            Span::styled(" preview  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("←→/hl", Style::default().fg(Color::DarkGray)),
+            Span::styled(" source  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("↑↓/jk", Style::default().fg(Color::DarkGray)),
+            Span::styled(" pattern", Style::default().fg(Color::DarkGray)),
+        ]));
+    }
+
+    let paragraph = Paragraph::new(lines);
+    frame.render_widget(paragraph, inner);
 }
 
 /// Draw the sources management screen.
