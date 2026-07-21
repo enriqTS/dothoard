@@ -7,15 +7,14 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Current Status
 
-- Active milestone: 6 - Systemd Automation (complete).
-- Active task: None; milestone 6 is complete.
-- Next task: U01 - Build the TUI shell (milestone 7).
-- Code state: The systemd module generates deterministic service and timer
-  units from the binary path and configuration, installs/removes them
-  idempotently via `systemctl --user`, inspects timer state, detects stale
-  units, and updates the timer after interval changes. The `dothoard service
-  install|remove|status` CLI commands are fully wired. The `dothoard check`
-  command reports real automation status (installed, stale, not installed).
+- Active milestone: 7 - TUI (complete).
+- Active task: None; milestone 7 is complete.
+- Next task: H01 - Audit filesystem boundaries (milestone 8, Hardening).
+- Code state: The TUI is fully implemented with 7 screens (Dashboard,
+  Repository, Sources, Ignore, Preview, Automation, History), nonblocking
+  backend execution via thread+channel, screen-specific key handling, and
+  comprehensive rendering tests. All V1 backend capabilities are accessible
+  through the terminal interface.
 - Blockers: None.
 
 ## Durable Decisions
@@ -49,41 +48,40 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - PathInputs.use_environment flag isolates tests from real XDG environment.
 - State history is bounded to 50 entries, newest first.
 - The `ignore` crate provides gitignore-compatible matching; parent-exclusion
-  (a child cannot be re-included while parent is excluded) is enforced manually.
-- Content comparison uses byte-by-byte equality with 8KB buffers; size mismatch
-  short-circuits the comparison.
-- Single-file sources map directly to their destination path (destination_root
-  IS the file, not a directory to join into).
-- Atomic file writes use tempfile::NamedTempFile in the same directory as the
-  destination, with permissions set before persist.
-- Empty parent directories are cleaned up after deletions (best-effort, toward
-  the repository root).
-- Recovery is inherent: the planner is stateless, re-reads source/destination
-  on each run, and the executor operations are idempotent/atomic.
+  is enforced manually.
+- Content comparison uses byte-by-byte equality with 8KB buffers.
+- Single-file sources map directly to their destination path.
+- Atomic file writes use tempfile::NamedTempFile with permissions set before
+  persist.
+- Empty parent directories are cleaned up after deletions (best-effort).
+- Recovery is inherent: the planner is stateless and the executor is idempotent.
 - Git runner uses `setpgid(0,0)` for process-group isolation and spawns reader
-  threads for stdout/stderr to prevent pipe deadlocks.
+  threads to prevent pipe deadlocks.
 - Noninteractive env: GIT_TERMINAL_PROMPT=0, GIT_ASKPASS="", SSH_ASKPASS="",
   SSH_ASKPASS_REQUIRE=never, GCM_INTERACTIVE=Never, GIT_CONFIG_NOSYSTEM=1,
   GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new".
-- Commits are unsigned by default (--no-gpg-sign) and hooks are never bypassed.
+- Commits are unsigned by default and hooks are never bypassed.
 - Conflict recovery aborts rebase and preserves the local commit intact.
 - Exclusive locking uses fs2::try_lock_exclusive on
-  `$XDG_RUNTIME_DIR/dothoard.lock`. RAII guard releases on drop.
-- Notifications use notify-send with --urgency critical/normal. Recovery
-  notifies after a previously failing run succeeds. Quiet on normal success.
-- The backup coordinator auto-initializes new namespaces in headless mode
-  (the user chose the repo in config).
+  `$XDG_RUNTIME_DIR/dothoard.lock`.
+- Notifications use notify-send with --urgency critical/normal.
+- The backup coordinator auto-initializes new namespaces in headless mode.
 - Commit messages use format `backup(<hostname>): <timestamp>`.
-- Orchestration tests require `--test-threads=1` due to git process contention.
-- Permanent name chosen: `dothoard`. Binary, crate, manifest identifier,
-  XDG paths, and systemd unit names all use this name.
-- Systemd units are written to `~/.config/systemd/user/` (XDG_CONFIG_HOME).
+- Orchestration tests require `--test-threads=1`.
+- Permanent name: `dothoard`.
+- Systemd units written to `~/.config/systemd/user/`.
 - Service timeout = network_timeout_seconds + 60s buffer.
 - Timer uses OnStartupSec=1min and OnUnitInactiveSec={interval_minutes}min.
-- Stale detection compares installed unit content byte-for-byte with expected
-  generated output.
-- `service install` is idempotent: atomic write, daemon-reload, enable+restart.
-- `service remove` is best-effort stop/disable, then remove files and reload.
+- Stale detection compares installed unit content byte-for-byte.
+- TUI uses ratatui + crossterm with 250ms tick rate event loop.
+- TUI has 7 tabs: Dashboard, Repository, Sources, Ignore, Preview, Automation,
+  History.
+- Background tasks (backup, check) run on std::thread with mpsc channel
+  communication back to the main event loop.
+- Screen-specific key handling prevents global keys (q, Esc, number keys) from
+  triggering while typing in text inputs.
+- Preview screen runs the planner synchronously (read-only, fast).
+- Backup execution available from Dashboard ('b') and Preview ('b') screens.
 
 ## Open Decisions
 
@@ -91,24 +89,24 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - No explicit MSRV is selected; use the current stable Rust toolchain until one
   is chosen.
 
-These decisions do not block milestone 7.
+These decisions do not block milestone 8.
 
 ## Next Steps
 
-1. Start U01, Build the TUI shell (milestone 7).
-2. Implement navigation, key handling, resizing, terminal restoration, and
-   panic-safe cleanup using Ratatui and crossterm.
+1. Start H01, Audit filesystem boundaries (milestone 8, Hardening).
+2. Pass adversarial symlink, traversal, deletion, malformed-path, and
+   race-oriented tests.
 
 ## Verification
 
 - `cargo fmt --check` — clean
 - `cargo clippy --all-targets --all-features -- -D warnings` — clean
-- `cargo test --lib --all-features` — 479 unit tests passed
+- `cargo test --lib --all-features` — 595 unit tests passed
 - `cargo test --test bootstrap` — 1 test passed
 - `cargo test --test git_workflow` — 12 tests passed
 - `cargo test --test mirror` — 20 tests passed
 - `cargo test --test orchestration -- --test-threads=1` — 13 tests passed
-- Total: 525 tests (479 unit + 46 integration)
+- Total: 641 tests (595 unit + 46 integration)
 
 ## Update Protocol
 

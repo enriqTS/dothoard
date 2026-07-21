@@ -214,30 +214,31 @@ startup and after every configured interval (506 tests).
 
 ## 7. TUI
 
-- [ ] **U01 - Build the TUI shell.** Implement navigation, key handling,
+- [x] **U01 - Build the TUI shell.** Implement navigation, key handling,
   resizing, terminal restoration, and panic-safe cleanup.
-- [ ] **U02 - Add nonblocking backend execution.** Long checks and backups must
+- [x] **U02 - Add nonblocking backend execution.** Long checks and backups must
   not freeze rendering or input.
-- [ ] **U03 - Build the dashboard.** Show repository, timer, backup, commit,
+- [x] **U03 - Build the dashboard.** Show repository, timer, backup, commit,
   push, pending-commit, and latest-error status.
-- [ ] **U04 - Build repository selection.** Browse for a clone, validate it,
+- [x] **U04 - Build repository selection.** Browse for a clone, validate it,
   initialize an unused namespace, or review attachment to a valid manifest.
-- [ ] **U05 - Build source management.** Browse `$HOME`, add and remove sources,
+- [x] **U05 - Build source management.** Browse `$HOME`, add and remove sources,
   detect overlap, and identify source-root symlinks.
-- [ ] **U06 - Build the ignore editor.** Edit patterns and preview matches,
+- [x] **U06 - Build the ignore editor.** Edit patterns and preview matches,
   secret warnings, and already-tracked ignored files.
-- [ ] **U07 - Build backup preview.** Show exact additions, modifications,
+- [x] **U07 - Build backup preview.** Show exact additions, modifications,
   deletions, exclusions, staging paths, and warnings.
-- [ ] **U08 - Add manual backup execution.** Start a reviewed backup and show
+- [x] **U08 - Add manual backup execution.** Start a reviewed backup and show
   progress and final results without blocking the UI.
-- [ ] **U09 - Build automation controls.** Install, enable, disable,
+- [x] **U09 - Build automation controls.** Install, enable, disable,
   regenerate, remove, and inspect the user timer.
-- [ ] **U10 - Build history and error details.** Display recent runs and
+- [x] **U10 - Build history and error details.** Display recent runs and
   actionable diagnostic information.
-- [ ] **U11 - Add rendering and interaction tests.** Cover important screens,
+- [x] **U11 - Add rendering and interaction tests.** Cover important screens,
   navigation, dialogs, and backend-result transitions.
 
-**Milestone gate:** Every V1 backend capability is available through the TUI.
+**Milestone gate: Complete.** Every V1 backend capability is available through
+the TUI (641 tests: 595 unit + 46 integration).
 
 ## 8. Hardening
 
