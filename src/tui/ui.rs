@@ -1363,4 +1363,434 @@ mod tests {
             .draw(|frame| draw(frame, &app))
             .expect("should handle small terminal");
     }
+
+    // --- U11: Comprehensive rendering and interaction tests ---
+
+    /// Verify repository screen renders with input and validation states.
+    #[test]
+    fn repository_screen_renders_input() {
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = app_on(Screen::Repository);
+        app.repo_screen = crate::tui::screens::repository::RepoScreen::with_path("~/my-repo");
+
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("Repository"));
+        assert!(content.contains("my-repo"));
+    }
+
+    /// Verify repository screen shows validation error.
+    #[test]
+    fn repository_screen_shows_validation_error() {
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = app_on(Screen::Repository);
+        app.repo_screen.validation =
+            Some(crate::tui::screens::repository::ValidationResult::Invalid(
+                "Directory does not exist".to_string(),
+            ));
+
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("does not exist"));
+    }
+
+    /// Verify repository screen shows confirmation dialog.
+    #[test]
+    fn repository_screen_shows_confirm_dialog() {
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = app_on(Screen::Repository);
+        app.repo_screen.confirm_state =
+            crate::tui::screens::repository::ConfirmState::AskInitialize;
+
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("Initialize"));
+    }
+
+    /// Verify sources screen renders with configured sources.
+    #[test]
+    fn sources_screen_renders_list() {
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = app_on(Screen::Sources);
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![
+                crate::config::SourceConfig {
+                    path: ".config/fish".to_string(),
+                    ignore: vec![],
+                },
+                crate::config::SourceConfig {
+                    path: ".bashrc".to_string(),
+                    ignore: vec!["*.log".to_string()],
+                },
+            ],
+        });
+
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains(".config/fish"));
+        assert!(content.contains(".bashrc"));
+    }
+
+    /// Verify sources screen shows empty state.
+    #[test]
+    fn sources_screen_renders_empty() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let app = app_on(Screen::Sources);
+
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("No sources"));
+    }
+
+    /// Verify sources screen shows add input mode.
+    #[test]
+    fn sources_screen_renders_add_mode() {
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = app_on(Screen::Sources);
+        app.sources_screen.mode = crate::tui::screens::sources::Mode::AddInput;
+        app.sources_screen.input = ".config/waybar".to_string();
+
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("waybar"));
+    }
+
+    /// Verify ignore screen renders with patterns.
+    #[test]
+    fn ignore_screen_renders_patterns() {
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = app_on(Screen::Ignore);
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![crate::config::SourceConfig {
+                path: ".config/fish".to_string(),
+                ignore: vec!["*.log".to_string(), "fish_variables".to_string()],
+            }],
+        });
+
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("*.log"));
+        assert!(content.contains("fish_variables"));
+    }
+
+    /// Verify ignore screen shows preview mode.
+    #[test]
+    fn ignore_screen_renders_preview_mode() {
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = app_on(Screen::Ignore);
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![crate::config::SourceConfig {
+                path: ".config/fish".to_string(),
+                ignore: vec!["*.log".to_string()],
+            }],
+        });
+        app.ignore_screen.mode = crate::tui::screens::ignore::Mode::Preview;
+        app.ignore_screen.preview = vec![
+            crate::tui::screens::ignore::PreviewEntry {
+                path: "config.fish".to_string(),
+                ignored: false,
+                matched_by: None,
+                secret_warning: false,
+            },
+            crate::tui::screens::ignore::PreviewEntry {
+                path: "fish_history".to_string(),
+                ignored: true,
+                matched_by: Some("*_history".to_string()),
+                secret_warning: false,
+            },
+        ];
+
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("Preview") || content.contains("config.fish"));
+    }
+
+    /// Verify preview screen renders empty state.
+    #[test]
+    fn preview_screen_renders_stale() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let app = app_on(Screen::Preview);
+
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("not loaded") || content.contains("Preview"));
+    }
+
+    /// Verify preview screen renders with data.
+    #[test]
+    fn preview_screen_renders_with_data() {
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = app_on(Screen::Preview);
+        app.preview_screen.stale = false;
+        app.preview_screen.preview = Some(crate::tui::screens::preview::PreviewData {
+            additions: 3,
+            modifications: 1,
+            deletions: 0,
+            exclusions: 2,
+            warnings: 0,
+            entries: vec![
+                crate::tui::screens::preview::PreviewEntry {
+                    kind: crate::tui::screens::preview::EntryKind::Addition,
+                    path: ".config/fish/config.fish".to_string(),
+                    detail: Some("regular file".to_string()),
+                },
+                crate::tui::screens::preview::PreviewEntry {
+                    kind: crate::tui::screens::preview::EntryKind::Modification,
+                    path: ".bashrc".to_string(),
+                    detail: Some("content changed".to_string()),
+                },
+            ],
+        });
+
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("+3"));
+        assert!(content.contains("config.fish"));
+        assert!(content.contains(".bashrc"));
+    }
+
+    /// Verify automation screen renders.
+    #[test]
+    fn automation_screen_renders() {
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = app_on(Screen::Automation);
+        app.automation_screen.status_text = Some("active".to_string());
+        app.config = Some(crate::config::Config::new("~/repo"));
+
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("Automation"));
+        assert!(content.contains("active"));
+    }
+
+    /// Verify automation screen shows confirmation dialog.
+    #[test]
+    fn automation_screen_shows_confirm() {
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = app_on(Screen::Automation);
+        app.automation_screen.confirm = crate::tui::screens::automation::ConfirmAction::Install;
+
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("Install"));
+        assert!(content.contains("y/n"));
+    }
+
+    /// Verify history screen renders with entries.
+    #[test]
+    fn history_screen_renders_with_entries() {
+        use chrono::{TimeZone, Utc};
+
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = app_on(Screen::History);
+        app.state = Some(crate::state::AppState {
+            last_attempt: None,
+            last_success: None,
+            last_commit: None,
+            last_push: None,
+            pending_push: false,
+            latest_warning: None,
+            latest_error: None,
+            history: vec![
+                crate::state::RunRecord {
+                    started_at: Utc.with_ymd_and_hms(2026, 7, 21, 14, 0, 0).unwrap(),
+                    finished_at: Utc.with_ymd_and_hms(2026, 7, 21, 14, 0, 2).unwrap(),
+                    outcome: crate::state::RunOutcome::Success,
+                    commit: Some("abc123".to_string()),
+                    message: None,
+                },
+                crate::state::RunRecord {
+                    started_at: Utc.with_ymd_and_hms(2026, 7, 21, 13, 0, 0).unwrap(),
+                    finished_at: Utc.with_ymd_and_hms(2026, 7, 21, 13, 0, 5).unwrap(),
+                    outcome: crate::state::RunOutcome::Failed,
+                    commit: None,
+                    message: Some("network timeout".to_string()),
+                },
+            ],
+        });
+
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("History"));
+        assert!(content.contains("Success"));
+    }
+
+    /// Verify history screen renders empty state.
+    #[test]
+    fn history_screen_renders_empty() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let app = app_on(Screen::History);
+
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("No backup history"));
+    }
+
+    /// Verify all screens render without panic at various terminal sizes.
+    #[test]
+    fn all_screens_render_at_various_sizes() {
+        let sizes = [(40, 10), (80, 24), (120, 40), (200, 50)];
+
+        for (w, h) in sizes {
+            let backend = TestBackend::new(w, h);
+            let mut terminal = Terminal::new(backend).unwrap();
+
+            for &screen in Screen::ALL {
+                let app = app_on(screen);
+                terminal
+                    .draw(|frame| draw(frame, &app))
+                    .unwrap_or_else(|_| panic!("failed on screen {screen:?} at {w}x{h}"));
+            }
+        }
+    }
+
+    /// Verify navigation transitions update the tab bar correctly.
+    #[test]
+    fn navigation_transitions_render_correctly() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = App::new();
+
+        // Start on Dashboard, tab forward through all screens.
+        for expected in Screen::ALL.iter().skip(1) {
+            app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+            assert_eq!(app.active_screen, *expected);
+
+            terminal
+                .draw(|frame| draw(frame, &app))
+                .expect("draw after tab should not fail");
+        }
+    }
+
+    /// Verify backup result transition updates dashboard.
+    #[test]
+    fn backup_result_updates_dashboard() {
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = app_with_state();
+
+        // Simulate a backup task completing.
+        app.tasks.active = Some(task::TaskKind::Backup);
+        app.tasks
+            .sender
+            .send(task::TaskResult::Backup(task::BackupResult {
+                success: true,
+                commit: Some("newcommit123".to_string()),
+                pushed: true,
+                copies: 5,
+                deletions: 1,
+                warnings: Vec::new(),
+                error: None,
+            }))
+            .unwrap();
+        app.poll_tasks();
+
+        // Status message should reflect success.
+        assert!(app.status_message.as_ref().unwrap().contains("success"));
+
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw after backup result should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("success"));
+    }
+
+    /// Helper to extract text content from a TestBackend buffer.
+    fn buffer_text(backend: &TestBackend) -> String {
+        backend
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol().chars().next().unwrap_or(' '))
+            .collect()
+    }
 }
