@@ -7,14 +7,16 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Current Status
 
-- Active milestone: 2 - Backup Planner (complete).
-- Active task: None; milestone 2 is complete.
-- Next task: M01 - Enforce destination boundaries (Milestone 3, Mirror Executor).
-- Code state: The backup planner is fully implemented and tested. It produces
-  deterministic change-sets (additions, modifications, deletions, exclusions,
-  warnings) from source and destination inventories without modifying the
-  filesystem. Ignore matching uses Git-style semantics. Secret detection warns
-  on sensitive file patterns. Missing source roots are protected.
+- Active milestone: 3 - Mirror Executor (complete).
+- Active task: None; milestone 3 is complete.
+- Next task: G01 - Implement the Git command runner (Milestone 4, Git Layer).
+- Code state: The mirror executor safely applies planned change-sets to the
+  filesystem. It performs atomic file copies (with executable bit), symlink
+  preservation, safe deletions, manifest generation, source preflight,
+  publication boundary enforcement, and is inherently self-healing for
+  interrupted runs. All operations are guarded by destination boundary
+  validation that prevents writes/deletions outside the repository and
+  rejects symlinked parent components.
 - Blockers: None.
 
 ## Durable Decisions
@@ -53,6 +55,12 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   short-circuits the comparison.
 - Single-file sources map directly to their destination path (destination_root
   IS the file, not a directory to join into).
+- Atomic file writes use tempfile::NamedTempFile in the same directory as the
+  destination, with permissions set before persist.
+- Empty parent directories are cleaned up after deletions (best-effort, toward
+  the repository root).
+- Recovery is inherent: the planner is stateless, re-reads source/destination
+  on each run, and the executor operations are idempotent/atomic.
 
 ## Open Decisions
 
@@ -62,22 +70,23 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - No explicit MSRV is selected; use the current stable Rust toolchain until one
   is chosen.
 
-These decisions do not block milestone 3.
+These decisions do not block milestone 4.
 
 ## Next Steps
 
-1. Start M01, Enforce destination boundaries, and record it as active.
-2. Every write and deletion must remain beneath the repository and reject
-   symlinked destination parents.
+1. Start G01, Implement the Git command runner, and record it as active.
+2. Build a safe command runner with direct argument arrays, controlled
+   environment, redacted logging, process-tree cleanup, and timeouts.
 
 ## Verification
 
 - `cargo fmt --check` — clean
 - `cargo clippy --all-targets --all-features -- -D warnings` — clean
-- `cargo test --all-targets --all-features` — 246 unit tests + 1 integration = 247 passed
-- All milestone 2 tasks verified: planner produces deterministic change-sets
-  covering additions, modifications, deletions, exclusions, secret warnings,
-  missing-root protection, and ignore semantics.
+- `cargo test --all-targets --all-features` — 313 unit tests + 21 integration = 334 passed
+- All milestone 3 tasks verified: mirror executor applies change-sets safely
+  with boundary enforcement, atomic copies, symlink preservation, safe
+  deletions, manifest generation, preflight validation, publication boundaries,
+  and self-healing recovery.
 
 ## Update Protocol
 

@@ -94,28 +94,28 @@ unit tests covering all change and ignore semantics (247 tests).
 
 ## 3. Mirror Executor
 
-- [ ] **M01 - Enforce destination boundaries.** Every write and deletion must
+- [x] **M01 - Enforce destination boundaries.** Every write and deletion must
   remain beneath the repository and reject symlinked destination parents.
-- [ ] **M02 - Implement atomic regular-file copying.** Preserve content and the
+- [x] **M02 - Implement atomic regular-file copying.** Preserve content and the
   Git-supported executable bit without exposing partially written files.
-- [ ] **M03 - Implement symlink copying.** Preserve raw link targets without
+- [x] **M03 - Implement symlink copying.** Preserve raw link targets without
   following or reading their targets.
-- [ ] **M04 - Implement safe mirror deletion.** Remove files and links without
+- [x] **M04 - Implement safe mirror deletion.** Remove files and links without
   traversing symlinks or escaping the managed namespace.
-- [ ] **M05 - Implement manifest generation.** Generate and atomically update
+- [x] **M05 - Implement manifest generation.** Generate and atomically update
   the manifest from the validated configuration.
-- [ ] **M06 - Implement source preflight.** Validate every source root and
+- [x] **M06 - Implement source preflight.** Validate every source root and
   destination before mutation starts.
-- [ ] **M07 - Enforce publication boundaries.** Any mirror or manifest failure
+- [x] **M07 - Enforce publication boundaries.** Any mirror or manifest failure
   must prevent staging, committing, pulling, and pushing for that run.
-- [ ] **M08 - Implement interrupted-run recovery.** A later run must normalize
+- [x] **M08 - Implement interrupted-run recovery.** A later run must normalize
   dirty managed paths left by an interrupted or failed mirror.
-- [ ] **M09 - Add filesystem integration tests.** Cover initial copies,
+- [x] **M09 - Add filesystem integration tests.** Cover initial copies,
   modifications, deletions, ignores, missing roots, symlinks, special files,
   failures, and recovery.
 
-**Milestone gate:** Temporary-directory tests prove that mirroring is safe,
-deterministic, and recoverable without Git.
+**Milestone gate: Complete.** Temporary-directory tests prove that mirroring is
+safe, deterministic, and recoverable without Git (334 tests).
 
 ## 4. Git Layer
 
