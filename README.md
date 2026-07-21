@@ -309,6 +309,24 @@ If any source or manifest step fails, no Git operations are performed for that
 run. If the network is unavailable, the local commit is preserved and pushed
 on the next successful run.
 
+## Authentication
+
+dothoard runs Git noninteractively — it will never prompt for passwords or
+passphrases. You must configure credential access before the timer can push.
+
+See [docs/authentication.md](docs/authentication.md) for complete setup
+instructions covering SSH agents, HTTPS credential helpers, host keys, and
+troubleshooting.
+
+Quick check:
+
+```bash
+dothoard check
+```
+
+This verifies that `git ls-remote` succeeds against your configured remote
+without any interaction.
+
 ## Building from Source
 
 ```bash
