@@ -62,35 +62,35 @@ and all path validation rules are covered by unit tests (94 tests).
 
 ## 2. Backup Planner
 
-- [ ] **P01 - Define the change-set model.** Represent additions,
+- [x] **P01 - Define the change-set model.** Represent additions,
   modifications, deletions, exclusions, symlinks, executable-mode changes,
   and warnings.
-- [ ] **P02 - Implement source mapping.** Map every valid home-relative source
+- [x] **P02 - Implement source mapping.** Map every valid home-relative source
   deterministically beneath `repository/home/`.
-- [ ] **P03 - Implement the no-follow source walker.** Include hidden files,
+- [x] **P03 - Implement the no-follow source walker.** Include hidden files,
   preserve symlinks, reject unsupported special files, and never enter nested
   `.git` directories.
-- [ ] **P04 - Implement ignore matching.** Support ordered Git-style patterns,
+- [x] **P04 - Implement ignore matching.** Support ordered Git-style patterns,
   anchoring, directory rules, negation, escaping, and hard exclusions exactly
   as defined in `PLAN.md`.
-- [ ] **P05 - Implement source inventory.** Collect files, raw symlink targets,
+- [x] **P05 - Implement source inventory.** Collect files, raw symlink targets,
   executable bits, and comparison metadata safely.
-- [ ] **P06 - Implement destination inventory.** Inspect existing managed
+- [x] **P06 - Implement destination inventory.** Inspect existing managed
   content without following destination symlinks.
-- [ ] **P07 - Implement content comparison.** Detect content, file type,
+- [x] **P07 - Implement content comparison.** Detect content, file type,
   symlink target, and executable-bit changes while skipping unchanged files.
-- [ ] **P08 - Implement deletion planning.** Plan removal of missing children
+- [x] **P08 - Implement deletion planning.** Plan removal of missing children
   and newly ignored files while protecting an entire backup when its source
   root is missing.
-- [ ] **P09 - Implement secret warnings.** Warn for likely private keys,
+- [x] **P09 - Implement secret warnings.** Warn for likely private keys,
   credentials, tokens, and cookies without reading excluded file contents
   unnecessarily.
-- [ ] **P10 - Implement deterministic dry runs.** Produce the same ordered
+- [x] **P10 - Implement deterministic dry runs.** Produce the same ordered
   preview for the same inputs without modifying the filesystem or invoking
   Git.
 
-**Milestone gate:** A complete backup can be previewed safely with unit tests
-covering all change and ignore semantics.
+**Milestone gate: Complete.** A complete backup can be previewed safely with
+unit tests covering all change and ignore semantics (247 tests).
 
 ## 3. Mirror Executor
 

@@ -7,13 +7,14 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Current Status
 
-- Active milestone: 1 - Core Models (complete).
-- Active task: None; milestone 1 is complete.
-- Next task: P01 - Define the change-set model (Milestone 2, Backup Planner).
-- Code state: Core models are implemented and tested — path resolution,
-  configuration schema with atomic persistence and validation, source path
-  validation (symlinked parent rejection), overlap/recursion detection,
-  repository manifest, and persistent run state.
+- Active milestone: 2 - Backup Planner (complete).
+- Active task: None; milestone 2 is complete.
+- Next task: M01 - Enforce destination boundaries (Milestone 3, Mirror Executor).
+- Code state: The backup planner is fully implemented and tested. It produces
+  deterministic change-sets (additions, modifications, deletions, exclusions,
+  warnings) from source and destination inventories without modifying the
+  filesystem. Ignore matching uses Git-style semantics. Secret detection warns
+  on sensitive file patterns. Missing source roots are protected.
 - Blockers: None.
 
 ## Durable Decisions
@@ -46,6 +47,12 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Manifest stored as TOML with format identifier `config-sync-manifest`.
 - PathInputs.use_environment flag isolates tests from real XDG environment.
 - State history is bounded to 50 entries, newest first.
+- The `ignore` crate provides gitignore-compatible matching; parent-exclusion
+  (a child cannot be re-included while parent is excluded) is enforced manually.
+- Content comparison uses byte-by-byte equality with 8KB buffers; size mismatch
+  short-circuits the comparison.
+- Single-file sources map directly to their destination path (destination_root
+  IS the file, not a directory to join into).
 
 ## Open Decisions
 
@@ -55,21 +62,22 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - No explicit MSRV is selected; use the current stable Rust toolchain until one
   is chosen.
 
-These decisions do not block milestone 2.
+These decisions do not block milestone 3.
 
 ## Next Steps
 
-1. Start P01, Define the change-set model, and record it as active.
-2. Represent additions, modifications, deletions, exclusions, symlinks,
-   executable-mode changes, and warnings.
+1. Start M01, Enforce destination boundaries, and record it as active.
+2. Every write and deletion must remain beneath the repository and reject
+   symlinked destination parents.
 
 ## Verification
 
 - `cargo fmt --check` — clean
 - `cargo clippy --all-targets --all-features -- -D warnings` — clean
-- `cargo test --all-targets --all-features` — 94 unit tests + 1 integration = 95 passed
-- All milestone 1 tasks verified: config/manifest/state round-trip, path
-  validation rules covered by unit tests.
+- `cargo test --all-targets --all-features` — 246 unit tests + 1 integration = 247 passed
+- All milestone 2 tasks verified: planner produces deterministic change-sets
+  covering additions, modifications, deletions, exclusions, secret warnings,
+  missing-root protection, and ignore semantics.
 
 ## Update Protocol
 
