@@ -327,6 +327,17 @@ dothoard check
 This verifies that `git ls-remote` succeeds against your configured remote
 without any interaction.
 
+## Safety and Limitations
+
+See [docs/safety.md](docs/safety.md) for detailed documentation on:
+
+- Backup-only behavior (no automatic restore).
+- Symlink safety and filesystem boundaries.
+- What happens if a secret is committed to Git history.
+- Single-writer expectations and multi-machine usage.
+- Manual conflict recovery after a rebase failure.
+- Failure recovery and self-healing behavior.
+
 ## Building from Source
 
 ```bash
