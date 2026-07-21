@@ -327,6 +327,78 @@ fn remove_destination_if_different_type(destination: &Path) -> ExecutorResult<()
     }
 }
 
+/// Copy a symbolic link to a destination within the repository.
+///
+/// Reads the raw link target from the source path and recreates the same
+/// symlink at the destination. The target is preserved exactly as-is — it is
+/// never resolved, followed, or validated. This means:
+/// - Relative targets remain relative.
+/// - Absolute targets remain absolute.
+/// - Dangling targets are preserved without error.
+///
+/// If the destination already exists (as a file or symlink), it is removed
+/// before creating the new symlink.
+///
+/// # Safety
+///
+/// Validates destination boundaries before any write. The destination must be
+/// beneath the repository root and no parent component may be a symlink.
+pub fn copy_symlink(repository: &Path, source: &Path, destination: &Path) -> ExecutorResult<()> {
+    validate_destination(repository, destination)?;
+    ensure_parent_dirs(repository, destination)?;
+
+    // Read the raw link target without following it.
+    let target = fs::read_link(source).map_err(|source_err| ExecutorError::Symlink {
+        destination: destination.to_path_buf(),
+        source_err,
+    })?;
+
+    // Remove any existing entry at the destination (file or symlink).
+    remove_destination_entry(destination)?;
+
+    // Create the symlink with the same target.
+    std::os::unix::fs::symlink(&target, destination).map_err(|source_err| {
+        ExecutorError::Symlink {
+            destination: destination.to_path_buf(),
+            source_err,
+        }
+    })?;
+
+    Ok(())
+}
+
+/// Remove any existing filesystem entry at a path (file, symlink, or empty directory).
+///
+/// Used before creating a symlink at a destination that might already have content.
+/// Does not follow symlinks — uses `remove_file` which operates on the link itself.
+fn remove_destination_entry(destination: &Path) -> ExecutorResult<()> {
+    match fs::symlink_metadata(destination) {
+        Ok(meta) => {
+            if meta.is_dir() {
+                // Only remove if empty — a non-empty directory indicates a
+                // type change from directory source to symlink, which requires
+                // the directory contents to be cleaned up first.
+                fs::remove_dir(destination).map_err(|source_err| ExecutorError::Delete {
+                    path: destination.to_path_buf(),
+                    source_err,
+                })?;
+            } else {
+                // File or symlink — remove directly.
+                fs::remove_file(destination).map_err(|source_err| ExecutorError::Delete {
+                    path: destination.to_path_buf(),
+                    source_err,
+                })?;
+            }
+            Ok(())
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(source_err) => Err(ExecutorError::Delete {
+            path: destination.to_path_buf(),
+            source_err,
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -702,5 +774,146 @@ mod tests {
         copy_file_atomic(&repo, &source, &dest, false).unwrap();
 
         assert_eq!(std::fs::read_to_string(&dest).unwrap(), content);
+    }
+
+    // --- copy_symlink ---
+
+    #[test]
+    fn copy_symlink_preserves_relative_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(repo.join("home")).unwrap();
+
+        let source = tmp.path().join("link");
+        std::os::unix::fs::symlink("../other/file", &source).unwrap();
+
+        let dest = repo.join("home").join("link");
+        copy_symlink(&repo, &source, &dest).unwrap();
+
+        let target = std::fs::read_link(&dest).unwrap();
+        assert_eq!(target, PathBuf::from("../other/file"));
+    }
+
+    #[test]
+    fn copy_symlink_preserves_absolute_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(repo.join("home")).unwrap();
+
+        let source = tmp.path().join("link");
+        std::os::unix::fs::symlink("/usr/bin/bash", &source).unwrap();
+
+        let dest = repo.join("home").join("link");
+        copy_symlink(&repo, &source, &dest).unwrap();
+
+        let target = std::fs::read_link(&dest).unwrap();
+        assert_eq!(target, PathBuf::from("/usr/bin/bash"));
+    }
+
+    #[test]
+    fn copy_symlink_preserves_dangling_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(repo.join("home")).unwrap();
+
+        let source = tmp.path().join("link");
+        std::os::unix::fs::symlink("/nonexistent/path/that/does/not/exist", &source).unwrap();
+
+        let dest = repo.join("home").join("link");
+        copy_symlink(&repo, &source, &dest).unwrap();
+
+        let target = std::fs::read_link(&dest).unwrap();
+        assert_eq!(
+            target,
+            PathBuf::from("/nonexistent/path/that/does/not/exist")
+        );
+    }
+
+    #[test]
+    fn copy_symlink_replaces_existing_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(repo.join("home")).unwrap();
+
+        // Existing regular file at destination.
+        let dest = repo.join("home").join("entry");
+        std::fs::write(&dest, "old file content").unwrap();
+
+        let source = tmp.path().join("link");
+        std::os::unix::fs::symlink("/target", &source).unwrap();
+
+        copy_symlink(&repo, &source, &dest).unwrap();
+
+        let meta = std::fs::symlink_metadata(&dest).unwrap();
+        assert!(meta.file_type().is_symlink());
+        assert_eq!(std::fs::read_link(&dest).unwrap(), PathBuf::from("/target"));
+    }
+
+    #[test]
+    fn copy_symlink_replaces_existing_symlink() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(repo.join("home")).unwrap();
+
+        // Existing symlink at destination.
+        let dest = repo.join("home").join("link");
+        std::os::unix::fs::symlink("/old/target", &dest).unwrap();
+
+        let source = tmp.path().join("link");
+        std::os::unix::fs::symlink("/new/target", &source).unwrap();
+
+        copy_symlink(&repo, &source, &dest).unwrap();
+
+        assert_eq!(
+            std::fs::read_link(&dest).unwrap(),
+            PathBuf::from("/new/target")
+        );
+    }
+
+    #[test]
+    fn copy_symlink_creates_parent_directories() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+
+        let source = tmp.path().join("link");
+        std::os::unix::fs::symlink("/target", &source).unwrap();
+
+        let dest = repo.join("home").join("deep").join("nested").join("link");
+        copy_symlink(&repo, &source, &dest).unwrap();
+
+        assert_eq!(std::fs::read_link(&dest).unwrap(), PathBuf::from("/target"));
+    }
+
+    #[test]
+    fn copy_symlink_rejects_boundary_escape() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+
+        let source = tmp.path().join("link");
+        std::os::unix::fs::symlink("/target", &source).unwrap();
+
+        let dest = tmp.path().join("outside").join("link");
+        let result = copy_symlink(&repo, &source, &dest);
+        assert!(matches!(result, Err(ExecutorError::BoundaryEscape { .. })));
+    }
+
+    #[test]
+    fn copy_symlink_rejects_symlinked_parent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        let escape = tmp.path().join("escape");
+        std::fs::create_dir_all(repo.join("home")).unwrap();
+        std::fs::create_dir_all(&escape).unwrap();
+
+        std::os::unix::fs::symlink(&escape, repo.join("home").join("evil")).unwrap();
+
+        let source = tmp.path().join("link");
+        std::os::unix::fs::symlink("/target", &source).unwrap();
+
+        let dest = repo.join("home").join("evil").join("link");
+        let result = copy_symlink(&repo, &source, &dest);
+        assert!(matches!(result, Err(ExecutorError::SymlinkedParent { .. })));
     }
 }
