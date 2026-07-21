@@ -600,6 +600,174 @@ pub fn preflight_sources(
     PreflightResult { statuses, errors }
 }
 
+/// The outcome of a complete mirror execution.
+///
+/// This result signals whether Git publication (staging, committing, pulling,
+/// pushing) may proceed. If `may_publish` is false, the caller must not
+/// perform any Git operations for this run.
+#[derive(Debug)]
+pub struct MirrorResult {
+    /// Whether all mirror and manifest operations succeeded.
+    /// When false, Git publication must be blocked for this run.
+    pub may_publish: bool,
+
+    /// Number of files/symlinks successfully copied or updated.
+    pub copies_completed: usize,
+
+    /// Number of files/symlinks successfully deleted.
+    pub deletions_completed: usize,
+
+    /// Errors encountered during mirroring. These do not include preflight
+    /// errors (which prevent execution entirely).
+    pub errors: Vec<ExecutorError>,
+}
+
+/// Execute the complete mirror operation from a planned change-set.
+///
+/// This is the top-level orchestrator that:
+/// 1. Runs preflight validation on all sources and destinations.
+/// 2. Applies additions and modifications from the change-set.
+/// 3. Applies deletions from the change-set.
+/// 4. Updates the repository manifest.
+///
+/// # Publication boundary
+///
+/// If any mirror operation or manifest update fails, the returned
+/// [`MirrorResult`] has `may_publish = false`, which signals to the caller
+/// that no Git staging, committing, pulling, or pushing should occur for
+/// this run. Changes already written to the worktree remain and will be
+/// corrected by a later run.
+///
+/// A preflight failure (hard error) prevents execution entirely and returns
+/// an error immediately.
+pub fn execute_mirror(
+    home: &Path,
+    repository: &Path,
+    sources: &[crate::config::SourceConfig],
+    changeset: &super::changeset::ChangeSet,
+) -> Result<MirrorResult, ExecutorError> {
+    use super::changeset::EntryType;
+
+    // --- Preflight ---
+    let preflight = preflight_sources(home, repository, sources);
+    if !preflight.is_ok() {
+        // Return the first hard error. Preflight failures prevent all mutation.
+        return Err(preflight.errors.into_iter().next().unwrap());
+    }
+
+    let mut copies_completed: usize = 0;
+    let mut deletions_completed: usize = 0;
+    let mut errors: Vec<ExecutorError> = Vec::new();
+
+    // --- Apply additions ---
+    for addition in &changeset.additions {
+        let result = match addition.entry_type {
+            EntryType::Symlink => copy_symlink(repository, &addition.source, &addition.destination),
+            EntryType::RegularFile => {
+                copy_file_atomic(repository, &addition.source, &addition.destination, false)
+            }
+            EntryType::ExecutableFile => {
+                copy_file_atomic(repository, &addition.source, &addition.destination, true)
+            }
+        };
+        match result {
+            Ok(()) => copies_completed += 1,
+            Err(e) => errors.push(e),
+        }
+    }
+
+    // --- Apply modifications ---
+    for modification in &changeset.modifications {
+        let result = match &modification.change {
+            super::changeset::ChangeKind::SymlinkTargetChanged { .. }
+            | super::changeset::ChangeKind::TypeChanged {
+                new_type: EntryType::Symlink,
+                ..
+            } => copy_symlink(repository, &modification.source, &modification.destination),
+
+            super::changeset::ChangeKind::ExecutableBitChanged { now_executable } => {
+                copy_file_atomic(
+                    repository,
+                    &modification.source,
+                    &modification.destination,
+                    *now_executable,
+                )
+            }
+
+            super::changeset::ChangeKind::ContentAndExecutableBitChanged { now_executable } => {
+                copy_file_atomic(
+                    repository,
+                    &modification.source,
+                    &modification.destination,
+                    *now_executable,
+                )
+            }
+
+            super::changeset::ChangeKind::ContentChanged => {
+                // Determine if executable from source metadata.
+                let executable = fs::metadata(&modification.source)
+                    .map(|m| m.permissions().mode() & 0o111 != 0)
+                    .unwrap_or(false);
+                copy_file_atomic(
+                    repository,
+                    &modification.source,
+                    &modification.destination,
+                    executable,
+                )
+            }
+
+            super::changeset::ChangeKind::TypeChanged { new_type, .. } => match new_type {
+                EntryType::RegularFile => copy_file_atomic(
+                    repository,
+                    &modification.source,
+                    &modification.destination,
+                    false,
+                ),
+                EntryType::ExecutableFile => copy_file_atomic(
+                    repository,
+                    &modification.source,
+                    &modification.destination,
+                    true,
+                ),
+                EntryType::Symlink => {
+                    copy_symlink(repository, &modification.source, &modification.destination)
+                }
+            },
+        };
+        match result {
+            Ok(()) => copies_completed += 1,
+            Err(e) => errors.push(e),
+        }
+    }
+
+    // --- Apply deletions ---
+    for deletion in &changeset.deletions {
+        match delete_entry(repository, &deletion.destination) {
+            Ok(()) => deletions_completed += 1,
+            Err(e) => errors.push(e),
+        }
+    }
+
+    // --- Update manifest ---
+    let manifest_ok = match update_manifest(repository, sources) {
+        Ok(()) => true,
+        Err(e) => {
+            errors.push(e);
+            false
+        }
+    };
+
+    // Publication is allowed only if there were zero errors.
+    let may_publish = errors.is_empty() && manifest_ok;
+
+    Ok(MirrorResult {
+        may_publish,
+        copies_completed,
+        deletions_completed,
+        errors,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1487,5 +1655,204 @@ mod tests {
         let result = preflight_sources(&home, &repo, &[]);
         assert!(result.is_ok());
         assert_eq!(result.statuses.len(), 0);
+    }
+
+    // --- execute_mirror ---
+
+    #[test]
+    fn execute_mirror_empty_changeset_publishes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::create_dir_all(&repo).unwrap();
+
+        let sources: Vec<crate::config::SourceConfig> = vec![];
+        let changeset = super::super::changeset::ChangeSet::new();
+
+        let result = execute_mirror(&home, &repo, &sources, &changeset).unwrap();
+
+        assert!(result.may_publish);
+        assert_eq!(result.copies_completed, 0);
+        assert_eq!(result.deletions_completed, 0);
+        assert!(result.errors.is_empty());
+    }
+
+    #[test]
+    fn execute_mirror_applies_additions_and_publishes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(home.join(".config/fish")).unwrap();
+        std::fs::create_dir_all(&repo).unwrap();
+
+        std::fs::write(home.join(".config/fish/config.fish"), "set PATH").unwrap();
+
+        let sources = vec![crate::config::SourceConfig {
+            path: ".config/fish".to_string(),
+            ignore: vec![],
+        }];
+
+        let mut changeset = super::super::changeset::ChangeSet::new();
+        changeset.additions.push(super::super::changeset::Addition {
+            source: home.join(".config/fish/config.fish"),
+            destination: repo.join("home/.config/fish/config.fish"),
+            entry_type: super::super::changeset::EntryType::RegularFile,
+        });
+
+        let result = execute_mirror(&home, &repo, &sources, &changeset).unwrap();
+
+        assert!(result.may_publish);
+        assert_eq!(result.copies_completed, 1);
+        assert_eq!(
+            std::fs::read_to_string(repo.join("home/.config/fish/config.fish")).unwrap(),
+            "set PATH"
+        );
+        // Manifest was created.
+        assert!(repo.join(crate::app::MANIFEST_FILE_NAME).exists());
+    }
+
+    #[test]
+    fn execute_mirror_applies_deletions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(home.join(".config/fish")).unwrap();
+        std::fs::create_dir_all(repo.join("home/.config/fish")).unwrap();
+        std::fs::write(repo.join("home/.config/fish/old.fish"), "old").unwrap();
+
+        let sources = vec![crate::config::SourceConfig {
+            path: ".config/fish".to_string(),
+            ignore: vec![],
+        }];
+
+        let mut changeset = super::super::changeset::ChangeSet::new();
+        changeset.deletions.push(super::super::changeset::Deletion {
+            destination: repo.join("home/.config/fish/old.fish"),
+            reason: super::super::changeset::DeletionReason::SourceRemoved,
+        });
+
+        let result = execute_mirror(&home, &repo, &sources, &changeset).unwrap();
+
+        assert!(result.may_publish);
+        assert_eq!(result.deletions_completed, 1);
+        assert!(!repo.join("home/.config/fish/old.fish").exists());
+    }
+
+    #[test]
+    fn execute_mirror_blocks_publication_on_copy_failure() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(home.join(".config/fish")).unwrap();
+        std::fs::create_dir_all(&repo).unwrap();
+
+        // Source file referenced in changeset does not exist.
+        let sources = vec![crate::config::SourceConfig {
+            path: ".config/fish".to_string(),
+            ignore: vec![],
+        }];
+
+        let mut changeset = super::super::changeset::ChangeSet::new();
+        changeset.additions.push(super::super::changeset::Addition {
+            source: home.join(".config/fish/nonexistent.fish"),
+            destination: repo.join("home/.config/fish/nonexistent.fish"),
+            entry_type: super::super::changeset::EntryType::RegularFile,
+        });
+
+        let result = execute_mirror(&home, &repo, &sources, &changeset).unwrap();
+
+        assert!(!result.may_publish);
+        assert_eq!(result.copies_completed, 0);
+        assert!(!result.errors.is_empty());
+    }
+
+    #[test]
+    fn execute_mirror_fails_on_preflight_hard_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let repo = tmp.path().join("repo");
+        let escape = tmp.path().join("escape");
+        std::fs::create_dir_all(home.join(".config/fish")).unwrap();
+        std::fs::create_dir_all(repo.join("home")).unwrap();
+        std::fs::create_dir_all(&escape).unwrap();
+
+        // Symlink inside repo that would escape.
+        std::os::unix::fs::symlink(&escape, repo.join("home").join(".config")).unwrap();
+
+        let sources = vec![crate::config::SourceConfig {
+            path: ".config/fish".to_string(),
+            ignore: vec![],
+        }];
+
+        let changeset = super::super::changeset::ChangeSet::new();
+        let result = execute_mirror(&home, &repo, &sources, &changeset);
+
+        // Preflight hard error → Err, not Ok with may_publish=false.
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn execute_mirror_handles_symlink_addition() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(home.join(".config/links")).unwrap();
+        std::fs::create_dir_all(&repo).unwrap();
+
+        std::os::unix::fs::symlink("/usr/bin/bash", home.join(".config/links/bash")).unwrap();
+
+        let sources = vec![crate::config::SourceConfig {
+            path: ".config/links".to_string(),
+            ignore: vec![],
+        }];
+
+        let mut changeset = super::super::changeset::ChangeSet::new();
+        changeset.additions.push(super::super::changeset::Addition {
+            source: home.join(".config/links/bash"),
+            destination: repo.join("home/.config/links/bash"),
+            entry_type: super::super::changeset::EntryType::Symlink,
+        });
+
+        let result = execute_mirror(&home, &repo, &sources, &changeset).unwrap();
+
+        assert!(result.may_publish);
+        assert_eq!(result.copies_completed, 1);
+        let target = std::fs::read_link(repo.join("home/.config/links/bash")).unwrap();
+        assert_eq!(target, PathBuf::from("/usr/bin/bash"));
+    }
+
+    #[test]
+    fn execute_mirror_handles_executable_addition() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(home.join("bin")).unwrap();
+        std::fs::create_dir_all(&repo).unwrap();
+
+        std::fs::write(home.join("bin/script.sh"), "#!/bin/bash").unwrap();
+        std::fs::set_permissions(
+            home.join("bin/script.sh"),
+            std::fs::Permissions::from_mode(0o755),
+        )
+        .unwrap();
+
+        let sources = vec![crate::config::SourceConfig {
+            path: "bin".to_string(),
+            ignore: vec![],
+        }];
+
+        let mut changeset = super::super::changeset::ChangeSet::new();
+        changeset.additions.push(super::super::changeset::Addition {
+            source: home.join("bin/script.sh"),
+            destination: repo.join("home/bin/script.sh"),
+            entry_type: super::super::changeset::EntryType::ExecutableFile,
+        });
+
+        let result = execute_mirror(&home, &repo, &sources, &changeset).unwrap();
+
+        assert!(result.may_publish);
+        let meta = std::fs::metadata(repo.join("home/bin/script.sh")).unwrap();
+        assert!(meta.permissions().mode() & 0o111 != 0);
     }
 }
