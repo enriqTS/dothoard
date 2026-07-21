@@ -476,6 +476,34 @@ fn cleanup_empty_parents(repository: &Path, deleted_path: &Path) {
     }
 }
 
+/// Generate and atomically update the repository manifest from configuration.
+///
+/// The manifest records the current source configuration as an ownership marker
+/// and portable description of what was backed up. It is written atomically
+/// to avoid partially written manifests.
+///
+/// # Safety
+///
+/// Validates that the manifest path is within the repository boundary before
+/// writing.
+pub fn update_manifest(
+    repository: &Path,
+    sources: &[crate::config::SourceConfig],
+) -> ExecutorResult<()> {
+    use super::manifest::Manifest;
+
+    let manifest = Manifest::from_sources(sources);
+    let manifest_path = Manifest::path_in(repository);
+
+    // Validate that the manifest path is within the repository.
+    validate_boundary(repository, &manifest_path)?;
+
+    // Save atomically (uses tempfile internally).
+    manifest.save(repository).map_err(ExecutorError::Manifest)?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1136,5 +1164,105 @@ mod tests {
 
         // The symlink entry itself should be gone.
         assert!(!link.symlink_metadata().is_ok());
+    }
+
+    // --- update_manifest ---
+
+    #[test]
+    fn update_manifest_creates_manifest_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+
+        let sources = vec![crate::config::SourceConfig {
+            path: ".config/fish".to_string(),
+            ignore: vec!["*.log".to_string()],
+        }];
+
+        update_manifest(&repo, &sources).unwrap();
+
+        let manifest_path = repo.join(crate::app::MANIFEST_FILE_NAME);
+        assert!(manifest_path.exists());
+
+        let content = std::fs::read_to_string(&manifest_path).unwrap();
+        assert!(content.contains("config-sync-manifest"));
+        assert!(content.contains(".config/fish"));
+        assert!(content.contains("*.log"));
+    }
+
+    #[test]
+    fn update_manifest_overwrites_existing_manifest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+
+        // Write initial manifest.
+        let sources_v1 = vec![crate::config::SourceConfig {
+            path: ".bashrc".to_string(),
+            ignore: vec![],
+        }];
+        update_manifest(&repo, &sources_v1).unwrap();
+
+        // Overwrite with new sources.
+        let sources_v2 = vec![
+            crate::config::SourceConfig {
+                path: ".config/fish".to_string(),
+                ignore: vec!["*.log".to_string()],
+            },
+            crate::config::SourceConfig {
+                path: ".config/waybar".to_string(),
+                ignore: vec![],
+            },
+        ];
+        update_manifest(&repo, &sources_v2).unwrap();
+
+        let manifest_path = repo.join(crate::app::MANIFEST_FILE_NAME);
+        let content = std::fs::read_to_string(&manifest_path).unwrap();
+        assert!(content.contains(".config/fish"));
+        assert!(content.contains(".config/waybar"));
+        assert!(!content.contains(".bashrc"));
+    }
+
+    #[test]
+    fn update_manifest_with_empty_sources() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+
+        update_manifest(&repo, &[]).unwrap();
+
+        let manifest_path = repo.join(crate::app::MANIFEST_FILE_NAME);
+        assert!(manifest_path.exists());
+
+        // Should be loadable and valid.
+        let loaded = super::super::manifest::Manifest::load(&repo).unwrap();
+        assert!(loaded.sources.is_empty());
+    }
+
+    #[test]
+    fn update_manifest_produces_valid_loadable_manifest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+
+        let sources = vec![
+            crate::config::SourceConfig {
+                path: ".ssh/config".to_string(),
+                ignore: vec!["id_*".to_string()],
+            },
+            crate::config::SourceConfig {
+                path: ".config/waybar".to_string(),
+                ignore: vec!["cache/".to_string(), "*token*".to_string()],
+            },
+        ];
+
+        update_manifest(&repo, &sources).unwrap();
+
+        let loaded = super::super::manifest::Manifest::load(&repo).unwrap();
+        assert_eq!(loaded.sources.len(), 2);
+        assert_eq!(loaded.sources[0].path, ".ssh/config");
+        assert_eq!(loaded.sources[0].ignore, vec!["id_*"]);
+        assert_eq!(loaded.sources[1].path, ".config/waybar");
+        assert_eq!(loaded.sources[1].ignore, vec!["cache/", "*token*"]);
     }
 }
