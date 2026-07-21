@@ -1,9 +1,31 @@
 //! Command-line parsing and dispatch.
 
+use std::process::ExitCode;
+
 use clap::{Parser, Subcommand};
 use thiserror::Error;
 
 use crate::app::BINARY_NAME;
+use crate::backup::coordinator::{self, BackupOutcome, CoordinatorError};
+use crate::paths::AppPaths;
+
+/// Exit codes for the backup command.
+pub mod exit_code {
+    use std::process::ExitCode;
+
+    /// Backup completed successfully (commit created and pushed, or no changes).
+    pub const SUCCESS: ExitCode = ExitCode::SUCCESS;
+    /// Backup failed.
+    pub const FAILURE: ExitCode = ExitCode::FAILURE;
+    /// Another backup is already running.
+    pub fn already_running() -> ExitCode {
+        ExitCode::from(2)
+    }
+    /// Configuration is invalid or missing.
+    pub fn config_error() -> ExitCode {
+        ExitCode::from(3)
+    }
+}
 
 #[derive(Debug, Parser)]
 #[command(name = BINARY_NAME, version, about = "Back up selected home-directory configuration to Git")]
@@ -39,21 +61,91 @@ pub enum ServiceCommand {
 pub enum CliError {
     #[error("{operation} is not implemented yet")]
     NotImplemented { operation: &'static str },
+
+    #[error(transparent)]
+    Backup(#[from] CoordinatorError),
+
+    #[error("path resolution failed: {0}")]
+    Paths(#[from] crate::paths::PathError),
 }
 
-pub fn execute(cli: Cli) -> Result<(), CliError> {
-    let operation = match cli.command {
-        None => "the TUI",
-        Some(Command::Backup) => "backup",
-        Some(Command::Check) => "check",
-        Some(Command::Service { command }) => match command {
-            ServiceCommand::Install => "service install",
-            ServiceCommand::Remove => "service remove",
-            ServiceCommand::Status => "service status",
-        },
-    };
+impl CliError {
+    /// Map the error to an appropriate exit code.
+    pub fn exit_code(&self) -> ExitCode {
+        match self {
+            Self::NotImplemented { .. } => exit_code::FAILURE,
+            Self::Backup(CoordinatorError::Lock(crate::locking::LockError::AlreadyRunning { .. })) => {
+                exit_code::already_running()
+            }
+            Self::Backup(CoordinatorError::Config(_)) | Self::Backup(CoordinatorError::Validation(_)) => {
+                exit_code::config_error()
+            }
+            Self::Backup(_) => exit_code::FAILURE,
+            Self::Paths(_) => exit_code::config_error(),
+        }
+    }
+}
 
-    Err(CliError::NotImplemented { operation })
+/// Execute the parsed CLI command.
+///
+/// Returns `Ok(ExitCode)` on success (including "no changes" which is still
+/// a successful run), or `Err(CliError)` for failures.
+pub fn execute(cli: Cli) -> Result<ExitCode, CliError> {
+    match cli.command {
+        None => Err(CliError::NotImplemented { operation: "the TUI" }),
+        Some(Command::Backup) => execute_backup(),
+        Some(Command::Check) => Err(CliError::NotImplemented { operation: "check" }),
+        Some(Command::Service { command }) => {
+            let operation = match command {
+                ServiceCommand::Install => "service install",
+                ServiceCommand::Remove => "service remove",
+                ServiceCommand::Status => "service status",
+            };
+            Err(CliError::NotImplemented { operation })
+        }
+    }
+}
+
+/// Execute the `backup` command.
+fn execute_backup() -> Result<ExitCode, CliError> {
+    let paths = AppPaths::from_environment()?;
+
+    let outcome = coordinator::run_backup(&paths)?;
+    report_outcome(&outcome);
+
+    if outcome.success {
+        Ok(exit_code::SUCCESS)
+    } else {
+        Ok(exit_code::FAILURE)
+    }
+}
+
+/// Print a human-readable summary of the backup outcome.
+fn report_outcome(outcome: &BackupOutcome) {
+    if outcome.success {
+        if let Some(ref sha) = outcome.commit {
+            let push_status = if outcome.pushed {
+                "pushed"
+            } else {
+                "pending push"
+            };
+            tracing::info!(
+                commit = %sha,
+                copies = outcome.copies,
+                deletions = outcome.deletions,
+                push = push_status,
+                "backup complete"
+            );
+        } else {
+            tracing::info!("backup complete: no changes");
+        }
+    } else if let Some(ref error) = outcome.error {
+        tracing::error!(error = %error, "backup failed");
+    }
+
+    for warning in &outcome.warnings {
+        tracing::warn!(warning = %warning);
+    }
 }
 
 #[cfg(test)]
@@ -101,20 +193,14 @@ mod tests {
     }
 
     #[test]
-    fn reports_every_unimplemented_operation_clearly() {
+    fn reports_unimplemented_operations() {
         let cases = [
-            (Cli { command: None }, "the TUI is not implemented yet"),
-            (
-                Cli {
-                    command: Some(Command::Backup),
-                },
-                "backup is not implemented yet",
-            ),
+            (Cli { command: None }, "the TUI"),
             (
                 Cli {
                     command: Some(Command::Check),
                 },
-                "check is not implemented yet",
+                "check",
             ),
             (
                 Cli {
@@ -122,7 +208,7 @@ mod tests {
                         command: ServiceCommand::Install,
                     }),
                 },
-                "service install is not implemented yet",
+                "service install",
             ),
             (
                 Cli {
@@ -130,7 +216,7 @@ mod tests {
                         command: ServiceCommand::Remove,
                     }),
                 },
-                "service remove is not implemented yet",
+                "service remove",
             ),
             (
                 Cli {
@@ -138,14 +224,42 @@ mod tests {
                         command: ServiceCommand::Status,
                     }),
                 },
-                "service status is not implemented yet",
+                "service status",
             ),
         ];
 
-        for (cli, expected) in cases {
-            let error = execute(cli).expect_err("bootstrap command must remain a stub");
-
-            assert_eq!(error.to_string(), expected);
+        for (cli, expected_op) in cases {
+            let error = execute(cli).expect_err("unimplemented command should return error");
+            let message = error.to_string();
+            assert!(
+                message.contains("not implemented"),
+                "expected 'not implemented' in: {message}"
+            );
+            assert!(
+                message.contains(expected_op),
+                "expected '{expected_op}' in: {message}"
+            );
         }
+    }
+
+    #[test]
+    fn lock_already_running_exit_code() {
+        let err = CliError::Backup(CoordinatorError::Lock(
+            crate::locking::LockError::AlreadyRunning {
+                path: std::path::PathBuf::from("/run/user/1000/config-sync.lock"),
+            },
+        ));
+
+        // exit_code 2 for already running.
+        assert_eq!(err.exit_code(), ExitCode::from(2));
+    }
+
+    #[test]
+    fn config_error_exit_code() {
+        let err = CliError::Backup(CoordinatorError::Validation(
+            "empty repository".to_string(),
+        ));
+
+        assert_eq!(err.exit_code(), ExitCode::from(3));
     }
 }
