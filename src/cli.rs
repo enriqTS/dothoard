@@ -94,7 +94,7 @@ pub fn execute(cli: Cli) -> Result<ExitCode, CliError> {
     match cli.command {
         None => Err(CliError::NotImplemented { operation: "the TUI" }),
         Some(Command::Backup) => execute_backup(),
-        Some(Command::Check) => Err(CliError::NotImplemented { operation: "check" }),
+        Some(Command::Check) => execute_check(),
         Some(Command::Service { command }) => {
             let operation = match command {
                 ServiceCommand::Install => "service install",
@@ -114,6 +114,22 @@ fn execute_backup() -> Result<ExitCode, CliError> {
     report_outcome(&outcome);
 
     if outcome.success {
+        Ok(exit_code::SUCCESS)
+    } else {
+        Ok(exit_code::FAILURE)
+    }
+}
+
+/// Execute the `check` command.
+fn execute_check() -> Result<ExitCode, CliError> {
+    use crate::backup::check;
+
+    let paths = AppPaths::from_environment()?;
+
+    let report = check::run_check(&paths);
+    check::print_report(&report);
+
+    if report.is_healthy() {
         Ok(exit_code::SUCCESS)
     } else {
         Ok(exit_code::FAILURE)
@@ -196,12 +212,6 @@ mod tests {
     fn reports_unimplemented_operations() {
         let cases = [
             (Cli { command: None }, "the TUI"),
-            (
-                Cli {
-                    command: Some(Command::Check),
-                },
-                "check",
-            ),
             (
                 Cli {
                     command: Some(Command::Service {

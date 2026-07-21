@@ -1,6 +1,7 @@
 //! Backup planning and mirror execution.
 
 pub mod changeset;
+pub mod check;
 pub mod compare;
 pub mod coordinator;
 pub mod deletion;
