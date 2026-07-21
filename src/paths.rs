@@ -241,6 +241,84 @@ fn validate_directory(path: &Path, name: &'static str) -> Result<(), PathError> 
     Ok(())
 }
 
+/// Errors from source path filesystem validation.
+#[derive(Debug, Error)]
+pub enum SourcePathError {
+    /// A parent component between `$HOME` and the source root is a symlink.
+    #[error("symlink in parent path at {symlink_at}: source \"{relative_source}\" rejected")]
+    SymlinkedParent {
+        relative_source: String,
+        symlink_at: PathBuf,
+    },
+
+    /// The source root does not exist.
+    #[error("source root does not exist: {path}")]
+    SourceNotFound { path: PathBuf },
+
+    /// An I/O error occurred while checking a path component.
+    #[error("failed to inspect path component {path}")]
+    Inspect {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+}
+
+/// Validate a source path on the filesystem.
+///
+/// Checks that no parent component between `home` and the source root is a
+/// symlink. The source root itself is permitted to be a symlink (it will be
+/// backed up as a link without being followed).
+///
+/// The `relative_source` must be a home-relative path that has already passed
+/// string-level validation (not empty, not absolute, no `..`).
+///
+/// Returns the absolute path to the source root on success.
+pub fn validate_source_path(
+    home: &Path,
+    relative_source: &str,
+) -> Result<PathBuf, SourcePathError> {
+    let full_path = home.join(relative_source);
+
+    // Check that the source root exists (as any file type including symlink).
+    // Use symlink_metadata to detect existence without following links.
+    let source_exists = std::fs::symlink_metadata(&full_path).is_ok();
+    if !source_exists {
+        return Err(SourcePathError::SourceNotFound {
+            path: full_path.clone(),
+        });
+    }
+
+    // Walk each intermediate component between home and the source root.
+    // We check every prefix of the relative path EXCEPT the final component
+    // (the source root itself, which is allowed to be a symlink).
+    let rel_path = Path::new(relative_source);
+    let components: Vec<_> = rel_path.components().collect();
+
+    // Check all parent prefixes (all but the last component).
+    if components.len() > 1 {
+        let mut current = home.to_path_buf();
+        for component in &components[..components.len() - 1] {
+            current.push(component);
+
+            let metadata =
+                std::fs::symlink_metadata(&current).map_err(|source| SourcePathError::Inspect {
+                    path: current.clone(),
+                    source,
+                })?;
+
+            if metadata.file_type().is_symlink() {
+                return Err(SourcePathError::SymlinkedParent {
+                    relative_source: relative_source.to_string(),
+                    symlink_at: current,
+                });
+            }
+        }
+    }
+
+    Ok(full_path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -478,5 +556,133 @@ mod tests {
 
         let expected = home.join(".local").join("state").join(app::STATE_DIR_NAME);
         assert_eq!(paths.state_dir(), expected);
+    }
+
+    // --- Source path validation tests (C05) ---
+
+    #[test]
+    fn accepts_regular_directory_source() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        std::fs::create_dir_all(home.join(".config/fish")).unwrap();
+
+        let result = validate_source_path(&home, ".config/fish");
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), home.join(".config/fish"));
+    }
+
+    #[test]
+    fn accepts_regular_file_source() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::write(home.join(".bashrc"), "# bash").unwrap();
+
+        let result = validate_source_path(&home, ".bashrc");
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn accepts_source_root_symlink() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        let target = tmp.path().join("real-config");
+        std::fs::create_dir_all(&target).unwrap();
+
+        // The source root itself is a symlink — allowed.
+        std::os::unix::fs::symlink(&target, home.join(".config-link")).unwrap();
+
+        let result = validate_source_path(&home, ".config-link");
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn rejects_symlinked_parent_component() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        std::fs::create_dir_all(&home).unwrap();
+
+        // Create: home/.config -> /tmp/.../real-config (symlink parent)
+        let real_config = tmp.path().join("real-config");
+        std::fs::create_dir_all(real_config.join("fish")).unwrap();
+        std::os::unix::fs::symlink(&real_config, home.join(".config")).unwrap();
+
+        let result = validate_source_path(&home, ".config/fish");
+
+        assert!(matches!(
+            result,
+            Err(SourcePathError::SymlinkedParent { .. })
+        ));
+        if let Err(SourcePathError::SymlinkedParent { symlink_at, .. }) = &result {
+            assert_eq!(symlink_at, &home.join(".config"));
+        }
+    }
+
+    #[test]
+    fn rejects_deeply_nested_symlinked_parent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        std::fs::create_dir_all(home.join(".local")).unwrap();
+
+        // .local/share is a symlink
+        let real_share = tmp.path().join("real-share");
+        std::fs::create_dir_all(real_share.join("nvim")).unwrap();
+        std::os::unix::fs::symlink(&real_share, home.join(".local/share")).unwrap();
+
+        let result = validate_source_path(&home, ".local/share/nvim");
+
+        assert!(matches!(
+            result,
+            Err(SourcePathError::SymlinkedParent { .. })
+        ));
+        if let Err(SourcePathError::SymlinkedParent { symlink_at, .. }) = &result {
+            assert_eq!(symlink_at, &home.join(".local/share"));
+        }
+    }
+
+    #[test]
+    fn rejects_nonexistent_source() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        std::fs::create_dir_all(&home).unwrap();
+
+        let result = validate_source_path(&home, ".config/nonexistent");
+
+        assert!(matches!(
+            result,
+            Err(SourcePathError::SourceNotFound { .. })
+        ));
+    }
+
+    #[test]
+    fn accepts_single_component_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        std::fs::create_dir_all(home.join(".ssh")).unwrap();
+
+        // Single component — no parent to check for symlinks.
+        let result = validate_source_path(&home, ".ssh");
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn accepts_non_symlink_parents_with_symlink_source_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        std::fs::create_dir_all(home.join(".config")).unwrap();
+
+        // .config is a real dir, fish is a symlink (the source root)
+        let real_fish = tmp.path().join("real-fish");
+        std::fs::create_dir_all(&real_fish).unwrap();
+        std::os::unix::fs::symlink(&real_fish, home.join(".config/fish")).unwrap();
+
+        let result = validate_source_path(&home, ".config/fish");
+
+        assert!(result.is_ok());
     }
 }
