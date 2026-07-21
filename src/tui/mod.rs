@@ -90,6 +90,8 @@ pub struct App {
     pub sources_screen: screens::sources::SourcesScreen,
     /// Ignore editor screen state.
     pub ignore_screen: screens::ignore::IgnoreScreen,
+    /// Backup preview screen state.
+    pub preview_screen: screens::preview::PreviewScreen,
 }
 
 impl Default for App {
@@ -129,6 +131,7 @@ impl App {
             repo_screen,
             sources_screen: screens::sources::SourcesScreen::new(),
             ignore_screen: screens::ignore::IgnoreScreen::new(),
+            preview_screen: screens::preview::PreviewScreen::new(),
         }
     }
 
@@ -309,6 +312,30 @@ impl App {
         }
     }
 
+    /// Refresh the backup preview (dry-run planner).
+    fn refresh_preview(&mut self) {
+        if let Some(ref config) = self.config {
+            if let Some(ref paths) = self.paths {
+                let repo_path = config.repository_path(paths.home());
+                match screens::preview::PreviewScreen::generate(config, paths.home(), &repo_path) {
+                    Ok(data) => {
+                        self.preview_screen.preview = Some(data);
+                        self.preview_screen.error = None;
+                        self.preview_screen.stale = false;
+                        self.preview_screen.scroll = 0;
+                    }
+                    Err(e) => {
+                        self.preview_screen.error = Some(e);
+                        self.preview_screen.preview = None;
+                        self.preview_screen.stale = false;
+                    }
+                }
+            }
+        } else {
+            self.preview_screen.error = Some("No configuration loaded.".to_string());
+        }
+    }
+
     /// Handle a key event and update application state.
     pub fn handle_key(&mut self, key: crossterm::event::KeyEvent) {
         use crossterm::event::{KeyCode, KeyModifiers};
@@ -429,6 +456,22 @@ impl App {
             }
         }
 
+        // Preview screen key handling.
+        if self.active_screen == Screen::Preview {
+            let action = self.preview_screen.handle_key(key);
+            match action {
+                screens::preview::Action::Consumed => return,
+                screens::preview::Action::Refresh => {
+                    self.refresh_preview();
+                    return;
+                }
+                screens::preview::Action::NotConsumed => {
+                    // Fall through to global key handling.
+                }
+            }
+            // Auto-refresh on first visit if stale.
+        }
+
         // Global key handling.
         match (key.modifiers, key.code) {
             // Quit: q, Ctrl+C, or Esc
@@ -522,6 +565,7 @@ mod tests {
             repo_screen: screens::repository::RepoScreen::new(),
             sources_screen: screens::sources::SourcesScreen::new(),
             ignore_screen: screens::ignore::IgnoreScreen::new(),
+            preview_screen: screens::preview::PreviewScreen::new(),
         }
     }
 

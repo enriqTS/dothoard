@@ -71,7 +71,7 @@ fn draw_screen(frame: &mut Frame, area: Rect, app: &App) {
         Screen::Repository => draw_repository(frame, area, app),
         Screen::Sources => draw_sources(frame, area, app),
         Screen::Ignore => draw_ignore(frame, area, app),
-        Screen::Preview => draw_placeholder(frame, area, "Backup Preview"),
+        Screen::Preview => draw_preview(frame, area, app),
         Screen::Automation => draw_placeholder(frame, area, "Automation"),
         Screen::History => draw_placeholder(frame, area, "History"),
     }
@@ -339,6 +339,132 @@ fn dim_line(text: impl Into<String>) -> Line<'static> {
 /// Format a DateTime for display.
 fn format_time(ts: &chrono::DateTime<chrono::Utc>) -> String {
     ts.format("%Y-%m-%d %H:%M:%S UTC").to_string()
+}
+
+/// Draw the backup preview screen.
+fn draw_preview(frame: &mut Frame, area: Rect, app: &App) {
+    use crate::tui::screens::preview::EntryKind;
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Backup Preview ");
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    // Error state.
+    if let Some(ref err) = app.preview_screen.error {
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled(format!("Error: {err}"), Style::default().fg(Color::Red)),
+        ]));
+        lines.push(Line::from(""));
+        lines.push(dim_line("  Press 'r' to retry."));
+        let paragraph = Paragraph::new(lines);
+        frame.render_widget(paragraph, inner);
+        return;
+    }
+
+    // Stale / not yet loaded.
+    if app.preview_screen.stale || app.preview_screen.preview.is_none() {
+        lines.push(Line::from(""));
+        lines.push(dim_line("  Preview not loaded. Press 'r' to generate."));
+        lines.push(Line::from(""));
+        lines.push(dim_line(
+            "  This runs the backup planner without making changes.",
+        ));
+        let paragraph = Paragraph::new(lines);
+        frame.render_widget(paragraph, inner);
+        return;
+    }
+
+    let data = app.preview_screen.preview.as_ref().unwrap();
+
+    // Summary line.
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled(
+            format!(
+                "+{} ~{} -{} ○{} ⚠{}",
+                data.additions, data.modifications, data.deletions, data.exclusions, data.warnings
+            ),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(format!(
+            "  ({} total operations)",
+            data.additions + data.modifications + data.deletions
+        )),
+    ]));
+    lines.push(Line::from(""));
+
+    if data.entries.is_empty() {
+        lines.push(dim_line("  No changes detected. Everything is up to date."));
+    } else {
+        // Display entries with scroll.
+        let visible_height = inner.height.saturating_sub(6) as usize;
+        let scroll = app
+            .preview_screen
+            .scroll
+            .min(data.entries.len().saturating_sub(visible_height));
+
+        for entry in data.entries.iter().skip(scroll).take(visible_height) {
+            let (prefix_color, path_style) = match entry.kind {
+                EntryKind::Addition => (Color::Green, Style::default().fg(Color::Green)),
+                EntryKind::Modification => (Color::Yellow, Style::default().fg(Color::Yellow)),
+                EntryKind::Deletion => (Color::Red, Style::default().fg(Color::Red)),
+                EntryKind::Exclusion => (Color::DarkGray, Style::default().fg(Color::DarkGray)),
+                EntryKind::Warning => (Color::Yellow, Style::default().fg(Color::Yellow)),
+            };
+
+            let mut spans = vec![
+                Span::raw("  "),
+                Span::styled(
+                    format!("{} ", entry.kind.prefix()),
+                    Style::default().fg(prefix_color),
+                ),
+                Span::styled(entry.path.clone(), path_style),
+            ];
+
+            if let Some(ref detail) = entry.detail {
+                spans.push(Span::styled(
+                    format!("  ({})", detail),
+                    Style::default().fg(Color::DarkGray),
+                ));
+            }
+
+            lines.push(Line::from(spans));
+        }
+
+        // Scroll indicator.
+        if data.entries.len() > visible_height {
+            lines.push(Line::from(""));
+            lines.push(dim_line(format!(
+                "  [{}-{} of {}] ↑↓/jk to scroll",
+                scroll + 1,
+                (scroll + visible_height).min(data.entries.len()),
+                data.entries.len()
+            )));
+        }
+    }
+
+    // Help.
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::raw("  "),
+        Span::styled("r", Style::default().fg(Color::DarkGray)),
+        Span::styled(" refresh  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("↑↓/jk", Style::default().fg(Color::DarkGray)),
+        Span::styled(" scroll", Style::default().fg(Color::DarkGray)),
+    ]));
+
+    let paragraph = Paragraph::new(lines);
+    frame.render_widget(paragraph, inner);
 }
 
 /// Draw the ignore rule editor screen.
