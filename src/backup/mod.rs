@@ -2,3 +2,4 @@
 
 pub mod changeset;
 pub mod manifest;
+pub mod mapping;
