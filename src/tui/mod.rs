@@ -92,6 +92,8 @@ pub struct App {
     pub ignore_screen: screens::ignore::IgnoreScreen,
     /// Backup preview screen state.
     pub preview_screen: screens::preview::PreviewScreen,
+    /// Automation controls screen state.
+    pub automation_screen: screens::automation::AutomationScreen,
 }
 
 impl Default for App {
@@ -132,6 +134,7 @@ impl App {
             sources_screen: screens::sources::SourcesScreen::new(),
             ignore_screen: screens::ignore::IgnoreScreen::new(),
             preview_screen: screens::preview::PreviewScreen::new(),
+            automation_screen: screens::automation::AutomationScreen::new(),
         }
     }
 
@@ -486,6 +489,39 @@ impl App {
             }
         }
 
+        // Automation screen key handling.
+        if self.active_screen == Screen::Automation {
+            let action = self.automation_screen.handle_key(key);
+            match action {
+                screens::automation::Action::Consumed => return,
+                screens::automation::Action::RefreshStatus => {
+                    if let Some(ref config) = self.config {
+                        if let Some(ref paths) = self.paths {
+                            self.automation_screen.refresh_status(config, paths.home());
+                        }
+                    }
+                    return;
+                }
+                screens::automation::Action::Install => {
+                    if let Some(ref config) = self.config {
+                        if let Some(ref paths) = self.paths {
+                            self.automation_screen.install(config, paths.home());
+                        }
+                    }
+                    return;
+                }
+                screens::automation::Action::Remove => {
+                    if let Some(ref paths) = self.paths {
+                        self.automation_screen.remove(paths.home());
+                    }
+                    return;
+                }
+                screens::automation::Action::NotConsumed => {
+                    // Fall through to global key handling.
+                }
+            }
+        }
+
         // Global key handling.
         match (key.modifiers, key.code) {
             // Quit: q, Ctrl+C, or Esc
@@ -580,6 +616,7 @@ mod tests {
             sources_screen: screens::sources::SourcesScreen::new(),
             ignore_screen: screens::ignore::IgnoreScreen::new(),
             preview_screen: screens::preview::PreviewScreen::new(),
+            automation_screen: screens::automation::AutomationScreen::new(),
         }
     }
 

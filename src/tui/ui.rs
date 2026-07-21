@@ -72,7 +72,7 @@ fn draw_screen(frame: &mut Frame, area: Rect, app: &App) {
         Screen::Sources => draw_sources(frame, area, app),
         Screen::Ignore => draw_ignore(frame, area, app),
         Screen::Preview => draw_preview(frame, area, app),
-        Screen::Automation => draw_placeholder(frame, area, "Automation"),
+        Screen::Automation => draw_automation(frame, area, app),
         Screen::History => draw_placeholder(frame, area, "History"),
     }
 }
@@ -339,6 +339,109 @@ fn dim_line(text: impl Into<String>) -> Line<'static> {
 /// Format a DateTime for display.
 fn format_time(ts: &chrono::DateTime<chrono::Utc>) -> String {
     ts.format("%Y-%m-%d %H:%M:%S UTC").to_string()
+}
+
+/// Draw the automation controls screen.
+fn draw_automation(frame: &mut Frame, area: Rect, app: &App) {
+    use crate::tui::screens::automation::ConfirmAction;
+
+    let block = Block::default().borders(Borders::ALL).title(" Automation ");
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "  Systemd Timer",
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from(""));
+
+    // Status.
+    if let Some(ref status) = app.automation_screen.status_text {
+        lines.push(field_line("  Status", status.clone()));
+    } else if app.automation_screen.stale {
+        lines.push(dim_line("  Status not loaded. Press 'r' to check."));
+    } else {
+        lines.push(dim_line("  Status: unknown"));
+    }
+
+    // Config info.
+    if let Some(ref config) = app.config {
+        lines.push(Line::from(""));
+        lines.push(field_line(
+            "  Interval",
+            format!("{} min", config.interval_minutes),
+        ));
+        lines.push(field_line(
+            "  Timeout",
+            format!("{}s", config.network_timeout_seconds),
+        ));
+    }
+
+    lines.push(Line::from(""));
+
+    // Confirmation dialogs.
+    match app.automation_screen.confirm {
+        ConfirmAction::Install => {
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(
+                    "Install and enable the timer? (y/n)",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]));
+        }
+        ConfirmAction::Remove => {
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(
+                    "Remove the timer? (y/n)",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]));
+        }
+        ConfirmAction::None => {}
+    }
+
+    // Feedback message.
+    if let Some(ref msg) = app.automation_screen.message {
+        lines.push(Line::from(""));
+        let color = if msg.success {
+            Color::Green
+        } else {
+            Color::Red
+        };
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled(msg.text.clone(), Style::default().fg(color)),
+        ]));
+    }
+
+    // Help.
+    if app.automation_screen.confirm == ConfirmAction::None {
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled("r", Style::default().fg(Color::DarkGray)),
+            Span::styled(" refresh  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("i", Style::default().fg(Color::DarkGray)),
+            Span::styled(" install  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("x", Style::default().fg(Color::DarkGray)),
+            Span::styled(" remove", Style::default().fg(Color::DarkGray)),
+        ]));
+    }
+
+    let paragraph = Paragraph::new(lines);
+    frame.render_widget(paragraph, inner);
 }
 
 /// Draw the backup preview screen.
