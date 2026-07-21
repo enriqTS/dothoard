@@ -68,6 +68,7 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
 fn draw_screen(frame: &mut Frame, area: Rect, app: &App) {
     match app.active_screen {
         Screen::Dashboard => draw_dashboard(frame, area, app),
+        Screen::Repository => draw_repository(frame, area, app),
         Screen::Sources => draw_placeholder(frame, area, "Sources"),
         Screen::Ignore => draw_placeholder(frame, area, "Ignore Rules"),
         Screen::Preview => draw_placeholder(frame, area, "Backup Preview"),
@@ -95,8 +96,17 @@ fn draw_help_bar(frame: &mut Frame, area: Rect, app: &App) {
             Span::raw("/"),
             Span::styled("S-Tab", Style::default().fg(Color::Cyan)),
             Span::raw(" navigate  "),
-            Span::styled("1-6", Style::default().fg(Color::Cyan)),
+            Span::styled("1-7", Style::default().fg(Color::Cyan)),
             Span::raw(" jump"),
+        ])
+    } else if app.active_screen == Screen::Repository {
+        Line::from(vec![
+            Span::styled("Enter", Style::default().fg(Color::Cyan)),
+            Span::raw(" validate  "),
+            Span::styled("Ctrl+C", Style::default().fg(Color::Cyan)),
+            Span::raw(" quit  "),
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(" next screen"),
         ])
     } else {
         Line::from(vec![
@@ -106,7 +116,7 @@ fn draw_help_bar(frame: &mut Frame, area: Rect, app: &App) {
             Span::raw("/"),
             Span::styled("S-Tab", Style::default().fg(Color::Cyan)),
             Span::raw(" navigate  "),
-            Span::styled("1-6", Style::default().fg(Color::Cyan)),
+            Span::styled("1-7", Style::default().fg(Color::Cyan)),
             Span::raw(" jump"),
         ])
     };
@@ -329,6 +339,147 @@ fn dim_line(text: impl Into<String>) -> Line<'static> {
 /// Format a DateTime for display.
 fn format_time(ts: &chrono::DateTime<chrono::Utc>) -> String {
     ts.format("%Y-%m-%d %H:%M:%S UTC").to_string()
+}
+
+/// Draw the repository selection screen.
+fn draw_repository(frame: &mut Frame, area: Rect, app: &App) {
+    use crate::tui::screens::repository::{ConfirmState, OwnershipInfo, ValidationResult};
+
+    let block = Block::default().borders(Borders::ALL).title(" Repository ");
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "  Repository path:",
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from(""));
+
+    // Input field with cursor indicator.
+    let input_display = format!("  > {}", app.repo_screen.input);
+    lines.push(Line::from(Span::raw(input_display)));
+
+    // Cursor position indicator.
+    let cursor_line = format!("  {}^", " ".repeat(app.repo_screen.cursor + 1));
+    lines.push(Line::from(Span::styled(
+        cursor_line,
+        Style::default().fg(Color::DarkGray),
+    )));
+    lines.push(Line::from(""));
+
+    // Validation result.
+    match &app.repo_screen.validation {
+        Some(ValidationResult::Valid(info)) => {
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled("✓ Valid repository", Style::default().fg(Color::Green)),
+            ]));
+            lines.push(field_line("    Branch", info.branch.clone()));
+            lines.push(field_line("    Path", info.path.display().to_string()));
+            lines.push(Line::from(""));
+
+            // Ownership info.
+            match &info.ownership {
+                OwnershipInfo::New => {
+                    lines.push(Line::from(vec![
+                        Span::raw("  "),
+                        Span::styled(
+                            "New namespace — no existing data.",
+                            Style::default().fg(Color::Green),
+                        ),
+                    ]));
+                }
+                OwnershipInfo::Owned { sources } => {
+                    lines.push(Line::from(vec![
+                        Span::raw("  "),
+                        Span::styled(
+                            "Existing manifest found.",
+                            Style::default().fg(Color::Yellow),
+                        ),
+                    ]));
+                    lines.push(dim_line(format!("    Sources: {}", sources.len())));
+                    for s in sources.iter().take(5) {
+                        lines.push(dim_line(format!("      • {s}")));
+                    }
+                }
+                OwnershipInfo::InvalidManifest(reason) => {
+                    lines.push(Line::from(vec![
+                        Span::raw("  "),
+                        Span::styled(
+                            format!("✗ Invalid manifest: {reason}"),
+                            Style::default().fg(Color::Red),
+                        ),
+                    ]));
+                }
+                OwnershipInfo::Ambiguous(reason) => {
+                    lines.push(Line::from(vec![
+                        Span::raw("  "),
+                        Span::styled(
+                            format!("✗ Ambiguous: {reason}"),
+                            Style::default().fg(Color::Red),
+                        ),
+                    ]));
+                }
+            }
+        }
+        Some(ValidationResult::Invalid(msg)) => {
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(format!("✗ {msg}"), Style::default().fg(Color::Red)),
+            ]));
+        }
+        None => {
+            lines.push(dim_line("  Press Enter to validate the path."));
+        }
+    }
+
+    // Confirmation dialog.
+    match app.repo_screen.confirm_state {
+        ConfirmState::AskInitialize => {
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(
+                    "Initialize this repository? (y/n)",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]));
+        }
+        ConfirmState::AskAttach => {
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(
+                    "Attach to this repository? (y/n)",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]));
+        }
+        ConfirmState::Done => {
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(
+                    "✓ Repository configured.",
+                    Style::default().fg(Color::Green),
+                ),
+            ]));
+        }
+        ConfirmState::None => {}
+    }
+
+    let paragraph = Paragraph::new(lines);
+    frame.render_widget(paragraph, inner);
 }
 
 /// Draw a placeholder screen for not-yet-implemented screens.

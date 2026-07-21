@@ -5,6 +5,7 @@
 //! never depends on TUI code.
 
 mod event;
+pub mod screens;
 pub mod task;
 mod terminal;
 mod ui;
@@ -15,6 +16,7 @@ pub use terminal::run;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
     Dashboard,
+    Repository,
     Sources,
     Ignore,
     Preview,
@@ -26,6 +28,7 @@ impl Screen {
     /// All screens in tab order.
     pub const ALL: &'static [Screen] = &[
         Screen::Dashboard,
+        Screen::Repository,
         Screen::Sources,
         Screen::Ignore,
         Screen::Preview,
@@ -37,6 +40,7 @@ impl Screen {
     pub fn label(self) -> &'static str {
         match self {
             Screen::Dashboard => "Dashboard",
+            Screen::Repository => "Repository",
             Screen::Sources => "Sources",
             Screen::Ignore => "Ignore",
             Screen::Preview => "Preview",
@@ -80,6 +84,8 @@ pub struct App {
     pub config: Option<crate::config::Config>,
     /// Status message displayed temporarily in the help bar.
     pub status_message: Option<String>,
+    /// Repository selection screen state.
+    pub repo_screen: screens::repository::RepoScreen,
 }
 
 impl Default for App {
@@ -100,6 +106,12 @@ impl App {
             .as_ref()
             .and_then(|p| crate::config::Config::load(p.config_file()).ok());
 
+        let repo_screen = if let Some(ref c) = config {
+            screens::repository::RepoScreen::with_path(&c.repository)
+        } else {
+            screens::repository::RepoScreen::new()
+        };
+
         Self {
             active_screen: Screen::Dashboard,
             should_quit: false,
@@ -110,6 +122,7 @@ impl App {
             state,
             config,
             status_message: None,
+            repo_screen,
         }
     }
 
@@ -153,11 +166,80 @@ impl App {
     pub fn handle_key(&mut self, key: crossterm::event::KeyEvent) {
         use crossterm::event::{KeyCode, KeyModifiers};
 
+        // Screen-specific key handling first.
+        if self.active_screen == Screen::Repository {
+            let result = self.repo_screen.handle_key(key);
+            match result {
+                screens::repository::KeyResult::Consumed => return,
+                screens::repository::KeyResult::Validate => {
+                    if let Some(ref paths) = self.paths {
+                        self.repo_screen.validate(paths.home());
+                        // If validation succeeded and needs confirmation, show dialog.
+                        if let Some(screens::repository::ValidationResult::Valid(ref info)) =
+                            self.repo_screen.validation
+                            && info.ownership.needs_confirmation()
+                        {
+                            self.repo_screen.confirm_state = match info.ownership {
+                                screens::repository::OwnershipInfo::New => {
+                                    screens::repository::ConfirmState::AskInitialize
+                                }
+                                screens::repository::OwnershipInfo::Owned { .. } => {
+                                    screens::repository::ConfirmState::AskAttach
+                                }
+                                _ => screens::repository::ConfirmState::None,
+                            };
+                        }
+                    } else {
+                        self.status_message =
+                            Some("Cannot validate: paths not resolved.".to_string());
+                    }
+                    return;
+                }
+                screens::repository::KeyResult::Confirm => {
+                    if let Some(ref paths) = self.paths {
+                        match self.repo_screen.confirm(paths.home()) {
+                            Ok(repo_path) => {
+                                // Update config with the new repo path.
+                                let repo_str = repo_path.to_str().unwrap_or_default().to_string();
+                                if let Some(ref mut config) = self.config {
+                                    config.repository = repo_str;
+                                } else {
+                                    self.config = Some(crate::config::Config::new(repo_str));
+                                }
+                                // Save config.
+                                if let Some(ref paths) = self.paths
+                                    && let Some(ref config) = self.config
+                                {
+                                    let _ = config.save(paths.config_file());
+                                }
+                                self.status_message =
+                                    Some("Repository configured successfully.".to_string());
+                            }
+                            Err(e) => {
+                                self.status_message = Some(format!("Error: {e}"));
+                                self.repo_screen.confirm_state =
+                                    screens::repository::ConfirmState::None;
+                            }
+                        }
+                    }
+                    return;
+                }
+                screens::repository::KeyResult::NotConsumed => {
+                    // Fall through to global key handling.
+                }
+            }
+        }
+
+        // Global key handling.
         match (key.modifiers, key.code) {
             // Quit: q, Ctrl+C, or Esc
-            (_, KeyCode::Char('q')) => self.should_quit = true,
+            (_, KeyCode::Char('q')) if self.active_screen != Screen::Repository => {
+                self.should_quit = true;
+            }
             (KeyModifiers::CONTROL, KeyCode::Char('c')) => self.should_quit = true,
-            (_, KeyCode::Esc) => self.should_quit = true,
+            (_, KeyCode::Esc) if self.active_screen != Screen::Repository => {
+                self.should_quit = true;
+            }
 
             // Tab navigation: Tab/Shift+Tab or number keys
             (KeyModifiers::NONE, KeyCode::Tab) => {
@@ -168,12 +250,27 @@ impl App {
             }
 
             // Direct screen selection via number keys
-            (_, KeyCode::Char('1')) => self.active_screen = Screen::Dashboard,
-            (_, KeyCode::Char('2')) => self.active_screen = Screen::Sources,
-            (_, KeyCode::Char('3')) => self.active_screen = Screen::Ignore,
-            (_, KeyCode::Char('4')) => self.active_screen = Screen::Preview,
-            (_, KeyCode::Char('5')) => self.active_screen = Screen::Automation,
-            (_, KeyCode::Char('6')) => self.active_screen = Screen::History,
+            (_, KeyCode::Char('1')) if self.active_screen != Screen::Repository => {
+                self.active_screen = Screen::Dashboard;
+            }
+            (_, KeyCode::Char('2')) if self.active_screen != Screen::Repository => {
+                self.active_screen = Screen::Repository;
+            }
+            (_, KeyCode::Char('3')) if self.active_screen != Screen::Repository => {
+                self.active_screen = Screen::Sources;
+            }
+            (_, KeyCode::Char('4')) if self.active_screen != Screen::Repository => {
+                self.active_screen = Screen::Ignore;
+            }
+            (_, KeyCode::Char('5')) if self.active_screen != Screen::Repository => {
+                self.active_screen = Screen::Preview;
+            }
+            (_, KeyCode::Char('6')) if self.active_screen != Screen::Repository => {
+                self.active_screen = Screen::Automation;
+            }
+            (_, KeyCode::Char('7')) if self.active_screen != Screen::Repository => {
+                self.active_screen = Screen::History;
+            }
 
             // Trigger backup with 'b' (only from Dashboard)
             (_, KeyCode::Char('b'))
@@ -223,19 +320,20 @@ mod tests {
             state: None,
             config: None,
             status_message: None,
+            repo_screen: screens::repository::RepoScreen::new(),
         }
     }
 
     #[test]
     fn screen_next_wraps_around() {
-        assert_eq!(Screen::Dashboard.next(), Screen::Sources);
+        assert_eq!(Screen::Dashboard.next(), Screen::Repository);
         assert_eq!(Screen::History.next(), Screen::Dashboard);
     }
 
     #[test]
     fn screen_prev_wraps_around() {
         assert_eq!(Screen::Dashboard.prev(), Screen::History);
-        assert_eq!(Screen::Sources.prev(), Screen::Dashboard);
+        assert_eq!(Screen::Repository.prev(), Screen::Dashboard);
     }
 
     #[test]
@@ -281,7 +379,7 @@ mod tests {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         let mut app = test_app();
         app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
-        assert_eq!(app.active_screen, Screen::Sources);
+        assert_eq!(app.active_screen, Screen::Repository);
     }
 
     #[test]
@@ -298,9 +396,9 @@ mod tests {
         let mut app = test_app();
 
         app.handle_key(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE));
-        assert_eq!(app.active_screen, Screen::Ignore);
+        assert_eq!(app.active_screen, Screen::Sources);
 
-        app.handle_key(KeyEvent::new(KeyCode::Char('6'), KeyModifiers::NONE));
+        app.handle_key(KeyEvent::new(KeyCode::Char('7'), KeyModifiers::NONE));
         assert_eq!(app.active_screen, Screen::History);
 
         app.handle_key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE));
