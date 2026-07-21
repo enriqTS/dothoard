@@ -3,6 +3,7 @@
 pub mod changeset;
 pub mod compare;
 pub mod deletion;
+pub mod executor;
 pub mod ignore;
 pub mod inventory;
 pub mod manifest;
