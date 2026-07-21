@@ -74,6 +74,10 @@ pub struct App {
     pub last_check: Option<task::CheckResult>,
     /// Resolved application paths (populated on startup if available).
     pub paths: Option<crate::paths::AppPaths>,
+    /// Loaded application state (last backup, commit, push, etc.).
+    pub state: Option<crate::state::AppState>,
+    /// Loaded configuration.
+    pub config: Option<crate::config::Config>,
     /// Status message displayed temporarily in the help bar.
     pub status_message: Option<String>,
 }
@@ -87,6 +91,15 @@ impl Default for App {
 impl App {
     pub fn new() -> Self {
         let paths = crate::paths::AppPaths::from_environment().ok();
+
+        // Load persistent state and config if paths are available.
+        let state = paths
+            .as_ref()
+            .and_then(|p| crate::state::AppState::load(p.state_dir()).ok());
+        let config = paths
+            .as_ref()
+            .and_then(|p| crate::config::Config::load(p.config_file()).ok());
+
         Self {
             active_screen: Screen::Dashboard,
             should_quit: false,
@@ -94,7 +107,16 @@ impl App {
             last_backup: None,
             last_check: None,
             paths,
+            state,
+            config,
             status_message: None,
+        }
+    }
+
+    /// Reload persistent state from disk (called after backup completes).
+    pub fn reload_state(&mut self) {
+        if let Some(ref paths) = self.paths {
+            self.state = crate::state::AppState::load(paths.state_dir()).ok();
         }
     }
 
@@ -112,6 +134,8 @@ impl App {
                         ))
                     };
                     self.last_backup = Some(r);
+                    // Reload persistent state to reflect the new backup outcome.
+                    self.reload_state();
                 }
                 task::TaskResult::Check(r) => {
                     self.status_message = if r.healthy {
@@ -196,6 +220,8 @@ mod tests {
             last_backup: None,
             last_check: None,
             paths: None,
+            state: None,
+            config: None,
             status_message: None,
         }
     }
