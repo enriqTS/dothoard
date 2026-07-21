@@ -2,6 +2,7 @@
 
 pub mod changeset;
 pub mod compare;
+pub mod coordinator;
 pub mod deletion;
 pub mod executor;
 pub mod ignore;
