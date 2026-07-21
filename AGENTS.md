@@ -155,9 +155,12 @@ marking a development task complete.
 3. Recheck the relevant behavior in `PLAN.md`.
 4. Implement the smallest complete change, including tests.
 5. Run the relevant verification commands.
-6. Mark the task complete in `DEVELOPMENT_PLAN.md` only after verification.
+6. Mark the task complete in `DEVELOPMENT_PLAN.md` immediately after
+   verification. Do not defer marking to the end of a milestone — if a run is
+   interrupted, the completed work must already be recorded.
 7. Update `MEMORY.md` with completed work, active task, next task, tests, and
-   blockers.
+   blockers. This must also happen immediately per-task so that a resumed
+   session knows exactly where to continue.
 8. Update `README.md` when user-visible behavior becomes usable.
 
 Do not mark milestone gates complete merely because code exists. The gate must
