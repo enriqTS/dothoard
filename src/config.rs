@@ -60,6 +60,61 @@ pub enum ConfigError {
     },
 }
 
+/// A single validation problem found in a configuration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ValidationError {
+    /// The schema version is not supported.
+    UnsupportedVersion { found: u32, supported: u32 },
+    /// The repository path is empty.
+    EmptyRepository,
+    /// The remote name is empty.
+    EmptyRemote,
+    /// The backup interval is zero.
+    ZeroInterval,
+    /// The network timeout is zero.
+    ZeroTimeout,
+    /// A source path is empty.
+    EmptySourcePath { index: usize },
+    /// A source path is absolute (must be home-relative).
+    AbsoluteSourcePath { index: usize, path: String },
+    /// A source path contains parent traversal (`..`).
+    ParentTraversal { index: usize, path: String },
+    /// Duplicate source paths detected.
+    DuplicateSource { index: usize, path: String },
+}
+
+impl std::fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnsupportedVersion { found, supported } => {
+                write!(
+                    f,
+                    "unsupported configuration version {found} (supported: {supported})"
+                )
+            }
+            Self::EmptyRepository => write!(f, "repository path is empty"),
+            Self::EmptyRemote => write!(f, "remote name is empty"),
+            Self::ZeroInterval => write!(f, "interval_minutes must be at least 1"),
+            Self::ZeroTimeout => write!(f, "network_timeout_seconds must be at least 1"),
+            Self::EmptySourcePath { index } => {
+                write!(f, "source [{index}]: path is empty")
+            }
+            Self::AbsoluteSourcePath { index, path } => {
+                write!(f, "source [{index}]: path must be relative, got \"{path}\"")
+            }
+            Self::ParentTraversal { index, path } => {
+                write!(
+                    f,
+                    "source [{index}]: path contains parent traversal (..): \"{path}\""
+                )
+            }
+            Self::DuplicateSource { index, path } => {
+                write!(f, "source [{index}]: duplicate path \"{path}\"")
+            }
+        }
+    }
+}
+
 /// Top-level application configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Config {
@@ -152,6 +207,77 @@ impl Config {
         }
     }
 
+    /// Validate the configuration, collecting all problems found.
+    ///
+    /// Returns an empty vector when the configuration is valid.
+    pub fn validate(&self) -> Vec<ValidationError> {
+        let mut errors = Vec::new();
+
+        // Version check.
+        if self.version != Self::CURRENT_VERSION {
+            errors.push(ValidationError::UnsupportedVersion {
+                found: self.version,
+                supported: Self::CURRENT_VERSION,
+            });
+        }
+
+        // Repository must not be empty.
+        if self.repository.trim().is_empty() {
+            errors.push(ValidationError::EmptyRepository);
+        }
+
+        // Remote must not be empty.
+        if self.remote.trim().is_empty() {
+            errors.push(ValidationError::EmptyRemote);
+        }
+
+        // Interval must be positive.
+        if self.interval_minutes == 0 {
+            errors.push(ValidationError::ZeroInterval);
+        }
+
+        // Timeout must be positive.
+        if self.network_timeout_seconds == 0 {
+            errors.push(ValidationError::ZeroTimeout);
+        }
+
+        // Source path validation.
+        let mut seen_paths = std::collections::HashSet::new();
+        for (index, source) in self.sources.iter().enumerate() {
+            let path = &source.path;
+
+            if path.trim().is_empty() {
+                errors.push(ValidationError::EmptySourcePath { index });
+                continue;
+            }
+
+            if Path::new(path).is_absolute() {
+                errors.push(ValidationError::AbsoluteSourcePath {
+                    index,
+                    path: path.clone(),
+                });
+            }
+
+            if contains_parent_traversal(path) {
+                errors.push(ValidationError::ParentTraversal {
+                    index,
+                    path: path.clone(),
+                });
+            }
+
+            // Normalize for duplicate detection.
+            let normalized = normalize_source_path(path);
+            if !seen_paths.insert(normalized.clone()) {
+                errors.push(ValidationError::DuplicateSource {
+                    index,
+                    path: path.clone(),
+                });
+            }
+        }
+
+        errors
+    }
+
     /// Load configuration from the given file path.
     ///
     /// Returns `ConfigError::NotFound` if the file does not exist.
@@ -220,6 +346,20 @@ impl Config {
 
         Ok(())
     }
+}
+
+/// Check whether a path string contains parent traversal components (`..`).
+fn contains_parent_traversal(path: &str) -> bool {
+    Path::new(path)
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+}
+
+/// Normalize a source path for duplicate detection by stripping trailing
+/// slashes and collapsing redundant separators.
+fn normalize_source_path(path: &str) -> String {
+    let normalized: PathBuf = Path::new(path).components().collect();
+    normalized.to_string_lossy().into_owned()
 }
 
 #[cfg(test)]
@@ -452,5 +592,241 @@ path = ".bashrc"
         let result = Config::load(&path);
 
         assert!(matches!(result, Err(ConfigError::Parse { .. })));
+    }
+
+    // --- Validation tests (C04) ---
+
+    #[test]
+    fn valid_config_produces_no_errors() {
+        let config = Config {
+            version: 1,
+            repository: "~/dotfiles".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![SourceConfig {
+                path: ".config/fish".to_string(),
+                ignore: vec![],
+            }],
+        };
+
+        assert!(config.validate().is_empty());
+    }
+
+    #[test]
+    fn rejects_unsupported_version() {
+        let config = Config {
+            version: 99,
+            ..Config::new("~/repo")
+        };
+
+        let errors = config.validate();
+        assert!(errors.contains(&ValidationError::UnsupportedVersion {
+            found: 99,
+            supported: 1,
+        }));
+    }
+
+    #[test]
+    fn rejects_empty_repository() {
+        let config = Config {
+            repository: "  ".to_string(),
+            ..Config::new("")
+        };
+
+        let errors = config.validate();
+        assert!(errors.contains(&ValidationError::EmptyRepository));
+    }
+
+    #[test]
+    fn rejects_empty_remote() {
+        let config = Config {
+            remote: "".to_string(),
+            ..Config::new("~/repo")
+        };
+
+        let errors = config.validate();
+        assert!(errors.contains(&ValidationError::EmptyRemote));
+    }
+
+    #[test]
+    fn rejects_zero_interval() {
+        let config = Config {
+            interval_minutes: 0,
+            ..Config::new("~/repo")
+        };
+
+        let errors = config.validate();
+        assert!(errors.contains(&ValidationError::ZeroInterval));
+    }
+
+    #[test]
+    fn rejects_zero_timeout() {
+        let config = Config {
+            network_timeout_seconds: 0,
+            ..Config::new("~/repo")
+        };
+
+        let errors = config.validate();
+        assert!(errors.contains(&ValidationError::ZeroTimeout));
+    }
+
+    #[test]
+    fn rejects_empty_source_path() {
+        let config = Config {
+            sources: vec![SourceConfig {
+                path: "".to_string(),
+                ignore: vec![],
+            }],
+            ..Config::new("~/repo")
+        };
+
+        let errors = config.validate();
+        assert!(errors.contains(&ValidationError::EmptySourcePath { index: 0 }));
+    }
+
+    #[test]
+    fn rejects_absolute_source_path() {
+        let config = Config {
+            sources: vec![SourceConfig {
+                path: "/etc/passwd".to_string(),
+                ignore: vec![],
+            }],
+            ..Config::new("~/repo")
+        };
+
+        let errors = config.validate();
+        assert!(errors.contains(&ValidationError::AbsoluteSourcePath {
+            index: 0,
+            path: "/etc/passwd".to_string(),
+        }));
+    }
+
+    #[test]
+    fn rejects_parent_traversal_in_source_path() {
+        let cases = vec![
+            ".config/../secrets",
+            "../outside",
+            "a/b/../../c/../../../d",
+            "..",
+        ];
+
+        for case in cases {
+            let config = Config {
+                sources: vec![SourceConfig {
+                    path: case.to_string(),
+                    ignore: vec![],
+                }],
+                ..Config::new("~/repo")
+            };
+
+            let errors = config.validate();
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| matches!(e, ValidationError::ParentTraversal { .. })),
+                "expected ParentTraversal for path: {case}"
+            );
+        }
+    }
+
+    #[test]
+    fn accepts_dotfile_paths_without_traversal() {
+        let config = Config {
+            sources: vec![
+                SourceConfig {
+                    path: ".config/fish".to_string(),
+                    ignore: vec![],
+                },
+                SourceConfig {
+                    path: ".bashrc".to_string(),
+                    ignore: vec![],
+                },
+                SourceConfig {
+                    path: ".local/share/nvim".to_string(),
+                    ignore: vec![],
+                },
+            ],
+            ..Config::new("~/repo")
+        };
+
+        assert!(config.validate().is_empty());
+    }
+
+    #[test]
+    fn rejects_duplicate_source_paths() {
+        let config = Config {
+            sources: vec![
+                SourceConfig {
+                    path: ".config/fish".to_string(),
+                    ignore: vec![],
+                },
+                SourceConfig {
+                    path: ".config/fish".to_string(),
+                    ignore: vec!["*.log".to_string()],
+                },
+            ],
+            ..Config::new("~/repo")
+        };
+
+        let errors = config.validate();
+        assert!(errors.contains(&ValidationError::DuplicateSource {
+            index: 1,
+            path: ".config/fish".to_string(),
+        }));
+    }
+
+    #[test]
+    fn detects_duplicates_with_trailing_slash_difference() {
+        let config = Config {
+            sources: vec![
+                SourceConfig {
+                    path: ".config/fish".to_string(),
+                    ignore: vec![],
+                },
+                SourceConfig {
+                    path: ".config/fish/".to_string(),
+                    ignore: vec![],
+                },
+            ],
+            ..Config::new("~/repo")
+        };
+
+        let errors = config.validate();
+        assert!(
+            errors
+                .iter()
+                .any(|e| matches!(e, ValidationError::DuplicateSource { index: 1, .. }))
+        );
+    }
+
+    #[test]
+    fn collects_multiple_errors() {
+        let config = Config {
+            version: 99,
+            repository: "".to_string(),
+            remote: "".to_string(),
+            interval_minutes: 0,
+            network_timeout_seconds: 0,
+            sources: vec![
+                SourceConfig {
+                    path: "".to_string(),
+                    ignore: vec![],
+                },
+                SourceConfig {
+                    path: "/absolute".to_string(),
+                    ignore: vec![],
+                },
+                SourceConfig {
+                    path: "../traversal".to_string(),
+                    ignore: vec![],
+                },
+            ],
+        };
+
+        let errors = config.validate();
+        // Should have at least: UnsupportedVersion, EmptyRepository, EmptyRemote,
+        // ZeroInterval, ZeroTimeout, EmptySourcePath, AbsoluteSourcePath, ParentTraversal
+        assert!(errors.len() >= 8);
     }
 }
