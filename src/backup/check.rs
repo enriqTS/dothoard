@@ -334,7 +334,11 @@ pub fn print_report(report: &CheckReport) {
     let errors = report.error_count();
     let warnings = report.warning_count();
     if errors > 0 {
-        tracing::error!(errors = errors, warnings = warnings, "check completed with errors");
+        tracing::error!(
+            errors = errors,
+            warnings = warnings,
+            "check completed with errors"
+        );
     } else if warnings > 0 {
         tracing::warn!(warnings = warnings, "check completed with warnings");
     } else {
@@ -476,9 +480,7 @@ mod tests {
 
         // Valid config but repo doesn't exist.
         let config = Config::new("~/nonexistent-repo");
-        config
-            .save(&config_dir.join("config.toml"))
-            .unwrap();
+        config.save(&config_dir.join("config.toml")).unwrap();
 
         let paths = AppPaths::resolve(crate::paths::PathInputs {
             home: Some(home),
@@ -493,9 +495,11 @@ mod tests {
 
         // Should have config ok, validation ok, repo error.
         assert!(!report.is_healthy());
-        assert!(report
-            .results
-            .iter()
-            .any(|r| r.category == "repository" && r.status.is_error()));
+        assert!(
+            report
+                .results
+                .iter()
+                .any(|r| r.category == "repository" && r.status.is_error())
+        );
     }
 }

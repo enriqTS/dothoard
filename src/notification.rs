@@ -114,7 +114,9 @@ pub fn notify_if_needed(
     error_message: Option<&str>,
     previous_state: &AppState,
 ) -> bool {
-    if let Some((summary, body, urgency)) = decide_notification(success, error_message, previous_state) {
+    if let Some((summary, body, urgency)) =
+        decide_notification(success, error_message, previous_state)
+    {
         send(&summary, &body, urgency)
     } else {
         false

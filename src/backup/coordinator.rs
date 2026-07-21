@@ -301,11 +301,7 @@ fn execute_workflow(
         );
     }
 
-    tracing::info!(
-        copies = copies,
-        deletions = deletions,
-        "mirror completed"
-    );
+    tracing::info!(copies = copies, deletions = deletions, "mirror completed");
 
     // Steps 10-11: Stage the managed namespace and verify boundaries.
     if let Err(e) = git::stage_managed_namespace(runner, &repo_info.worktree) {
@@ -337,8 +333,12 @@ fn execute_workflow(
     let has_something_to_sync = commit_sha.is_some() || has_pending_push(paths);
 
     if has_something_to_sync {
-        match git::sync_with_remote(runner, &repo_info.worktree, &config.remote, &repo_info.branch)
-        {
+        match git::sync_with_remote(
+            runner,
+            &repo_info.worktree,
+            &config.remote,
+            &repo_info.branch,
+        ) {
             Ok(_sync_result) => {
                 tracing::info!("synchronized with remote");
                 BackupOutcome {
@@ -657,10 +657,7 @@ mod tests {
         persist_outcome(&paths, &outcome, started_at).unwrap();
 
         let loaded = AppState::load(&state_dir).unwrap();
-        assert_eq!(
-            loaded.latest_error,
-            Some("source not found".to_string())
-        );
+        assert_eq!(loaded.latest_error, Some("source not found".to_string()));
         assert_eq!(loaded.history[0].outcome, RunOutcome::Failed);
     }
 }

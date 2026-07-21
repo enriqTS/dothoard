@@ -74,12 +74,11 @@ impl CliError {
     pub fn exit_code(&self) -> ExitCode {
         match self {
             Self::NotImplemented { .. } => exit_code::FAILURE,
-            Self::Backup(CoordinatorError::Lock(crate::locking::LockError::AlreadyRunning { .. })) => {
-                exit_code::already_running()
-            }
-            Self::Backup(CoordinatorError::Config(_)) | Self::Backup(CoordinatorError::Validation(_)) => {
-                exit_code::config_error()
-            }
+            Self::Backup(CoordinatorError::Lock(crate::locking::LockError::AlreadyRunning {
+                ..
+            })) => exit_code::already_running(),
+            Self::Backup(CoordinatorError::Config(_))
+            | Self::Backup(CoordinatorError::Validation(_)) => exit_code::config_error(),
             Self::Backup(_) => exit_code::FAILURE,
             Self::Paths(_) => exit_code::config_error(),
         }
@@ -92,7 +91,9 @@ impl CliError {
 /// a successful run), or `Err(CliError)` for failures.
 pub fn execute(cli: Cli) -> Result<ExitCode, CliError> {
     match cli.command {
-        None => Err(CliError::NotImplemented { operation: "the TUI" }),
+        None => Err(CliError::NotImplemented {
+            operation: "the TUI",
+        }),
         Some(Command::Backup) => execute_backup(),
         Some(Command::Check) => execute_check(),
         Some(Command::Service { command }) => {
@@ -266,9 +267,7 @@ mod tests {
 
     #[test]
     fn config_error_exit_code() {
-        let err = CliError::Backup(CoordinatorError::Validation(
-            "empty repository".to_string(),
-        ));
+        let err = CliError::Backup(CoordinatorError::Validation("empty repository".to_string()));
 
         assert_eq!(err.exit_code(), ExitCode::from(3));
     }
