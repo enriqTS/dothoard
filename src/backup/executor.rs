@@ -399,6 +399,83 @@ fn remove_destination_entry(destination: &Path) -> ExecutorResult<()> {
     }
 }
 
+/// Safely delete a file or symlink from the managed namespace.
+///
+/// Performs boundary validation to ensure the path is within the repository
+/// and that no parent component is a symlink. Uses `remove_file` which
+/// operates on the link entry itself without following symlinks.
+///
+/// After removing the file, cleans up any empty parent directories up to
+/// (but not including) the repository root. This keeps the managed namespace
+/// tidy when entire source directories are removed.
+///
+/// # Safety
+///
+/// - Never follows symlinks during deletion.
+/// - Never deletes outside the repository boundary.
+/// - Never removes the repository root itself.
+pub fn delete_entry(repository: &Path, path: &Path) -> ExecutorResult<()> {
+    validate_destination(repository, path)?;
+
+    // Check what exists at the path (without following symlinks).
+    match fs::symlink_metadata(path) {
+        Ok(meta) => {
+            if meta.is_dir() {
+                // Directories in the managed namespace should only be removed
+                // when empty (their contents should be deleted individually first).
+                fs::remove_dir(path).map_err(|source_err| ExecutorError::Delete {
+                    path: path.to_path_buf(),
+                    source_err,
+                })?;
+            } else {
+                // Regular file or symlink — remove directly.
+                fs::remove_file(path).map_err(|source_err| ExecutorError::Delete {
+                    path: path.to_path_buf(),
+                    source_err,
+                })?;
+            }
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            // Already gone — idempotent success.
+            return Ok(());
+        }
+        Err(source_err) => {
+            return Err(ExecutorError::Delete {
+                path: path.to_path_buf(),
+                source_err,
+            });
+        }
+    }
+
+    // Clean up empty parent directories toward the repository root.
+    cleanup_empty_parents(repository, path);
+
+    Ok(())
+}
+
+/// Remove empty parent directories between a deleted file and the repository root.
+///
+/// Walks up from the deleted file's parent, removing each directory if it is
+/// empty. Stops at the repository root or at the first non-empty directory.
+/// Errors are silently ignored — cleanup is best-effort and non-critical.
+fn cleanup_empty_parents(repository: &Path, deleted_path: &Path) {
+    let mut current = deleted_path.parent();
+
+    while let Some(dir) = current {
+        // Stop at or above the repository root.
+        if dir == repository || !dir.starts_with(repository) {
+            break;
+        }
+
+        // Try to remove — only succeeds if empty.
+        if fs::remove_dir(dir).is_err() {
+            break;
+        }
+
+        current = dir.parent();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -915,5 +992,149 @@ mod tests {
         let dest = repo.join("home").join("evil").join("link");
         let result = copy_symlink(&repo, &source, &dest);
         assert!(matches!(result, Err(ExecutorError::SymlinkedParent { .. })));
+    }
+
+    // --- delete_entry ---
+
+    #[test]
+    fn delete_entry_removes_regular_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(repo.join("home")).unwrap();
+
+        let file = repo.join("home").join("old.txt");
+        std::fs::write(&file, "content").unwrap();
+
+        delete_entry(&repo, &file).unwrap();
+
+        assert!(!file.exists());
+    }
+
+    #[test]
+    fn delete_entry_removes_symlink_without_following() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(repo.join("home")).unwrap();
+
+        // Create a symlink pointing to a real file outside the repo.
+        let outside_file = tmp.path().join("outside.txt");
+        std::fs::write(&outside_file, "should not be deleted").unwrap();
+
+        let link = repo.join("home").join("link");
+        std::os::unix::fs::symlink(&outside_file, &link).unwrap();
+
+        delete_entry(&repo, &link).unwrap();
+
+        // Symlink is gone.
+        assert!(!link.exists());
+        // Target file is untouched.
+        assert!(outside_file.exists());
+        assert_eq!(
+            std::fs::read_to_string(&outside_file).unwrap(),
+            "should not be deleted"
+        );
+    }
+
+    #[test]
+    fn delete_entry_is_idempotent_for_missing_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(repo.join("home")).unwrap();
+
+        let file = repo.join("home").join("nonexistent.txt");
+        // Should succeed without error even though file doesn't exist.
+        delete_entry(&repo, &file).unwrap();
+    }
+
+    #[test]
+    fn delete_entry_cleans_up_empty_parent_directories() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        let deep = repo.join("home").join(".config").join("fish");
+        std::fs::create_dir_all(&deep).unwrap();
+
+        let file = deep.join("config.fish");
+        std::fs::write(&file, "content").unwrap();
+
+        delete_entry(&repo, &file).unwrap();
+
+        // File is gone.
+        assert!(!file.exists());
+        // Empty parents cleaned up.
+        assert!(!deep.exists());
+        assert!(!repo.join("home").join(".config").exists());
+        // But repo/home stays if it's the managed root (not repo itself).
+        // Actually, home/ is also empty so it gets cleaned too.
+        assert!(!repo.join("home").exists());
+        // Repository root itself is never removed.
+        assert!(repo.exists());
+    }
+
+    #[test]
+    fn delete_entry_stops_cleanup_at_non_empty_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        let fish_dir = repo.join("home").join(".config").join("fish");
+        std::fs::create_dir_all(&fish_dir).unwrap();
+
+        // Two files in the directory.
+        std::fs::write(fish_dir.join("config.fish"), "content").unwrap();
+        std::fs::write(fish_dir.join("functions.fish"), "other").unwrap();
+
+        // Delete only one.
+        delete_entry(&repo, &fish_dir.join("config.fish")).unwrap();
+
+        // Directory still exists because it has another file.
+        assert!(fish_dir.exists());
+        assert!(fish_dir.join("functions.fish").exists());
+    }
+
+    #[test]
+    fn delete_entry_rejects_boundary_escape() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+
+        let outside = tmp.path().join("outside.txt");
+        std::fs::write(&outside, "data").unwrap();
+
+        let result = delete_entry(&repo, &outside);
+        assert!(matches!(result, Err(ExecutorError::BoundaryEscape { .. })));
+        // File still exists.
+        assert!(outside.exists());
+    }
+
+    #[test]
+    fn delete_entry_rejects_symlinked_parent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        let escape = tmp.path().join("escape");
+        std::fs::create_dir_all(repo.join("home")).unwrap();
+        std::fs::create_dir_all(&escape).unwrap();
+        std::fs::write(escape.join("file.txt"), "data").unwrap();
+
+        // Symlink inside managed namespace pointing outside.
+        std::os::unix::fs::symlink(&escape, repo.join("home").join("evil")).unwrap();
+
+        let target_file = repo.join("home").join("evil").join("file.txt");
+        let result = delete_entry(&repo, &target_file);
+        assert!(matches!(result, Err(ExecutorError::SymlinkedParent { .. })));
+        // Original file is untouched.
+        assert!(escape.join("file.txt").exists());
+    }
+
+    #[test]
+    fn delete_entry_removes_dangling_symlink() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(repo.join("home")).unwrap();
+
+        let link = repo.join("home").join("dangling");
+        std::os::unix::fs::symlink("/nonexistent/path", &link).unwrap();
+
+        delete_entry(&repo, &link).unwrap();
+
+        // The symlink entry itself should be gone.
+        assert!(!link.symlink_metadata().is_ok());
     }
 }
