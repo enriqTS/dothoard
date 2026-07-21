@@ -11,6 +11,9 @@
 //! - No existing parent component in the managed namespace may be a symlink.
 //! - Destination symlinks are never followed.
 
+use std::fs;
+use std::io::{self, Read, Write};
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Component, Path, PathBuf};
 
 use thiserror::Error;
@@ -188,6 +191,140 @@ fn normalize_lexical(path: &Path) -> PathBuf {
     }
 
     result
+}
+
+/// Ensure all parent directories of a destination path exist.
+///
+/// Creates directories as needed. Validates that no existing parent component
+/// is a symlink before creating missing directories.
+fn ensure_parent_dirs(repository: &Path, destination: &Path) -> ExecutorResult<()> {
+    if let Some(parent) = destination.parent() {
+        if !parent.exists() {
+            fs::create_dir_all(parent).map_err(|source_err| ExecutorError::CreateDir {
+                path: parent.to_path_buf(),
+                source_err,
+            })?;
+
+            // Re-validate after creation to ensure no symlink was injected
+            // (TOCTOU mitigation — we re-check after directory creation).
+            validate_no_symlinked_parents(repository, destination)?;
+        }
+    }
+    Ok(())
+}
+
+/// Copy a regular file atomically to a destination within the repository.
+///
+/// The file is first written to a temporary file in the same directory as the
+/// destination, then permissions are set, and finally the temporary file is
+/// atomically renamed to the destination path. This ensures:
+/// - Partially written files are never visible at the destination.
+/// - The executable bit is set before the file becomes visible.
+/// - An existing file at the destination is replaced atomically.
+///
+/// If a symlink or other non-regular-file exists at the destination, it is
+/// removed before the atomic rename.
+///
+/// # Safety
+///
+/// Validates destination boundaries before any write. The destination must be
+/// beneath the repository root and no parent component may be a symlink.
+pub fn copy_file_atomic(
+    repository: &Path,
+    source: &Path,
+    destination: &Path,
+    executable: bool,
+) -> ExecutorResult<()> {
+    validate_destination(repository, destination)?;
+    ensure_parent_dirs(repository, destination)?;
+
+    let parent = destination.parent().unwrap_or(Path::new("."));
+
+    // Open the source file for reading (do not follow symlinks — caller is
+    // responsible for distinguishing files from symlinks).
+    let mut src_file = fs::File::open(source).map_err(|source_err| ExecutorError::Copy {
+        source: source.to_path_buf(),
+        destination: destination.to_path_buf(),
+        source_err,
+    })?;
+
+    // Create a temporary file in the same directory for atomic rename.
+    let mut tmp =
+        tempfile::NamedTempFile::new_in(parent).map_err(|source_err| ExecutorError::Copy {
+            source: source.to_path_buf(),
+            destination: destination.to_path_buf(),
+            source_err,
+        })?;
+
+    // Copy content in chunks.
+    let mut buf = [0u8; 8192];
+    loop {
+        let n = src_file
+            .read(&mut buf)
+            .map_err(|source_err| ExecutorError::Copy {
+                source: source.to_path_buf(),
+                destination: destination.to_path_buf(),
+                source_err,
+            })?;
+        if n == 0 {
+            break;
+        }
+        tmp.write_all(&buf[..n])
+            .map_err(|source_err| ExecutorError::Copy {
+                source: source.to_path_buf(),
+                destination: destination.to_path_buf(),
+                source_err,
+            })?;
+    }
+
+    tmp.flush().map_err(|source_err| ExecutorError::Copy {
+        source: source.to_path_buf(),
+        destination: destination.to_path_buf(),
+        source_err,
+    })?;
+
+    // Set permissions before persisting so the file is never visible with
+    // wrong permissions.
+    let mode = if executable { 0o755 } else { 0o644 };
+    let perms = fs::Permissions::from_mode(mode);
+    tmp.as_file()
+        .set_permissions(perms)
+        .map_err(|source_err| ExecutorError::SetPermissions {
+            path: destination.to_path_buf(),
+            source_err,
+        })?;
+
+    // If there's an existing symlink at the destination, remove it first.
+    // NamedTempFile::persist does a rename which would fail on a symlink target.
+    remove_destination_if_different_type(destination)?;
+
+    // Atomically move the temp file to the destination.
+    tmp.persist(destination).map_err(|e| ExecutorError::Copy {
+        source: source.to_path_buf(),
+        destination: destination.to_path_buf(),
+        source_err: e.error,
+    })?;
+
+    Ok(())
+}
+
+/// Remove an existing destination entry if it's a symlink (since we're about
+/// to replace it with a regular file via rename). Regular files don't need
+/// removal since rename replaces them atomically.
+fn remove_destination_if_different_type(destination: &Path) -> ExecutorResult<()> {
+    match fs::symlink_metadata(destination) {
+        Ok(meta) => {
+            if meta.file_type().is_symlink() {
+                fs::remove_file(destination).map_err(|source_err| ExecutorError::Delete {
+                    path: destination.to_path_buf(),
+                    source_err,
+                })?;
+            }
+            Ok(())
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(_) => Ok(()), // If we can't stat, let the persist fail with a better error.
+    }
 }
 
 #[cfg(test)]
@@ -394,5 +531,176 @@ mod tests {
         let dest = repo.join("home").join("evil").join("file.txt");
         let result = validate_destination(&repo, &dest);
         assert!(matches!(result, Err(ExecutorError::SymlinkedParent { .. })));
+    }
+
+    // --- copy_file_atomic ---
+
+    #[test]
+    fn copy_file_creates_destination_with_content() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(repo.join("home")).unwrap();
+
+        let source = tmp.path().join("source.txt");
+        std::fs::write(&source, "hello world").unwrap();
+
+        let dest = repo.join("home").join("file.txt");
+        copy_file_atomic(&repo, &source, &dest, false).unwrap();
+
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "hello world");
+    }
+
+    #[test]
+    fn copy_file_preserves_executable_bit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(repo.join("home")).unwrap();
+
+        let source = tmp.path().join("script.sh");
+        std::fs::write(&source, "#!/bin/bash\necho hi").unwrap();
+
+        let dest = repo.join("home").join("script.sh");
+        copy_file_atomic(&repo, &source, &dest, true).unwrap();
+
+        let meta = std::fs::metadata(&dest).unwrap();
+        assert!(meta.permissions().mode() & 0o111 != 0);
+    }
+
+    #[test]
+    fn copy_file_sets_non_executable_mode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(repo.join("home")).unwrap();
+
+        let source = tmp.path().join("data.txt");
+        std::fs::write(&source, "data").unwrap();
+
+        let dest = repo.join("home").join("data.txt");
+        copy_file_atomic(&repo, &source, &dest, false).unwrap();
+
+        let meta = std::fs::metadata(&dest).unwrap();
+        assert_eq!(meta.permissions().mode() & 0o777, 0o644);
+    }
+
+    #[test]
+    fn copy_file_creates_parent_directories() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+
+        let source = tmp.path().join("src.txt");
+        std::fs::write(&source, "content").unwrap();
+
+        let dest = repo
+            .join("home")
+            .join(".config")
+            .join("fish")
+            .join("config.fish");
+        copy_file_atomic(&repo, &source, &dest, false).unwrap();
+
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "content");
+    }
+
+    #[test]
+    fn copy_file_replaces_existing_file_atomically() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(repo.join("home")).unwrap();
+
+        let source = tmp.path().join("new.txt");
+        std::fs::write(&source, "new content").unwrap();
+
+        let dest = repo.join("home").join("file.txt");
+        std::fs::write(&dest, "old content").unwrap();
+
+        copy_file_atomic(&repo, &source, &dest, false).unwrap();
+
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "new content");
+    }
+
+    #[test]
+    fn copy_file_replaces_existing_symlink_with_regular_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(repo.join("home")).unwrap();
+
+        let source = tmp.path().join("real.txt");
+        std::fs::write(&source, "real content").unwrap();
+
+        // Destination is currently a symlink.
+        let dest = repo.join("home").join("link");
+        std::os::unix::fs::symlink("/some/target", &dest).unwrap();
+
+        copy_file_atomic(&repo, &source, &dest, false).unwrap();
+
+        // After copy, destination is a regular file, not a symlink.
+        let meta = std::fs::symlink_metadata(&dest).unwrap();
+        assert!(meta.file_type().is_file());
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "real content");
+    }
+
+    #[test]
+    fn copy_file_rejects_boundary_escape() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+
+        let source = tmp.path().join("source.txt");
+        std::fs::write(&source, "evil").unwrap();
+
+        let dest = tmp.path().join("outside").join("file.txt");
+        let result = copy_file_atomic(&repo, &source, &dest, false);
+        assert!(matches!(result, Err(ExecutorError::BoundaryEscape { .. })));
+    }
+
+    #[test]
+    fn copy_file_rejects_symlinked_parent_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        let escape = tmp.path().join("escape");
+        std::fs::create_dir_all(repo.join("home")).unwrap();
+        std::fs::create_dir_all(&escape).unwrap();
+
+        // Create symlink escape at repo/home/evil -> escape dir
+        std::os::unix::fs::symlink(&escape, repo.join("home").join("evil")).unwrap();
+
+        let source = tmp.path().join("source.txt");
+        std::fs::write(&source, "data").unwrap();
+
+        let dest = repo.join("home").join("evil").join("file.txt");
+        let result = copy_file_atomic(&repo, &source, &dest, false);
+        assert!(matches!(result, Err(ExecutorError::SymlinkedParent { .. })));
+    }
+
+    #[test]
+    fn copy_file_handles_empty_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(repo.join("home")).unwrap();
+
+        let source = tmp.path().join("empty.txt");
+        std::fs::write(&source, "").unwrap();
+
+        let dest = repo.join("home").join("empty.txt");
+        copy_file_atomic(&repo, &source, &dest, false).unwrap();
+
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "");
+    }
+
+    #[test]
+    fn copy_file_handles_large_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(repo.join("home")).unwrap();
+
+        // Create a file larger than the 8KB buffer.
+        let content = "x".repeat(32 * 1024);
+        let source = tmp.path().join("large.txt");
+        std::fs::write(&source, &content).unwrap();
+
+        let dest = repo.join("home").join("large.txt");
+        copy_file_atomic(&repo, &source, &dest, false).unwrap();
+
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), content);
     }
 }
