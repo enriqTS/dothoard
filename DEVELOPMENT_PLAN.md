@@ -192,25 +192,25 @@ the code, tests, and planning documents.
 
 ## 6. Systemd Automation
 
-- [ ] **A01 - Generate deterministic service units.** Use the absolute binary
+- [x] **A01 - Generate deterministic service units.** Use the absolute binary
   path, direct arguments, journal logging, and a finite service timeout.
-- [ ] **A02 - Generate the timer unit.** Render the startup delay and validated
+- [x] **A02 - Generate the timer unit.** Render the startup delay and validated
   `interval_minutes` deterministically.
-- [ ] **A03 - Implement idempotent installation.** Write units atomically,
+- [x] **A03 - Implement idempotent installation.** Write units atomically,
   reload the user manager, and safely enable and start or restart the timer.
-- [ ] **A04 - Implement removal.** Disable and remove generated units without
+- [x] **A04 - Implement removal.** Disable and remove generated units without
   affecting unrelated user services.
-- [ ] **A05 - Implement status inspection.** Report installed, active, stale,
+- [x] **A05 - Implement status inspection.** Report installed, active, stale,
   failed, and missing states accurately.
-- [ ] **A06 - Implement interval updates.** Regenerate and restart an installed
+- [x] **A06 - Implement interval updates.** Regenerate and restart an installed
   timer after configuration changes without stopping an active backup.
-- [ ] **A07 - Detect stale units.** Compare installed unit content with the
+- [x] **A07 - Detect stale units.** Compare installed unit content with the
   expected generated version in `check` and service status.
-- [ ] **A08 - Test unit generation.** Add snapshot tests and optional
+- [x] **A08 - Test unit generation.** Add snapshot tests and optional
   `systemd-analyze verify` coverage without installing real user units.
 
-**Milestone gate:** A headless installation runs after user-manager startup and
-after every configured interval.
+**Milestone gate: Complete.** A headless installation runs after user-manager
+startup and after every configured interval (506 tests).
 
 ## 7. TUI
 

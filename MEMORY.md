@@ -7,17 +7,15 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Current Status
 
-- Active milestone: Automation Prerequisite (complete).
-- Active task: None; prerequisite is complete.
-- Next task: A01 - Generate deterministic service units (milestone 6).
-- Code state: The orchestration layer ties together all backend subsystems.
-  `dothoard backup` executes the full PLAN.md workflow: exclusive locking,
-  config validation, repository/ownership checks, overlap detection, worktree
-  classification, mirror planning and execution, restricted staging with
-  boundary verification, commit creation, remote sync with conflict recovery,
-  state persistence, and desktop notifications. `dothoard check` validates
-  all layers and reports results. Exit codes distinguish success (0), failure
-  (1), already-running (2), and config errors (3).
+- Active milestone: 6 - Systemd Automation (complete).
+- Active task: None; milestone 6 is complete.
+- Next task: U01 - Build the TUI shell (milestone 7).
+- Code state: The systemd module generates deterministic service and timer
+  units from the binary path and configuration, installs/removes them
+  idempotently via `systemctl --user`, inspects timer state, detects stale
+  units, and updates the timer after interval changes. The `dothoard service
+  install|remove|status` CLI commands are fully wired. The `dothoard check`
+  command reports real automation status (installed, stale, not installed).
 - Blockers: None.
 
 ## Durable Decisions
@@ -79,6 +77,13 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Orchestration tests require `--test-threads=1` due to git process contention.
 - Permanent name chosen: `dothoard`. Binary, crate, manifest identifier,
   XDG paths, and systemd unit names all use this name.
+- Systemd units are written to `~/.config/systemd/user/` (XDG_CONFIG_HOME).
+- Service timeout = network_timeout_seconds + 60s buffer.
+- Timer uses OnStartupSec=1min and OnUnitInactiveSec={interval_minutes}min.
+- Stale detection compares installed unit content byte-for-byte with expected
+  generated output.
+- `service install` is idempotent: atomic write, daemon-reload, enable+restart.
+- `service remove` is best-effort stop/disable, then remove files and reload.
 
 ## Open Decisions
 
@@ -86,24 +91,24 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - No explicit MSRV is selected; use the current stable Rust toolchain until one
   is chosen.
 
-These decisions do not block milestone 6.
+These decisions do not block milestone 7.
 
 ## Next Steps
 
-1. Start A01, Generate deterministic service units (milestone 6).
-2. Use the absolute binary path and validated configuration to produce the
-   systemd service and timer unit content.
+1. Start U01, Build the TUI shell (milestone 7).
+2. Implement navigation, key handling, resizing, terminal restoration, and
+   panic-safe cleanup using Ratatui and crossterm.
 
 ## Verification
 
 - `cargo fmt --check` — clean
 - `cargo clippy --all-targets --all-features -- -D warnings` — clean
-- `cargo test --lib --all-features` — 452 unit tests passed
+- `cargo test --lib --all-features` — 479 unit tests passed
 - `cargo test --test bootstrap` — 1 test passed
 - `cargo test --test git_workflow` — 12 tests passed
 - `cargo test --test mirror` — 20 tests passed
 - `cargo test --test orchestration -- --test-threads=1` — 13 tests passed
-- Total: 498 tests
+- Total: 525 tests (479 unit + 46 integration)
 
 ## Update Protocol
 
