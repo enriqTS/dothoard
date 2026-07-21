@@ -73,7 +73,7 @@ fn draw_screen(frame: &mut Frame, area: Rect, app: &App) {
         Screen::Ignore => draw_ignore(frame, area, app),
         Screen::Preview => draw_preview(frame, area, app),
         Screen::Automation => draw_automation(frame, area, app),
-        Screen::History => draw_placeholder(frame, area, "History"),
+        Screen::History => draw_history(frame, area, app),
     }
 }
 
@@ -339,6 +339,157 @@ fn dim_line(text: impl Into<String>) -> Line<'static> {
 /// Format a DateTime for display.
 fn format_time(ts: &chrono::DateTime<chrono::Utc>) -> String {
     ts.format("%Y-%m-%d %H:%M:%S UTC").to_string()
+}
+
+/// Draw the history screen with recent runs and detail for the selected entry.
+fn draw_history(frame: &mut Frame, area: Rect, app: &App) {
+    use crate::tui::screens::history::HistoryScreen;
+
+    let block = Block::default().borders(Borders::ALL).title(" History ");
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let history = app
+        .state
+        .as_ref()
+        .map(|s| s.history.as_slice())
+        .unwrap_or(&[]);
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    if history.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(dim_line("  No backup history available."));
+        lines.push(Line::from(""));
+        lines.push(dim_line("  Run a backup to see results here."));
+        let paragraph = Paragraph::new(lines);
+        frame.render_widget(paragraph, inner);
+        return;
+    }
+
+    // Split: list on left, detail on right.
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
+        .split(inner);
+
+    // Left: list of runs.
+    let mut list_lines: Vec<Line> = Vec::new();
+    list_lines.push(Line::from(Span::styled(
+        " Recent runs:",
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    )));
+    list_lines.push(Line::from(""));
+
+    let visible = columns[0].height.saturating_sub(3) as usize;
+    for (i, record) in history.iter().enumerate().take(visible) {
+        let entry = HistoryScreen::format_entry(record);
+        let marker = if i == app.history_screen.selected {
+            "▶ "
+        } else {
+            "  "
+        };
+
+        let outcome_color = if entry.is_error {
+            Color::Red
+        } else if entry.is_warning {
+            Color::Yellow
+        } else {
+            Color::Green
+        };
+
+        let style = if i == app.history_screen.selected {
+            Style::default().add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+
+        list_lines.push(Line::from(vec![
+            Span::styled(marker, Style::default().fg(Color::Cyan)),
+            Span::styled(entry.time.clone(), style),
+            Span::raw(" "),
+            Span::styled(entry.outcome.clone(), Style::default().fg(outcome_color)),
+        ]));
+    }
+
+    let list_paragraph = Paragraph::new(list_lines);
+    frame.render_widget(list_paragraph, columns[0]);
+
+    // Right: detail of selected entry.
+    let mut detail_lines: Vec<Line> = Vec::new();
+    if let Some(record) = history.get(app.history_screen.selected) {
+        let entry = HistoryScreen::format_entry(record);
+
+        detail_lines.push(Line::from(Span::styled(
+            " Details:",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )));
+        detail_lines.push(Line::from(""));
+
+        let outcome_color = if entry.is_error {
+            Color::Red
+        } else if entry.is_warning {
+            Color::Yellow
+        } else {
+            Color::Green
+        };
+
+        detail_lines.push(Line::from(vec![
+            Span::styled(" Outcome: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(entry.outcome, Style::default().fg(outcome_color)),
+        ]));
+        detail_lines.push(field_line(" Started", entry.time));
+        detail_lines.push(field_line(" Duration", entry.duration));
+
+        if let Some(ref sha) = entry.commit {
+            let short = if sha.len() > 8 {
+                sha[..8].to_string()
+            } else {
+                sha.clone()
+            };
+            detail_lines.push(field_line(" Commit", short));
+        }
+
+        if let Some(ref msg) = entry.message {
+            detail_lines.push(Line::from(""));
+            detail_lines.push(Line::from(Span::styled(
+                " Message:",
+                Style::default().fg(Color::DarkGray),
+            )));
+            // Wrap long messages.
+            let max_width = columns[1].width.saturating_sub(3) as usize;
+            for chunk in msg.as_bytes().chunks(max_width.max(20)) {
+                let text = String::from_utf8_lossy(chunk);
+                detail_lines.push(Line::from(vec![
+                    Span::raw(" "),
+                    Span::styled(
+                        text.to_string(),
+                        Style::default().fg(if entry.is_error {
+                            Color::Red
+                        } else {
+                            Color::Yellow
+                        }),
+                    ),
+                ]));
+            }
+        }
+    }
+
+    // Help at bottom of detail.
+    detail_lines.push(Line::from(""));
+    detail_lines.push(Line::from(vec![
+        Span::raw(" "),
+        Span::styled("↑↓/jk", Style::default().fg(Color::DarkGray)),
+        Span::styled(" navigate", Style::default().fg(Color::DarkGray)),
+    ]));
+
+    let detail_paragraph = Paragraph::new(detail_lines);
+    frame.render_widget(detail_paragraph, columns[1]);
 }
 
 /// Draw the automation controls screen.
@@ -1001,26 +1152,6 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &App) {
 
     let paragraph = Paragraph::new(lines);
     frame.render_widget(paragraph, inner);
-}
-
-/// Draw a placeholder screen for not-yet-implemented screens.
-fn draw_placeholder(frame: &mut Frame, area: Rect, title: &str) {
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(format!(" {} ", title));
-
-    let content = Paragraph::new(vec![
-        Line::from(""),
-        Line::from(Span::styled(
-            format!("  {} screen", title),
-            Style::default().fg(Color::DarkGray),
-        )),
-        Line::from(""),
-        Line::from("  This screen is not yet implemented."),
-    ])
-    .block(block);
-
-    frame.render_widget(content, area);
 }
 
 #[cfg(test)]

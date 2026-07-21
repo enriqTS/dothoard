@@ -94,6 +94,8 @@ pub struct App {
     pub preview_screen: screens::preview::PreviewScreen,
     /// Automation controls screen state.
     pub automation_screen: screens::automation::AutomationScreen,
+    /// History screen state.
+    pub history_screen: screens::history::HistoryScreen,
 }
 
 impl Default for App {
@@ -135,6 +137,7 @@ impl App {
             ignore_screen: screens::ignore::IgnoreScreen::new(),
             preview_screen: screens::preview::PreviewScreen::new(),
             automation_screen: screens::automation::AutomationScreen::new(),
+            history_screen: screens::history::HistoryScreen::new(),
         }
     }
 
@@ -522,6 +525,18 @@ impl App {
             }
         }
 
+        // History screen key handling.
+        if self.active_screen == Screen::History {
+            let history_len = self.state.as_ref().map(|s| s.history.len()).unwrap_or(0);
+            let action = self.history_screen.handle_key(key, history_len);
+            match action {
+                screens::history::Action::Consumed => return,
+                screens::history::Action::NotConsumed => {
+                    // Fall through to global key handling.
+                }
+            }
+        }
+
         // Global key handling.
         match (key.modifiers, key.code) {
             // Quit: q, Ctrl+C, or Esc
@@ -617,6 +632,7 @@ mod tests {
             ignore_screen: screens::ignore::IgnoreScreen::new(),
             preview_screen: screens::preview::PreviewScreen::new(),
             automation_screen: screens::automation::AutomationScreen::new(),
+            history_screen: screens::history::HistoryScreen::new(),
         }
     }
 
