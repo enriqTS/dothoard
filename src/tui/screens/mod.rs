@@ -4,3 +4,4 @@
 //! provides has a module here that manages input, validation, and interaction.
 
 pub mod repository;
+pub mod sources;

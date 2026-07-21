@@ -86,6 +86,8 @@ pub struct App {
     pub status_message: Option<String>,
     /// Repository selection screen state.
     pub repo_screen: screens::repository::RepoScreen,
+    /// Sources management screen state.
+    pub sources_screen: screens::sources::SourcesScreen,
 }
 
 impl Default for App {
@@ -123,6 +125,7 @@ impl App {
             config,
             status_message: None,
             repo_screen,
+            sources_screen: screens::sources::SourcesScreen::new(),
         }
     }
 
@@ -160,6 +163,93 @@ impl App {
                 }
             }
         }
+    }
+
+    /// Add a new source path to the configuration.
+    fn handle_add_source(&mut self, path: String) {
+        let home = self.paths.as_ref().map(|p| p.home());
+        let repo_path = self
+            .config
+            .as_ref()
+            .and_then(|c| home.map(|h| c.repository_path(h)));
+
+        let existing = self
+            .config
+            .as_ref()
+            .map(|c| c.sources.as_slice())
+            .unwrap_or(&[]);
+
+        if let Some(home) = home {
+            match screens::sources::SourcesScreen::validate_source(
+                &path,
+                existing,
+                home,
+                repo_path.as_deref(),
+            ) {
+                Ok(info) => {
+                    // Add the source to config.
+                    if let Some(ref mut config) = self.config {
+                        config.sources.push(crate::config::SourceConfig {
+                            path: info.path.clone(),
+                            ignore: Vec::new(),
+                        });
+                        // Save config.
+                        if let Some(ref paths) = self.paths {
+                            let _ = config.save(paths.config_file());
+                        }
+                    }
+                    self.sources_screen.mode = screens::sources::Mode::List;
+                    let msg = if let Some(ref warning) = info.warning {
+                        format!("Added '{}'. {}", info.path, warning)
+                    } else {
+                        format!("Added '{}'.", info.path)
+                    };
+                    self.sources_screen.message = Some(screens::sources::Message {
+                        text: msg,
+                        kind: if info.warning.is_some() {
+                            screens::sources::MessageKind::Warning
+                        } else {
+                            screens::sources::MessageKind::Info
+                        },
+                    });
+                }
+                Err(e) => {
+                    self.sources_screen.message = Some(screens::sources::Message {
+                        text: e,
+                        kind: screens::sources::MessageKind::Error,
+                    });
+                }
+            }
+        } else {
+            self.sources_screen.message = Some(screens::sources::Message {
+                text: "Cannot add source: paths not resolved.".to_string(),
+                kind: screens::sources::MessageKind::Error,
+            });
+        }
+    }
+
+    /// Remove the source at the given index from configuration.
+    fn handle_remove_source(&mut self, idx: usize) {
+        if let Some(ref mut config) = self.config {
+            if idx < config.sources.len() {
+                let removed = config.sources.remove(idx);
+                // Save config.
+                if let Some(ref paths) = self.paths {
+                    let _ = config.save(paths.config_file());
+                }
+                self.sources_screen.mode = screens::sources::Mode::List;
+                self.sources_screen.message = Some(screens::sources::Message {
+                    text: format!("Removed '{}'.", removed.path),
+                    kind: screens::sources::MessageKind::Info,
+                });
+                // Adjust selection if needed.
+                if self.sources_screen.selected >= config.sources.len() && config.sources.len() > 0
+                {
+                    self.sources_screen.selected = config.sources.len() - 1;
+                }
+            }
+        }
+        self.sources_screen.mode = screens::sources::Mode::List;
     }
 
     /// Handle a key event and update application state.
@@ -225,6 +315,26 @@ impl App {
                     return;
                 }
                 screens::repository::KeyResult::NotConsumed => {
+                    // Fall through to global key handling.
+                }
+            }
+        }
+
+        // Sources screen key handling.
+        if self.active_screen == Screen::Sources {
+            let source_count = self.config.as_ref().map(|c| c.sources.len()).unwrap_or(0);
+            let action = self.sources_screen.handle_key(key, source_count);
+            match action {
+                screens::sources::Action::Consumed => return,
+                screens::sources::Action::AddSource(path) => {
+                    self.handle_add_source(path);
+                    return;
+                }
+                screens::sources::Action::RemoveSource(idx) => {
+                    self.handle_remove_source(idx);
+                    return;
+                }
+                screens::sources::Action::NotConsumed => {
                     // Fall through to global key handling.
                 }
             }
@@ -321,6 +431,7 @@ mod tests {
             config: None,
             status_message: None,
             repo_screen: screens::repository::RepoScreen::new(),
+            sources_screen: screens::sources::SourcesScreen::new(),
         }
     }
 

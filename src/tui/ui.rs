@@ -69,7 +69,7 @@ fn draw_screen(frame: &mut Frame, area: Rect, app: &App) {
     match app.active_screen {
         Screen::Dashboard => draw_dashboard(frame, area, app),
         Screen::Repository => draw_repository(frame, area, app),
-        Screen::Sources => draw_placeholder(frame, area, "Sources"),
+        Screen::Sources => draw_sources(frame, area, app),
         Screen::Ignore => draw_placeholder(frame, area, "Ignore Rules"),
         Screen::Preview => draw_placeholder(frame, area, "Backup Preview"),
         Screen::Automation => draw_placeholder(frame, area, "Automation"),
@@ -339,6 +339,128 @@ fn dim_line(text: impl Into<String>) -> Line<'static> {
 /// Format a DateTime for display.
 fn format_time(ts: &chrono::DateTime<chrono::Utc>) -> String {
     ts.format("%Y-%m-%d %H:%M:%S UTC").to_string()
+}
+
+/// Draw the sources management screen.
+fn draw_sources(frame: &mut Frame, area: Rect, app: &App) {
+    use crate::tui::screens::sources::{MessageKind, Mode};
+
+    let block = Block::default().borders(Borders::ALL).title(" Sources ");
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    let sources = app
+        .config
+        .as_ref()
+        .map(|c| c.sources.as_slice())
+        .unwrap_or(&[]);
+
+    if sources.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(dim_line("  No sources configured."));
+        lines.push(Line::from(""));
+        lines.push(dim_line("  Press 'a' to add a source path."));
+    } else {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "  Configured sources:",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )));
+        lines.push(Line::from(""));
+
+        for (i, src) in sources.iter().enumerate() {
+            let marker = if i == app.sources_screen.selected {
+                "▶ "
+            } else {
+                "  "
+            };
+            let style = if i == app.sources_screen.selected {
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(marker, Style::default().fg(Color::Cyan)),
+                Span::styled(src.path.clone(), style),
+                if !src.ignore.is_empty() {
+                    Span::styled(
+                        format!("  ({} ignore rules)", src.ignore.len()),
+                        Style::default().fg(Color::DarkGray),
+                    )
+                } else {
+                    Span::raw("")
+                },
+            ]));
+        }
+    }
+
+    // Show input area in add mode.
+    if app.sources_screen.mode == Mode::AddInput {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "  New source (relative to $HOME):",
+            Style::default().fg(Color::Cyan),
+        )));
+        let input_display = format!("  > {}", app.sources_screen.input);
+        lines.push(Line::from(Span::raw(input_display)));
+    }
+
+    // Show confirm delete dialog.
+    if app.sources_screen.mode == Mode::ConfirmDelete {
+        let path = sources
+            .get(app.sources_screen.selected)
+            .map(|s| s.path.as_str())
+            .unwrap_or("?");
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("Delete '{path}'? (y/n)"),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]));
+    }
+
+    // Show feedback message.
+    if let Some(ref msg) = app.sources_screen.message {
+        lines.push(Line::from(""));
+        let color = match msg.kind {
+            MessageKind::Info => Color::Green,
+            MessageKind::Warning => Color::Yellow,
+            MessageKind::Error => Color::Red,
+        };
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled(msg.text.clone(), Style::default().fg(color)),
+        ]));
+    }
+
+    // Help line at bottom of content.
+    if app.sources_screen.mode == Mode::List {
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled("a", Style::default().fg(Color::DarkGray)),
+            Span::styled(" add  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("d", Style::default().fg(Color::DarkGray)),
+            Span::styled(" delete  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("↑↓/jk", Style::default().fg(Color::DarkGray)),
+            Span::styled(" navigate", Style::default().fg(Color::DarkGray)),
+        ]));
+    }
+
+    let paragraph = Paragraph::new(lines);
+    frame.render_widget(paragraph, inner);
 }
 
 /// Draw the repository selection screen.
