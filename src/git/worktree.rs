@@ -99,7 +99,7 @@ pub fn classify_worktree(
 ///
 /// Managed paths are:
 /// - Anything under `home/` (the backed-up content directory).
-/// - The manifest file `.config-sync-manifest.toml`.
+/// - The manifest file `.dothoard-manifest.toml`.
 fn is_managed_relative_path(path: &str) -> bool {
     let home_prefix = format!("{}/", mapping::HOME_DIR_NAME);
     path.starts_with(&home_prefix)
@@ -357,7 +357,7 @@ mod tests {
         // Create the manifest file (untracked).
         fs::write(
             tmp.path().join(app::MANIFEST_FILE_NAME),
-            "format = \"config-sync-manifest\"\nversion = 1\n",
+            "format = \"dothoard-manifest\"\nversion = 1\n",
         )
         .unwrap();
 

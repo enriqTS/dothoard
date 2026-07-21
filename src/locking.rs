@@ -4,7 +4,7 @@
 //! and TUI-triggered backups from overlapping. A second invocation reports that
 //! a backup is already running and exits without changing files.
 //!
-//! The lock file is created at `$XDG_RUNTIME_DIR/config-sync.lock`. It uses
+//! The lock file is created at `$XDG_RUNTIME_DIR/dothoard.lock`. It uses
 //! `fs2::FileExt::try_lock_exclusive` which is advisory on Linux but sufficient
 //! to coordinate multiple instances of the same application.
 //!
@@ -20,7 +20,7 @@ use thiserror::Error;
 use crate::app;
 
 /// Name of the lock file within the runtime directory.
-const LOCK_FILE_NAME: &str = "config-sync.lock";
+const LOCK_FILE_NAME: &str = "dothoard.lock";
 
 /// Errors from lock acquisition.
 #[derive(Debug, Error)]
@@ -167,7 +167,7 @@ mod tests {
         let dir = Path::new("/run/user/1000");
         let path = lock_path(dir);
 
-        assert_eq!(path, PathBuf::from("/run/user/1000/config-sync.lock"));
+        assert_eq!(path, PathBuf::from("/run/user/1000/dothoard.lock"));
     }
 
     #[test]

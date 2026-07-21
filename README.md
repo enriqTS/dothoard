@@ -1,1 +1,1 @@
-# config-sync
+# dothoard

@@ -875,7 +875,7 @@ mod tests {
     #[test]
     fn boundary_accepts_manifest_path() {
         let repo = Path::new("/home/user/dotfiles");
-        let dest = Path::new("/home/user/dotfiles/.config-sync-manifest.toml");
+        let dest = Path::new("/home/user/dotfiles/.dothoard-manifest.toml");
         assert!(validate_boundary(repo, dest).is_ok());
     }
 
@@ -1471,7 +1471,7 @@ mod tests {
         assert!(manifest_path.exists());
 
         let content = std::fs::read_to_string(&manifest_path).unwrap();
-        assert!(content.contains("config-sync-manifest"));
+        assert!(content.contains("dothoard-manifest"));
         assert!(content.contains(".config/fish"));
         assert!(content.contains("*.log"));
     }

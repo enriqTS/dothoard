@@ -1,6 +1,6 @@
 //! Repository manifest definition and serialization.
 //!
-//! The manifest (`.config-sync-manifest.toml`) lives in the repository root
+//! The manifest (`.dothoard-manifest.toml`) lives in the repository root
 //! and serves as:
 //! - An ownership marker identifying the repository as managed by this application.
 //! - A portable description of the backed-up sources and their ignore rules.
@@ -18,12 +18,12 @@ use thiserror::Error;
 use crate::app;
 
 /// The format identifier embedded in every manifest to make it recognizable.
-pub const FORMAT_IDENTIFIER: &str = "config-sync-manifest";
+pub const FORMAT_IDENTIFIER: &str = "dothoard-manifest";
 
 /// Top-level repository manifest.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Manifest {
-    /// A fixed string that identifies this file as a config-sync manifest.
+    /// A fixed string that identifies this file as a dothoard manifest.
     pub format: String,
 
     /// Schema version for forward-compatible evolution.

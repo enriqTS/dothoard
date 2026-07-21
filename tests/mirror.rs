@@ -9,10 +9,10 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-use config_sync::backup::changeset::ChangeSet;
-use config_sync::backup::executor::{MirrorResult, execute_mirror};
-use config_sync::backup::planner::{PlanInputs, plan_backup};
-use config_sync::config::SourceConfig;
+use dothoard::backup::changeset::ChangeSet;
+use dothoard::backup::executor::{MirrorResult, execute_mirror};
+use dothoard::backup::planner::{PlanInputs, plan_backup};
+use dothoard::config::SourceConfig;
 
 /// Helper that runs the full plan+execute pipeline and returns the result.
 fn mirror(home: &Path, repo: &Path, sources: &[SourceConfig]) -> MirrorResult {
@@ -578,11 +578,11 @@ fn manifest_is_created_on_successful_mirror() {
 
     assert!(result.may_publish);
 
-    let manifest_path = repo.join(".config-sync-manifest.toml");
+    let manifest_path = repo.join(".dothoard-manifest.toml");
     assert!(manifest_path.exists());
 
     let content = fs::read_to_string(&manifest_path).unwrap();
-    assert!(content.contains("config-sync-manifest"));
+    assert!(content.contains("dothoard-manifest"));
     assert!(content.contains(".config/fish"));
     assert!(content.contains("*.log"));
 }

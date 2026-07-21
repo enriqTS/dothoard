@@ -18,12 +18,12 @@ mod support;
 use std::fs;
 use std::time::Duration;
 
-use config_sync::backup::coordinator;
-use config_sync::config::{Config, SourceConfig};
-use config_sync::git::{GitCommand, GitRunner};
-use config_sync::locking;
-use config_sync::paths::{AppPaths, PathInputs};
-use config_sync::state::AppState;
+use dothoard::backup::coordinator;
+use dothoard::config::{Config, SourceConfig};
+use dothoard::git::{GitCommand, GitRunner};
+use dothoard::locking;
+use dothoard::paths::{AppPaths, PathInputs};
+use dothoard::state::AppState;
 
 /// A fully isolated environment for orchestration tests.
 struct OrcEnv {
@@ -204,7 +204,7 @@ fn initial_backup_creates_commit_and_pushes() {
     );
 
     // Manifest exists.
-    assert!(env.repository.join(".config-sync-manifest.toml").exists());
+    assert!(env.repository.join(".dothoard-manifest.toml").exists());
 
     // Commit message follows the expected format.
     let msg = env.last_commit_message();

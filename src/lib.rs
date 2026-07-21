@@ -1,4 +1,4 @@
-//! Shared backend and interface modules for the `config-sync` binary.
+//! Shared backend and interface modules for the `dothoard` binary.
 
 pub mod app;
 pub mod backup;

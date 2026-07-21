@@ -1,7 +1,7 @@
 //! Repository structure validation.
 //!
 //! This module inspects an existing Git repository to determine whether it is
-//! suitable for use by config-sync. It verifies:
+//! suitable for use by dothoard. It verifies:
 //!
 //! - The path is a valid Git worktree (not bare, not inside `.git`).
 //! - A branch is checked out (detached HEAD is rejected).
@@ -74,7 +74,7 @@ pub enum RepositoryError {
     Git(#[from] GitError),
 }
 
-/// Validate that the given path is a usable Git repository for config-sync.
+/// Validate that the given path is a usable Git repository for dothoard.
 ///
 /// Checks:
 /// 1. The path is a valid Git repository (not bare).

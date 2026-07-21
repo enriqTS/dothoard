@@ -66,7 +66,7 @@ These rules are non-negotiable unless `PLAN.md` is deliberately revised:
 - A source-root symlink is copied as a link; its target is not read.
 - Reject symlinks in source parent components beneath `$HOME`.
 - Every destination write and deletion must remain beneath the repository.
-- The application owns only `home/` and `.config-sync-manifest.toml`.
+- The application owns only `home/` and `.dothoard-manifest.toml`.
 - Never modify, stage, discard, or commit unmanaged repository paths.
 - Refuse `home/` content that lacks a valid ownership manifest.
 - Dirty unmanaged paths block backup; dirty managed paths are recoverable.

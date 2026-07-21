@@ -7,15 +7,15 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Current Status
 
-- Active milestone: 5 - Orchestration (complete).
-- Active task: None; milestone 5 is complete.
-- Next task: N01 - Finalize the permanent name (Automation Prerequisite).
+- Active milestone: Automation Prerequisite (complete).
+- Active task: None; prerequisite is complete.
+- Next task: A01 - Generate deterministic service units (milestone 6).
 - Code state: The orchestration layer ties together all backend subsystems.
-  `config-sync backup` executes the full PLAN.md workflow: exclusive locking,
+  `dothoard backup` executes the full PLAN.md workflow: exclusive locking,
   config validation, repository/ownership checks, overlap detection, worktree
   classification, mirror planning and execution, restricted staging with
   boundary verification, commit creation, remote sync with conflict recovery,
-  state persistence, and desktop notifications. `config-sync check` validates
+  state persistence, and desktop notifications. `dothoard check` validates
   all layers and reports results. Exit codes distinguish success (0), failure
   (1), already-running (2), and config errors (3).
 - Blockers: None.
@@ -29,7 +29,7 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - V1 validates and uses an existing dedicated Git clone; cloning and repository
   creation are deferred.
 - The application owns only repository `home/` and
-  `.config-sync-manifest.toml`. A valid manifest establishes ownership.
+  `.dothoard-manifest.toml`. A valid manifest establishes ownership.
 - Existing `home/` content without a valid manifest is refused rather than
   adopted silently.
 - Source and destination traversal never follows symlinks. A source-root
@@ -47,7 +47,7 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - The backend is implemented and tested before the TUI; the TUI depends on
   backend services, never the reverse.
 - Configuration stored as TOML; state stored as JSON (machine-readable for TUI).
-- Manifest stored as TOML with format identifier `config-sync-manifest`.
+- Manifest stored as TOML with format identifier `dothoard-manifest`.
 - PathInputs.use_environment flag isolates tests from real XDG environment.
 - State history is bounded to 50 entries, newest first.
 - The `ignore` crate provides gitignore-compatible matching; parent-exclusion
@@ -70,29 +70,29 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Commits are unsigned by default (--no-gpg-sign) and hooks are never bypassed.
 - Conflict recovery aborts rebase and preserves the local commit intact.
 - Exclusive locking uses fs2::try_lock_exclusive on
-  `$XDG_RUNTIME_DIR/config-sync.lock`. RAII guard releases on drop.
+  `$XDG_RUNTIME_DIR/dothoard.lock`. RAII guard releases on drop.
 - Notifications use notify-send with --urgency critical/normal. Recovery
   notifies after a previously failing run succeeds. Quiet on normal success.
 - The backup coordinator auto-initializes new namespaces in headless mode
   (the user chose the repo in config).
 - Commit messages use format `backup(<hostname>): <timestamp>`.
 - Orchestration tests require `--test-threads=1` due to git process contention.
+- Permanent name chosen: `dothoard`. Binary, crate, manifest identifier,
+  XDG paths, and systemd unit names all use this name.
 
 ## Open Decisions
 
-- Keep `config-sync` as the temporary development name. Choose the permanent
-  name before milestone 6, Systemd Automation.
 - Choose the project license before milestone 9, Delivery.
 - No explicit MSRV is selected; use the current stable Rust toolchain until one
   is chosen.
 
-These decisions do not block the Automation Prerequisite or milestone 6.
+These decisions do not block milestone 6.
 
 ## Next Steps
 
-1. Start N01, Finalize the permanent name, and record it as active.
-2. Rename binary, crate, manifest identifier, XDG paths, and planned systemd
-   units together.
+1. Start A01, Generate deterministic service units (milestone 6).
+2. Use the absolute binary path and validated configuration to produce the
+   systemd service and timer unit content.
 
 ## Verification
 

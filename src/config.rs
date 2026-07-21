@@ -1,6 +1,6 @@
 //! Configuration models and persistence.
 //!
-//! The configuration file lives at `~/.config/config-sync/config.toml` and
+//! The configuration file lives at `~/.config/dothoard/config.toml` and
 //! describes the repository location, remote, schedule, and source mappings.
 //! This module defines the schema and serialization; validation logic lives
 //! in dedicated functions that operate on the deserialized model.

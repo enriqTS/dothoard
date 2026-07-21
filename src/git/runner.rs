@@ -493,10 +493,10 @@ fn noninteractive_env() -> Vec<(&'static str, &'static str)> {
         // Ensure consistent output regardless of locale.
         ("LC_ALL", "C"),
         // Disable GPG signing by default for automated commits.
-        ("GIT_COMMITTER_NAME", "config-sync"),
-        ("GIT_COMMITTER_EMAIL", "config-sync@localhost"),
-        ("GIT_AUTHOR_NAME", "config-sync"),
-        ("GIT_AUTHOR_EMAIL", "config-sync@localhost"),
+        ("GIT_COMMITTER_NAME", "dothoard"),
+        ("GIT_COMMITTER_EMAIL", "dothoard@localhost"),
+        ("GIT_AUTHOR_NAME", "dothoard"),
+        ("GIT_AUTHOR_EMAIL", "dothoard@localhost"),
     ]
 }
 

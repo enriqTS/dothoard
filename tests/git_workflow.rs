@@ -8,10 +8,10 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
 
-use config_sync::app;
-use config_sync::backup::manifest::Manifest;
-use config_sync::config::SourceConfig;
-use config_sync::git::{
+use dothoard::app;
+use dothoard::backup::manifest::Manifest;
+use dothoard::config::SourceConfig;
+use dothoard::git::{
     GitCommand, GitRunner, check_auth, classify_ownership, classify_worktree, create_commit,
     has_staged_changes, stage_managed_namespace, sync_with_remote, validate_repository,
     verify_staged_boundaries,
@@ -115,7 +115,7 @@ fn initial_backup_creates_commit_and_pushes() {
     let result = sync_with_remote(&env.runner, env.worktree(), "origin", "main").unwrap();
     assert!(matches!(
         result,
-        config_sync::git::SyncResult::Synced | config_sync::git::SyncResult::PushedAfterRebase
+        dothoard::git::SyncResult::Synced | dothoard::git::SyncResult::PushedAfterRebase
     ));
 
     // Verify the remote got the content.
@@ -178,7 +178,7 @@ fn offline_commit_is_preserved_and_pushed_on_retry() {
     let result = sync_with_remote(&env.runner, env.worktree(), "origin", "main").unwrap();
     assert!(matches!(
         result,
-        config_sync::git::SyncResult::Synced | config_sync::git::SyncResult::PushedAfterRebase
+        dothoard::git::SyncResult::Synced | dothoard::git::SyncResult::PushedAfterRebase
     ));
 }
 
@@ -222,7 +222,7 @@ fn pre_commit_hook_failure_is_reported() {
     let result = create_commit(&env.runner, env.worktree(), "backup: test");
     assert!(matches!(
         result,
-        Err(config_sync::git::CommitError::HookFailed { .. })
+        Err(dothoard::git::CommitError::HookFailed { .. })
     ));
 
     // Staged changes should still be present.
@@ -257,7 +257,7 @@ fn pathspec_metacharacters_in_filenames_handled_safely() {
     let result = sync_with_remote(&env.runner, env.worktree(), "origin", "main").unwrap();
     assert!(matches!(
         result,
-        config_sync::git::SyncResult::Synced | config_sync::git::SyncResult::PushedAfterRebase
+        dothoard::git::SyncResult::Synced | dothoard::git::SyncResult::PushedAfterRebase
     ));
 
     // Verify remote has the files.
@@ -300,7 +300,7 @@ fn conflict_aborts_rebase_and_preserves_local_commit() {
 
     // Sync should detect conflict.
     let result = sync_with_remote(&env.runner, env.worktree(), "origin", "main");
-    assert!(matches!(result, Err(config_sync::git::SyncError::Conflict)));
+    assert!(matches!(result, Err(dothoard::git::SyncError::Conflict)));
 
     // Verify no rebase-in-progress.
     let git_dir = env.worktree().join(".git");
@@ -331,7 +331,7 @@ fn new_repository_classifies_as_new() {
     let env = TestGitEnv::new();
 
     let state = classify_ownership(env.worktree()).unwrap();
-    assert!(matches!(state, config_sync::git::OwnershipState::New));
+    assert!(matches!(state, dothoard::git::OwnershipState::New));
 }
 
 #[test]
@@ -345,10 +345,7 @@ fn repository_with_manifest_classifies_as_owned() {
     manifest.save(env.worktree()).unwrap();
 
     let state = classify_ownership(env.worktree()).unwrap();
-    assert!(matches!(
-        state,
-        config_sync::git::OwnershipState::Owned { .. }
-    ));
+    assert!(matches!(state, dothoard::git::OwnershipState::Owned { .. }));
 }
 
 // --- Authentication ---
@@ -373,7 +370,7 @@ fn full_backup_workflow_end_to_end() {
 
     // 2. Classify ownership (new).
     let state = classify_ownership(env.worktree()).unwrap();
-    assert!(matches!(state, config_sync::git::OwnershipState::New));
+    assert!(matches!(state, dothoard::git::OwnershipState::New));
 
     // 3. Check worktree is clean.
     let wt_status = classify_worktree(&env.runner, env.worktree()).unwrap();
@@ -419,7 +416,7 @@ fn full_backup_workflow_end_to_end() {
     let sync_result = sync_with_remote(&env.runner, env.worktree(), "origin", "main").unwrap();
     assert!(matches!(
         sync_result,
-        config_sync::git::SyncResult::Synced | config_sync::git::SyncResult::PushedAfterRebase
+        dothoard::git::SyncResult::Synced | dothoard::git::SyncResult::PushedAfterRebase
     ));
 
     // 10. Verify remote has everything.

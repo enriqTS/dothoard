@@ -1,14 +1,14 @@
 //! Application-wide identifiers kept together to make the planned rename
 //! atomic and reviewable.
 
-pub const APP_NAME: &str = "config-sync";
-pub const BINARY_NAME: &str = "config-sync";
-pub const CONFIG_DIR_NAME: &str = "config-sync";
+pub const APP_NAME: &str = "dothoard";
+pub const BINARY_NAME: &str = "dothoard";
+pub const CONFIG_DIR_NAME: &str = "dothoard";
 pub const CONFIG_FILE_NAME: &str = "config.toml";
-pub const STATE_DIR_NAME: &str = "config-sync";
-pub const MANIFEST_FILE_NAME: &str = ".config-sync-manifest.toml";
-pub const SYSTEMD_SERVICE_UNIT: &str = "config-sync-backup.service";
-pub const SYSTEMD_TIMER_UNIT: &str = "config-sync-backup.timer";
+pub const STATE_DIR_NAME: &str = "dothoard";
+pub const MANIFEST_FILE_NAME: &str = ".dothoard-manifest.toml";
+pub const SYSTEMD_SERVICE_UNIT: &str = "dothoard-backup.service";
+pub const SYSTEMD_TIMER_UNIT: &str = "dothoard-backup.timer";
 
 pub fn trace_identifiers() {
     tracing::trace!(

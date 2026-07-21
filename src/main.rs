@@ -1,7 +1,7 @@
 use std::process::ExitCode;
 
 use clap::Parser;
-use config_sync::{app, cli, diagnostics};
+use dothoard::{app, cli, diagnostics};
 
 fn main() -> ExitCode {
     if let Err(error) = diagnostics::init() {

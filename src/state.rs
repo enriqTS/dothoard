@@ -1,6 +1,6 @@
 //! Persistent run status and history.
 //!
-//! State is stored under `~/.local/state/config-sync/` as JSON. It records
+//! State is stored under `~/.local/state/dothoard/` as JSON. It records
 //! the outcome of each backup run for the TUI dashboard and notification
 //! logic. Writes are atomic to prevent corruption from interrupted saves.
 
@@ -482,11 +482,11 @@ mod tests {
 
     #[test]
     fn state_file_path_is_deterministic() {
-        let dir = Path::new("/home/user/.local/state/config-sync");
+        let dir = Path::new("/home/user/.local/state/dothoard");
 
         assert_eq!(
             AppState::path_in(dir),
-            PathBuf::from("/home/user/.local/state/config-sync/status.json")
+            PathBuf::from("/home/user/.local/state/dothoard/status.json")
         );
     }
 }

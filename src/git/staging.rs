@@ -6,7 +6,7 @@
 //! staged path is within the managed namespace before allowing a commit.
 //!
 //! Safety invariants:
-//! - Only `home/` and `.config-sync-manifest.toml` are ever staged.
+//! - Only `home/` and `.dothoard-manifest.toml` are ever staged.
 //! - Pathspecs use `:(literal)` prefix to disable glob interpretation.
 //! - `--` separates options from paths to prevent argument injection.
 //! - Staged paths are verified with `git diff --cached --name-only -z`.
@@ -40,7 +40,7 @@ pub enum StagingError {
 ///
 /// This stages `home/` and the manifest file (if they exist) using:
 /// ```text
-/// git add --all -- :(literal)home :(literal).config-sync-manifest.toml
+/// git add --all -- :(literal)home :(literal).dothoard-manifest.toml
 /// ```
 ///
 /// The `--all` flag ensures deletions are staged. The `:(literal)` pathspec
@@ -188,7 +188,7 @@ mod tests {
         fs::write(home.join(".config/test.conf"), "key=value").unwrap();
         fs::write(
             tmp.path().join(app::MANIFEST_FILE_NAME),
-            "format = \"config-sync-manifest\"\nversion = 1\n",
+            "format = \"dothoard-manifest\"\nversion = 1\n",
         )
         .unwrap();
 

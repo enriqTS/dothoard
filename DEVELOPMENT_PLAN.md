@@ -1,4 +1,4 @@
-# Config Sync Development Plan
+# Dothoard Development Plan
 
 This file turns the V1 product requirements in `PLAN.md` into an ordered,
 trackable implementation backlog. `PLAN.md` remains the authority for product
@@ -169,9 +169,9 @@ synchronize a backup using temporary Git repositories (455 tests).
 - [x] **O05 - Implement notification transitions.** Notify for failures and
   recovery, keep successful scheduled runs quiet, and tolerate unavailable
   notification tooling.
-- [x] **O06 - Complete `config-sync backup`.** Provide useful exit codes,
+- [x] **O06 - Complete `dothoard backup`.** Provide useful exit codes,
   diagnostics, locking, persistence, and notifications.
-- [x] **O07 - Complete `config-sync check`.** Report configuration, path,
+- [x] **O07 - Complete `dothoard check`.** Report configuration, path,
   ownership, repository, authentication, and automation-drift results
   together.
 - [x] **O08 - Add headless end-to-end tests.** Cover initial backup, no-op
@@ -183,12 +183,12 @@ without the TUI (498 tests).
 
 ## Automation Prerequisite
 
-- [ ] **N01 - Finalize the permanent name.** Rename the binary, crate, manifest
+- [x] **N01 - Finalize the permanent name.** Rename the binary, crate, manifest
   identifier, XDG paths, and planned systemd units together before any real
   automation paths are installed.
 
-**Prerequisite gate:** The permanent application identity is reflected in the
-code, tests, and planning documents before milestone 6 starts.
+**Prerequisite gate:** Complete. The permanent name `dothoard` is reflected in
+the code, tests, and planning documents.
 
 ## 6. Systemd Automation
 

@@ -235,7 +235,7 @@ mod tests {
     #[test]
     fn is_managed_path_manifest_is_not_managed() {
         let repo = Path::new("/home/user/dotfiles");
-        let path = Path::new("/home/user/dotfiles/.config-sync-manifest.toml");
+        let path = Path::new("/home/user/dotfiles/.dothoard-manifest.toml");
         assert!(!is_managed_path(repo, path));
     }
 

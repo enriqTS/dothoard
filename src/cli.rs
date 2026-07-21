@@ -257,7 +257,7 @@ mod tests {
     fn lock_already_running_exit_code() {
         let err = CliError::Backup(CoordinatorError::Lock(
             crate::locking::LockError::AlreadyRunning {
-                path: std::path::PathBuf::from("/run/user/1000/config-sync.lock"),
+                path: std::path::PathBuf::from("/run/user/1000/dothoard.lock"),
             },
         ));
 

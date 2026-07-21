@@ -18,11 +18,11 @@ use crate::app;
 pub struct AppPaths {
     /// The user's home directory.
     home: PathBuf,
-    /// Application configuration directory (e.g. `~/.config/config-sync/`).
+    /// Application configuration directory (e.g. `~/.config/dothoard/`).
     config_dir: PathBuf,
     /// Application configuration file path.
     config_file: PathBuf,
-    /// Application state directory (e.g. `~/.local/state/config-sync/`).
+    /// Application state directory (e.g. `~/.local/state/dothoard/`).
     state_dir: PathBuf,
     /// Runtime directory for the exclusive lock (e.g. `$XDG_RUNTIME_DIR`).
     runtime_dir: PathBuf,
@@ -141,7 +141,7 @@ fn resolve_home(injected: Option<PathBuf>, use_env: bool) -> Result<PathBuf, Pat
 
 /// Resolve the configuration directory.
 ///
-/// Default: `$XDG_CONFIG_HOME/config-sync/` or `~/.config/config-sync/`.
+/// Default: `$XDG_CONFIG_HOME/dothoard/` or `~/.config/dothoard/`.
 fn resolve_config_dir(
     injected: Option<PathBuf>,
     home: &Path,
@@ -168,7 +168,7 @@ fn resolve_config_dir(
 
 /// Resolve the state directory.
 ///
-/// Default: `$XDG_STATE_HOME/config-sync/` or `~/.local/state/config-sync/`.
+/// Default: `$XDG_STATE_HOME/dothoard/` or `~/.local/state/dothoard/`.
 fn resolve_state_dir(
     injected: Option<PathBuf>,
     home: &Path,

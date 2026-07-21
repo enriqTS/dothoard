@@ -1,7 +1,7 @@
 //! Repository ownership classification.
 //!
 //! Determines the ownership state of a repository's managed namespace by
-//! inspecting the `home/` directory and `.config-sync-manifest.toml` file.
+//! inspecting the `home/` directory and `.dothoard-manifest.toml` file.
 //!
 //! The classification distinguishes four states that determine how the
 //! application should proceed:
@@ -82,7 +82,7 @@ pub enum OwnershipError {
 ///
 /// Inspects:
 /// - Whether `repository/home/` exists and has any content.
-/// - Whether `.config-sync-manifest.toml` exists and is valid.
+/// - Whether `.dothoard-manifest.toml` exists and is valid.
 ///
 /// Returns one of the four ownership states.
 pub fn classify_ownership(repository: &Path) -> Result<OwnershipState, OwnershipError> {

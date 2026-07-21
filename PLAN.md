@@ -1,7 +1,6 @@
-# Config Sync V1 Plan
+# Dothoard V1 Plan
 
-`config-sync` is a temporary working name. The project can be renamed before
-packaging without changing the architecture below.
+`dothoard` is the permanent project name.
 
 ## Goal
 
@@ -31,16 +30,15 @@ daemon.
 ## Commands
 
 ```text
-config-sync                 Open the TUI
-config-sync backup          Run one backup immediately
-config-sync check           Validate configuration and repository
-config-sync service install Install and enable the user timer
-config-sync service remove  Disable and remove the user timer
-config-sync service status  Show automation status
+dothoard                 Open the TUI
+dothoard backup          Run one backup immediately
+dothoard check           Validate configuration and repository
+dothoard service install Install and enable the user timer
+dothoard service remove  Disable and remove the user timer
+dothoard service status  Show automation status
 ```
 
-The final binary and unit names will change when the project receives its
-permanent name.
+The binary and unit names use the `dothoard` prefix.
 
 ## Shell Independence
 
@@ -64,7 +62,7 @@ environment variables rather than interpolated into shell source.
 Configuration will be stored at:
 
 ```text
-~/.config/config-sync/config.toml
+~/.config/dothoard/config.toml
 ```
 
 Initial schema:
@@ -109,7 +107,7 @@ repository/
 |   |   |-- fish/
 |   |   `-- waybar/
 |   `-- .bashrc
-`-- .config-sync-manifest.toml
+`-- .dothoard-manifest.toml
 ```
 
 The manifest records a format identifier, schema version, source mapping, and
@@ -117,7 +115,7 @@ ignore configuration without including credentials. It acts as an ownership
 marker and makes the backup self-describing.
 
 The application owns the complete `home/` namespace and the
-`.config-sync-manifest.toml` file. It never modifies or stages other repository
+`.dothoard-manifest.toml` file. It never modifies or stages other repository
 paths. Repository setup handles three states explicitly:
 
 - If the managed namespace is absent and there is no manifest, initialize it
@@ -245,7 +243,7 @@ commit, and reports that manual intervention is required.
 - Default automated commits to unsigned so GPG pinentry cannot block the
   service.
 - Continue running repository hooks and report hook failures.
-- Stage only `home/` and `.config-sync-manifest.toml`, using literal pathspecs
+- Stage only `home/` and `.dothoard-manifest.toml`, using literal pathspecs
   and `--` separation, and verify the staged path list before every commit.
 - Keep local commits when remote synchronization fails.
 - Avoid logging credentials or complete remote URLs containing credentials.
@@ -265,8 +263,8 @@ a backup is already running and exits without changing files.
 The service installer creates:
 
 ```text
-~/.config/systemd/user/config-sync-backup.service
-~/.config/systemd/user/config-sync-backup.timer
+~/.config/systemd/user/dothoard-backup.service
+~/.config/systemd/user/dothoard-backup.timer
 ```
 
 The timer is generated from `interval_minutes` and uses the equivalent of:
@@ -275,7 +273,7 @@ The timer is generated from `interval_minutes` and uses the equivalent of:
 [Timer]
 OnStartupSec=1min
 OnUnitInactiveSec={interval_minutes}min
-Unit=config-sync-backup.service
+Unit=dothoard-backup.service
 ```
 
 It starts shortly after the user systemd manager starts, normally at the first
@@ -304,7 +302,7 @@ content that differs from the expected generated version.
 Machine-readable state is stored under:
 
 ```text
-~/.local/state/config-sync/
+~/.local/state/dothoard/
 ```
 
 It records:
