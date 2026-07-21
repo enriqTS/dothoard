@@ -319,6 +319,137 @@ pub fn validate_source_path(
     Ok(full_path)
 }
 
+/// Result of an overlap or containment check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OverlapError {
+    /// Two sources overlap: one is an ancestor of or equal to the other.
+    SourceOverlap {
+        /// Index of the first source in the configuration.
+        first: usize,
+        /// Index of the second source in the configuration.
+        second: usize,
+        /// The path of the ancestor source.
+        ancestor: String,
+        /// The path of the descendant source.
+        descendant: String,
+    },
+
+    /// A source contains the repository or the repository contains a source.
+    RepositoryContainment {
+        /// Index of the source in the configuration.
+        source_index: usize,
+        /// The source path.
+        source_path: String,
+        /// Human-readable description of the containment direction.
+        description: String,
+    },
+}
+
+impl std::fmt::Display for OverlapError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::SourceOverlap {
+                first,
+                second,
+                ancestor,
+                descendant,
+            } => {
+                write!(
+                    f,
+                    "sources [{first}] \"{ancestor}\" and [{second}] \"{descendant}\" overlap"
+                )
+            }
+            Self::RepositoryContainment {
+                source_index,
+                source_path,
+                description,
+            } => {
+                write!(
+                    f,
+                    "source [{source_index}] \"{source_path}\": {description}"
+                )
+            }
+        }
+    }
+}
+
+/// Check whether `ancestor` is a prefix of or equal to `descendant`.
+///
+/// Uses component-wise comparison to avoid false matches on partial directory
+/// names (e.g. `/home/user/.config` is not a prefix of `/home/user/.config2`).
+fn is_path_prefix_or_equal(ancestor: &Path, descendant: &Path) -> bool {
+    let mut ancestor_components = ancestor.components();
+    let mut descendant_components = descendant.components();
+
+    loop {
+        match (ancestor_components.next(), descendant_components.next()) {
+            (Some(a), Some(d)) => {
+                if a != d {
+                    return false;
+                }
+            }
+            // Ancestor exhausted first or both exhausted together — prefix or equal.
+            (None, _) => return true,
+            // Descendant exhausted first — ancestor is longer.
+            (Some(_), None) => return false,
+        }
+    }
+}
+
+/// Detect overlapping sources and source-repository containment.
+///
+/// `source_paths` are the absolute resolved paths for each source (in the
+/// same order as the configuration). `repository` is the absolute path to the
+/// Git repository.
+///
+/// Returns all detected problems.
+pub fn check_overlaps(source_paths: &[PathBuf], repository: &Path) -> Vec<OverlapError> {
+    let mut errors = Vec::new();
+
+    // Check pairwise source overlap.
+    for i in 0..source_paths.len() {
+        for j in (i + 1)..source_paths.len() {
+            let a = &source_paths[i];
+            let b = &source_paths[j];
+
+            if is_path_prefix_or_equal(a, b) {
+                errors.push(OverlapError::SourceOverlap {
+                    first: i,
+                    second: j,
+                    ancestor: a.to_string_lossy().into_owned(),
+                    descendant: b.to_string_lossy().into_owned(),
+                });
+            } else if is_path_prefix_or_equal(b, a) {
+                errors.push(OverlapError::SourceOverlap {
+                    first: j,
+                    second: i,
+                    ancestor: b.to_string_lossy().into_owned(),
+                    descendant: a.to_string_lossy().into_owned(),
+                });
+            }
+        }
+    }
+
+    // Check source-repository containment.
+    for (index, source) in source_paths.iter().enumerate() {
+        if is_path_prefix_or_equal(source, repository) {
+            errors.push(OverlapError::RepositoryContainment {
+                source_index: index,
+                source_path: source.to_string_lossy().into_owned(),
+                description: "source contains the repository (recursive backup)".to_string(),
+            });
+        } else if is_path_prefix_or_equal(repository, source) {
+            errors.push(OverlapError::RepositoryContainment {
+                source_index: index,
+                source_path: source.to_string_lossy().into_owned(),
+                description: "repository contains the source".to_string(),
+            });
+        }
+    }
+
+    errors
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -684,5 +815,194 @@ mod tests {
         let result = validate_source_path(&home, ".config/fish");
 
         assert!(result.is_ok());
+    }
+
+    // --- Overlap and recursion validation tests (C06) ---
+
+    #[test]
+    fn no_overlaps_for_disjoint_sources() {
+        let sources = vec![
+            PathBuf::from("/home/user/.config/fish"),
+            PathBuf::from("/home/user/.config/waybar"),
+            PathBuf::from("/home/user/.bashrc"),
+        ];
+        let repo = Path::new("/home/user/pessoal/dotfiles");
+
+        let errors = check_overlaps(&sources, repo);
+
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn detects_ancestor_descendant_source_overlap() {
+        let sources = vec![
+            PathBuf::from("/home/user/.config"),
+            PathBuf::from("/home/user/.config/fish"),
+        ];
+        let repo = Path::new("/home/user/pessoal/dotfiles");
+
+        let errors = check_overlaps(&sources, repo);
+
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            OverlapError::SourceOverlap {
+                first: 0,
+                second: 1,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn detects_descendant_ancestor_source_overlap() {
+        // Same as above but reversed order in configuration.
+        let sources = vec![
+            PathBuf::from("/home/user/.config/fish"),
+            PathBuf::from("/home/user/.config"),
+        ];
+        let repo = Path::new("/home/user/pessoal/dotfiles");
+
+        let errors = check_overlaps(&sources, repo);
+
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            OverlapError::SourceOverlap {
+                first: 1,
+                second: 0,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn detects_identical_source_paths_as_overlap() {
+        let sources = vec![
+            PathBuf::from("/home/user/.config/fish"),
+            PathBuf::from("/home/user/.config/fish"),
+        ];
+        let repo = Path::new("/home/user/pessoal/dotfiles");
+
+        let errors = check_overlaps(&sources, repo);
+
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(&errors[0], OverlapError::SourceOverlap { .. }));
+    }
+
+    #[test]
+    fn no_false_overlap_on_partial_name_match() {
+        // .config and .config2 should NOT overlap.
+        let sources = vec![
+            PathBuf::from("/home/user/.config"),
+            PathBuf::from("/home/user/.config2"),
+        ];
+        let repo = Path::new("/home/user/pessoal/dotfiles");
+
+        let errors = check_overlaps(&sources, repo);
+
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn detects_source_contains_repository() {
+        // Source is an ancestor of the repository — recursive backup risk.
+        let sources = vec![PathBuf::from("/home/user/pessoal")];
+        let repo = Path::new("/home/user/pessoal/dotfiles");
+
+        let errors = check_overlaps(&sources, repo);
+
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            OverlapError::RepositoryContainment {
+                source_index: 0,
+                ..
+            }
+        ));
+        if let OverlapError::RepositoryContainment { description, .. } = &errors[0] {
+            assert!(description.contains("source contains the repository"));
+        }
+    }
+
+    #[test]
+    fn detects_repository_contains_source() {
+        // Repository is an ancestor of the source.
+        let sources = vec![PathBuf::from("/home/user/pessoal/dotfiles/home/.config")];
+        let repo = Path::new("/home/user/pessoal/dotfiles");
+
+        let errors = check_overlaps(&sources, repo);
+
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            OverlapError::RepositoryContainment {
+                source_index: 0,
+                ..
+            }
+        ));
+        if let OverlapError::RepositoryContainment { description, .. } = &errors[0] {
+            assert!(description.contains("repository contains the source"));
+        }
+    }
+
+    #[test]
+    fn detects_source_equals_repository() {
+        let sources = vec![PathBuf::from("/home/user/pessoal/dotfiles")];
+        let repo = Path::new("/home/user/pessoal/dotfiles");
+
+        let errors = check_overlaps(&sources, repo);
+
+        // Equal paths mean both directions of containment — at least one error.
+        assert!(!errors.is_empty());
+    }
+
+    #[test]
+    fn detects_multiple_overlap_errors() {
+        let sources = vec![
+            PathBuf::from("/home/user/.config"),
+            PathBuf::from("/home/user/.config/fish"),
+            PathBuf::from("/home/user/pessoal"),
+        ];
+        let repo = Path::new("/home/user/pessoal/dotfiles");
+
+        let errors = check_overlaps(&sources, repo);
+
+        // Should have source overlap (0,1) + repository containment (2).
+        assert!(errors.len() >= 2);
+        assert!(
+            errors
+                .iter()
+                .any(|e| matches!(e, OverlapError::SourceOverlap { .. }))
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|e| matches!(e, OverlapError::RepositoryContainment { .. }))
+        );
+    }
+
+    #[test]
+    fn is_path_prefix_or_equal_basic_cases() {
+        assert!(is_path_prefix_or_equal(
+            Path::new("/a/b"),
+            Path::new("/a/b/c")
+        ));
+        assert!(is_path_prefix_or_equal(
+            Path::new("/a/b"),
+            Path::new("/a/b")
+        ));
+        assert!(!is_path_prefix_or_equal(
+            Path::new("/a/b/c"),
+            Path::new("/a/b")
+        ));
+        assert!(!is_path_prefix_or_equal(
+            Path::new("/a/b"),
+            Path::new("/a/bc")
+        ));
+        assert!(is_path_prefix_or_equal(
+            Path::new("/"),
+            Path::new("/anything")
+        ));
     }
 }
