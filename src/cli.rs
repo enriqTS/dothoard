@@ -78,6 +78,9 @@ pub enum CliError {
 
     #[error("configuration is invalid: {0}")]
     Validation(String),
+
+    #[error("TUI error: {0}")]
+    Tui(String),
 }
 
 impl CliError {
@@ -94,6 +97,7 @@ impl CliError {
             Self::Paths(_) => exit_code::config_error(),
             Self::Systemd(_) => exit_code::FAILURE,
             Self::Config(_) | Self::Validation(_) => exit_code::config_error(),
+            Self::Tui(_) => exit_code::FAILURE,
         }
     }
 }
@@ -104,9 +108,7 @@ impl CliError {
 /// a successful run), or `Err(CliError)` for failures.
 pub fn execute(cli: Cli) -> Result<ExitCode, CliError> {
     match cli.command {
-        None => Err(CliError::NotImplemented {
-            operation: "the TUI",
-        }),
+        None => execute_tui(),
         Some(Command::Backup) => execute_backup(),
         Some(Command::Check) => execute_check(),
         Some(Command::Service { command }) => match command {
@@ -115,6 +117,12 @@ pub fn execute(cli: Cli) -> Result<ExitCode, CliError> {
             ServiceCommand::Status => execute_service_status(),
         },
     }
+}
+
+/// Launch the interactive TUI.
+fn execute_tui() -> Result<ExitCode, CliError> {
+    crate::tui::run().map_err(|e| CliError::Tui(e.to_string()))?;
+    Ok(exit_code::SUCCESS)
 }
 
 /// Execute the `backup` command.
@@ -280,21 +288,9 @@ mod tests {
     }
 
     #[test]
-    fn reports_unimplemented_operations() {
-        let cases = [(Cli { command: None }, "the TUI")];
-
-        for (cli, expected_op) in cases {
-            let error = execute(cli).expect_err("unimplemented command should return error");
-            let message = error.to_string();
-            assert!(
-                message.contains("not implemented"),
-                "expected 'not implemented' in: {message}"
-            );
-            assert!(
-                message.contains(expected_op),
-                "expected '{expected_op}' in: {message}"
-            );
-        }
+    fn tui_error_exit_code() {
+        let err = CliError::Tui("test error".to_string());
+        assert_eq!(err.exit_code(), ExitCode::FAILURE);
     }
 
     #[test]
