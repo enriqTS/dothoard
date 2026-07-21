@@ -38,27 +38,27 @@ command structure, and passes the full verification baseline.
 
 ## 1. Core Models
 
-- [ ] **C01 - Implement application path resolution.** Resolve `$HOME` and XDG
+- [x] **C01 - Implement application path resolution.** Resolve `$HOME` and XDG
   paths through injectable inputs and validate them before use.
-- [ ] **C02 - Define the configuration schema.** Support schema version,
+- [x] **C02 - Define the configuration schema.** Support schema version,
   repository, remote, interval, network timeout, sources, and ignore rules.
-- [ ] **C03 - Implement atomic configuration persistence.** Interrupted writes
+- [x] **C03 - Implement atomic configuration persistence.** Interrupted writes
   must not leave a partially written configuration.
-- [ ] **C04 - Implement configuration validation.** Reject invalid intervals,
+- [x] **C04 - Implement configuration validation.** Reject invalid intervals,
   timeouts, empty source paths, absolute paths, and parent traversal.
-- [ ] **C05 - Implement source path validation.** Reject symlinked parent
+- [x] **C05 - Implement source path validation.** Reject symlinked parent
   components while accepting a source-root symlink as an object that will not
   be followed.
-- [ ] **C06 - Implement overlap and recursion validation.** Reject overlapping
+- [x] **C06 - Implement overlap and recursion validation.** Reject overlapping
   sources and any containment relationship between a source and repository.
-- [ ] **C07 - Define the repository manifest.** Include a recognizable format
+- [x] **C07 - Define the repository manifest.** Include a recognizable format
   identifier, schema version, source mapping, and ignore configuration.
-- [ ] **C08 - Define persistent run state.** Represent attempts, successful
+- [x] **C08 - Define persistent run state.** Represent attempts, successful
   backups, commits, pushes, warnings, errors, pending commits, and bounded run
   history with atomic serialization.
 
-**Milestone gate:** Configuration, manifest, and state round trips and all path
-validation rules are covered by unit tests.
+**Milestone gate: Complete.** Configuration, manifest, and state round trips
+and all path validation rules are covered by unit tests (94 tests).
 
 ## 2. Backup Planner
 

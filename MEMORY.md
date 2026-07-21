@@ -7,13 +7,13 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Current Status
 
-- Active milestone: 1 - Core Models.
-- Active task: None; milestone 1 has not started.
-- Next task: C01 - Implement application path resolution.
-- Code state: Bootstrap is complete; the Rust crate, shared library boundary,
-  CLI skeleton, diagnostics, and isolated test fixtures exist.
-- Planning state: V1 product plan, ordered backlog, contributor guidance, and
-  project memory are written and cross-checked.
+- Active milestone: 1 - Core Models (complete).
+- Active task: None; milestone 1 is complete.
+- Next task: P01 - Define the change-set model (Milestone 2, Backup Planner).
+- Code state: Core models are implemented and tested — path resolution,
+  configuration schema with atomic persistence and validation, source path
+  validation (symlinked parent rejection), overlap/recursion detection,
+  repository manifest, and persistent run state.
 - Blockers: None.
 
 ## Durable Decisions
@@ -42,6 +42,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   the repository worktree.
 - The backend is implemented and tested before the TUI; the TUI depends on
   backend services, never the reverse.
+- Configuration stored as TOML; state stored as JSON (machine-readable for TUI).
+- Manifest stored as TOML with format identifier `config-sync-manifest`.
+- PathInputs.use_environment flag isolates tests from real XDG environment.
+- State history is bounded to 50 entries, newest first.
 
 ## Open Decisions
 
@@ -51,21 +55,21 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - No explicit MSRV is selected; use the current stable Rust toolchain until one
   is chosen.
 
-These decisions do not block milestone 1.
+These decisions do not block milestone 2.
 
 ## Next Steps
 
-1. Start C01, Implement application path resolution, and record it as active.
-2. Resolve `$HOME` and XDG locations through injectable inputs.
-3. Add path-resolution tests that use only temporary directories.
+1. Start P01, Define the change-set model, and record it as active.
+2. Represent additions, modifications, deletions, exclusions, symlinks,
+   executable-mode changes, and warnings.
 
 ## Verification
 
-- `cargo fmt --check`
-- `cargo clippy --all-targets --all-features -- -D warnings`
-- `cargo test --all-targets --all-features` (14 tests passed)
-- `cargo run -- --help`
-- Final focused code review reported no remaining bootstrap findings.
+- `cargo fmt --check` — clean
+- `cargo clippy --all-targets --all-features -- -D warnings` — clean
+- `cargo test --all-targets --all-features` — 94 unit tests + 1 integration = 95 passed
+- All milestone 1 tasks verified: config/manifest/state round-trip, path
+  validation rules covered by unit tests.
 
 ## Update Protocol
 
