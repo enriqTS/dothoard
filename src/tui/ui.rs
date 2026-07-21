@@ -459,6 +459,8 @@ fn draw_preview(frame: &mut Frame, area: Rect, app: &App) {
         Span::raw("  "),
         Span::styled("r", Style::default().fg(Color::DarkGray)),
         Span::styled(" refresh  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("b", Style::default().fg(Color::DarkGray)),
+        Span::styled(" backup  ", Style::default().fg(Color::DarkGray)),
         Span::styled("↑↓/jk", Style::default().fg(Color::DarkGray)),
         Span::styled(" scroll", Style::default().fg(Color::DarkGray)),
     ]));

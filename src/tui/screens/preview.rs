@@ -95,6 +95,8 @@ impl PreviewScreen {
                 self.stale = true;
                 Action::Refresh
             }
+            // Run backup.
+            KeyCode::Char('b') => Action::RunBackup,
             // Scroll.
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.scroll > 0 {
@@ -215,6 +217,8 @@ pub enum Action {
     NotConsumed,
     /// Refresh the preview.
     Refresh,
+    /// Execute the backup.
+    RunBackup,
 }
 
 #[cfg(test)]
@@ -238,6 +242,14 @@ mod tests {
         let action = screen.handle_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE));
         assert_eq!(action, Action::Refresh);
         assert!(screen.stale);
+    }
+
+    #[test]
+    fn b_triggers_backup() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut screen = PreviewScreen::new();
+        let action = screen.handle_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE));
+        assert_eq!(action, Action::RunBackup);
     }
 
     #[test]

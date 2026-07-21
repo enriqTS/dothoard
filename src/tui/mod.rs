@@ -158,6 +158,8 @@ impl App {
                     self.last_backup = Some(r);
                     // Reload persistent state to reflect the new backup outcome.
                     self.reload_state();
+                    // Mark preview stale since files may have changed.
+                    self.preview_screen.stale = true;
                 }
                 task::TaskResult::Check(r) => {
                     self.status_message = if r.healthy {
@@ -465,11 +467,23 @@ impl App {
                     self.refresh_preview();
                     return;
                 }
+                screens::preview::Action::RunBackup => {
+                    if self.tasks.is_busy() {
+                        self.status_message = Some("A task is already running.".to_string());
+                    } else if let Some(ref paths) = self.paths {
+                        if self.tasks.spawn_backup(paths.clone()) {
+                            self.status_message = Some("Running backup...".to_string());
+                        }
+                    } else {
+                        self.status_message =
+                            Some("Cannot run backup: paths not resolved.".to_string());
+                    }
+                    return;
+                }
                 screens::preview::Action::NotConsumed => {
                     // Fall through to global key handling.
                 }
             }
-            // Auto-refresh on first visit if stale.
         }
 
         // Global key handling.
