@@ -119,42 +119,42 @@ safe, deterministic, and recoverable without Git (334 tests).
 
 ## 4. Git Layer
 
-- [ ] **G01 - Implement the Git command runner.** Use direct argument arrays,
+- [x] **G01 - Implement the Git command runner.** Use direct argument arrays,
   controlled environment variables, redacted logging, process-tree cleanup,
   and command timeouts.
-- [ ] **G02 - Enforce noninteractive execution.** Disable terminal and askpass
+- [x] **G02 - Enforce noninteractive execution.** Disable terminal and askpass
   prompts, disable interactive GCM behavior where applicable, and use batch
   mode for standard SSH remotes.
-- [ ] **G03 - Validate repository structure.** Detect worktree, branch, remote,
+- [x] **G03 - Validate repository structure.** Detect worktree, branch, remote,
   and merge, rebase, cherry-pick, or bisect states.
-- [ ] **G04 - Classify repository ownership.** Distinguish a new namespace, a
+- [x] **G04 - Classify repository ownership.** Distinguish a new namespace, a
   valid existing manifest, an invalid manifest, and ambiguous `home/` data.
-- [ ] **G05 - Implement initialization and attachment.** Require the defined
+- [x] **G05 - Implement initialization and attachment.** Require the defined
   confirmations and never claim ambiguous existing repository content.
-- [ ] **G06 - Classify worktree changes.** Allow recovery of managed dirty
+- [x] **G06 - Classify worktree changes.** Allow recovery of managed dirty
   paths while blocking staged, unstaged, or untracked unmanaged changes.
-- [ ] **G07 - Implement restricted staging.** Stage only `home/` and the
+- [x] **G07 - Implement restricted staging.** Stage only `home/` and the
   manifest using literal pathspecs and `--` separation.
-- [ ] **G08 - Verify staged boundaries.** Refuse to commit if any staged path
+- [x] **G08 - Verify staged boundaries.** Refuse to commit if any staged path
   falls outside the managed namespace.
-- [ ] **G09 - Implement commits.** Skip empty commits, default automated
+- [x] **G09 - Implement commits.** Skip empty commits, default automated
   commits to unsigned, and preserve and report repository hook failures.
-- [ ] **G10 - Implement remote reconciliation.** Pull with rebase and push
+- [x] **G10 - Implement remote reconciliation.** Pull with rebase and push
   noninteractively while preserving local commits on network or remote
   failure.
-- [ ] **G11 - Implement conflict recovery.** Abort a conflicting rebase,
+- [x] **G11 - Implement conflict recovery.** Abort a conflicting rebase,
   preserve the original local commit, and report that manual intervention is
   required.
-- [ ] **G12 - Detect tracked ignored files.** Identify ignored destination
+- [x] **G12 - Detect tracked ignored files.** Identify ignored destination
   paths that Git already tracks and expose them as preview warnings.
-- [ ] **G13 - Implement authentication checks.** Report noninteractive remote
+- [x] **G13 - Implement authentication checks.** Report noninteractive remote
   readiness without exposing credentials.
-- [ ] **G14 - Add Git integration tests.** Use temporary worktrees and bare
+- [x] **G14 - Add Git integration tests.** Use temporary worktrees and bare
   remotes to cover initial push, no-op runs, offline commits, retries,
   conflicts, hooks, unmanaged changes, and pathspec metacharacters.
 
-**Milestone gate:** The backend can safely mirror, commit, and synchronize a
-backup using temporary Git repositories.
+**Milestone gate: Complete.** The backend can safely mirror, commit, and
+synchronize a backup using temporary Git repositories (455 tests).
 
 ## 5. Orchestration
 

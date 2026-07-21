@@ -7,16 +7,17 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Current Status
 
-- Active milestone: 3 - Mirror Executor (complete).
-- Active task: None; milestone 3 is complete.
-- Next task: G01 - Implement the Git command runner (Milestone 4, Git Layer).
-- Code state: The mirror executor safely applies planned change-sets to the
-  filesystem. It performs atomic file copies (with executable bit), symlink
-  preservation, safe deletions, manifest generation, source preflight,
-  publication boundary enforcement, and is inherently self-healing for
-  interrupted runs. All operations are guarded by destination boundary
-  validation that prevents writes/deletions outside the repository and
-  rejects symlinked parent components.
+- Active milestone: 4 - Git Layer (complete).
+- Active task: None; milestone 4 is complete.
+- Next task: O01 - Implement exclusive locking (Milestone 5, Orchestration).
+- Code state: The Git layer safely executes git commands with noninteractive
+  environment, validates repository structure and ownership, classifies
+  worktree changes, stages only managed paths with literal pathspecs,
+  verifies staged boundaries, creates unsigned commits (skipping empty),
+  preserves hook failures, pulls with rebase, pushes, detects and aborts
+  conflicts preserving local commits, detects tracked-ignored files, and
+  checks authentication readiness. All operations use direct argument arrays
+  with timeout-bounded process-tree cleanup.
 - Blockers: None.
 
 ## Durable Decisions
@@ -37,8 +38,8 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   recoverable after interrupted or failed runs.
 - Source and manifest failures prevent all staging, committing, pulling, and
   pushing for that run.
-- Git staging uses literal pathspecs and is verified to contain only managed
-  paths before commit.
+- Git staging uses literal pathspecs (`:(literal)` prefix) and is verified to
+  contain only managed paths before commit.
 - Background Git operations are noninteractive, timeout-bounded, and preserve
   local commits when synchronization fails.
 - Ignore rules use per-source Git semantics and are enforced before files enter
@@ -61,6 +62,13 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   the repository root).
 - Recovery is inherent: the planner is stateless, re-reads source/destination
   on each run, and the executor operations are idempotent/atomic.
+- Git runner uses `setpgid(0,0)` for process-group isolation and spawns reader
+  threads for stdout/stderr to prevent pipe deadlocks.
+- Noninteractive env: GIT_TERMINAL_PROMPT=0, GIT_ASKPASS="", SSH_ASKPASS="",
+  SSH_ASKPASS_REQUIRE=never, GCM_INTERACTIVE=Never, GIT_CONFIG_NOSYSTEM=1,
+  GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new".
+- Commits are unsigned by default (--no-gpg-sign) and hooks are never bypassed.
+- Conflict recovery aborts rebase and preserves the local commit intact.
 
 ## Open Decisions
 
@@ -70,23 +78,25 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - No explicit MSRV is selected; use the current stable Rust toolchain until one
   is chosen.
 
-These decisions do not block milestone 4.
+These decisions do not block milestone 5.
 
 ## Next Steps
 
-1. Start G01, Implement the Git command runner, and record it as active.
-2. Build a safe command runner with direct argument arrays, controlled
-   environment, redacted logging, process-tree cleanup, and timeouts.
+1. Start O01, Implement exclusive locking, and record it as active.
+2. Build the backup coordinator that executes the complete workflow in the
+   validated order specified by PLAN.md.
 
 ## Verification
 
 - `cargo fmt --check` — clean
 - `cargo clippy --all-targets --all-features -- -D warnings` — clean
-- `cargo test --all-targets --all-features` — 313 unit tests + 21 integration = 334 passed
-- All milestone 3 tasks verified: mirror executor applies change-sets safely
-  with boundary enforcement, atomic copies, symlink preservation, safe
-  deletions, manifest generation, preflight validation, publication boundaries,
-  and self-healing recovery.
+- `cargo test --all-targets --all-features` — 455 tests passed
+  (422 unit + 1 bootstrap + 12 git workflow + 20 mirror)
+- All milestone 4 tasks verified: git command runner, noninteractive execution,
+  repository validation, ownership classification, initialization/attachment,
+  worktree classification, restricted staging, staged boundary verification,
+  commits, remote reconciliation, conflict recovery, tracked-ignored detection,
+  authentication checks, and comprehensive integration tests.
 
 ## Update Protocol
 
