@@ -4,10 +4,61 @@
 //! describes the repository location, remote, schedule, and source mappings.
 //! This module defines the schema and serialization; validation logic lives
 //! in dedicated functions that operate on the deserialized model.
+//!
+//! Writes use atomic replacement (write to a temporary file in the same
+//! directory, then rename) so an interrupted save never leaves a partially
+//! written configuration.
 
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+/// Errors that can occur during configuration I/O.
+#[derive(Debug, Error)]
+pub enum ConfigError {
+    #[error("configuration file not found: {path}")]
+    NotFound { path: PathBuf },
+
+    #[error("failed to read configuration from {path}")]
+    Read {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("failed to parse configuration from {path}")]
+    Parse {
+        path: PathBuf,
+        #[source]
+        source: toml::de::Error,
+    },
+
+    #[error("failed to serialize configuration")]
+    Serialize(#[from] toml::ser::Error),
+
+    #[error("failed to create parent directory {path}")]
+    CreateDir {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("failed to write configuration atomically to {path}")]
+    Write {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("failed to persist temporary file to {path}")]
+    Persist {
+        path: PathBuf,
+        #[source]
+        source: tempfile::PersistError,
+    },
+}
 
 /// Top-level application configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -99,6 +150,75 @@ impl Config {
         } else {
             PathBuf::from(&self.repository)
         }
+    }
+
+    /// Load configuration from the given file path.
+    ///
+    /// Returns `ConfigError::NotFound` if the file does not exist.
+    pub fn load(path: &Path) -> Result<Self, ConfigError> {
+        if !path.exists() {
+            return Err(ConfigError::NotFound {
+                path: path.to_path_buf(),
+            });
+        }
+
+        let text = std::fs::read_to_string(path).map_err(|source| ConfigError::Read {
+            path: path.to_path_buf(),
+            source,
+        })?;
+
+        let config = Self::from_toml(&text).map_err(|source| ConfigError::Parse {
+            path: path.to_path_buf(),
+            source,
+        })?;
+
+        Ok(config)
+    }
+
+    /// Save configuration atomically to the given file path.
+    ///
+    /// Creates the parent directory if it does not exist. Writes to a
+    /// temporary file in the same directory and renames it into place so
+    /// an interrupted write never corrupts the configuration.
+    pub fn save(&self, path: &Path) -> Result<(), ConfigError> {
+        let text = self.to_toml()?;
+
+        // Ensure the parent directory exists.
+        if let Some(parent) = path.parent()
+            && !parent.exists()
+        {
+            std::fs::create_dir_all(parent).map_err(|source| ConfigError::CreateDir {
+                path: parent.to_path_buf(),
+                source,
+            })?;
+        }
+
+        // Write to a temporary file in the same directory so that rename is
+        // atomic on the same filesystem.
+        let parent = path.parent().unwrap_or(Path::new("."));
+        let mut tmp =
+            tempfile::NamedTempFile::new_in(parent).map_err(|source| ConfigError::Write {
+                path: path.to_path_buf(),
+                source,
+            })?;
+
+        tmp.write_all(text.as_bytes())
+            .map_err(|source| ConfigError::Write {
+                path: path.to_path_buf(),
+                source,
+            })?;
+
+        tmp.flush().map_err(|source| ConfigError::Write {
+            path: path.to_path_buf(),
+            source,
+        })?;
+
+        tmp.persist(path).map_err(|source| ConfigError::Persist {
+            path: path.to_path_buf(),
+            source,
+        })?;
+
+        Ok(())
     }
 }
 
@@ -259,5 +379,78 @@ path = ".bashrc"
         assert_eq!(config.sources.len(), 1);
         assert_eq!(config.sources[0].path, ".bashrc");
         assert!(config.sources[0].ignore.is_empty());
+    }
+
+    #[test]
+    fn save_creates_parent_directories() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("nested").join("dir").join("config.toml");
+        let config = Config::new("~/repo");
+
+        config.save(&path).unwrap();
+
+        assert!(path.exists());
+        let loaded = Config::load(&path).unwrap();
+        assert_eq!(loaded, config);
+    }
+
+    #[test]
+    fn save_and_load_round_trip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("config.toml");
+        let config = Config {
+            version: 1,
+            repository: "~/dotfiles".to_string(),
+            remote: "upstream".to_string(),
+            interval_minutes: 10,
+            network_timeout_seconds: 60,
+            sources: vec![SourceConfig {
+                path: ".config/fish".to_string(),
+                ignore: vec!["*.log".to_string()],
+            }],
+        };
+
+        config.save(&path).unwrap();
+        let loaded = Config::load(&path).unwrap();
+
+        assert_eq!(loaded, config);
+    }
+
+    #[test]
+    fn save_overwrites_existing_file_atomically() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("config.toml");
+
+        // Write initial config.
+        let first = Config::new("~/first");
+        first.save(&path).unwrap();
+
+        // Overwrite with different config.
+        let second = Config::new("~/second");
+        second.save(&path).unwrap();
+
+        let loaded = Config::load(&path).unwrap();
+        assert_eq!(loaded.repository, "~/second");
+    }
+
+    #[test]
+    fn load_returns_not_found_for_missing_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("nonexistent.toml");
+
+        let result = Config::load(&path);
+
+        assert!(matches!(result, Err(ConfigError::NotFound { .. })));
+    }
+
+    #[test]
+    fn load_returns_parse_error_for_invalid_toml() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("bad.toml");
+        std::fs::write(&path, "this is not valid toml [[[").unwrap();
+
+        let result = Config::load(&path);
+
+        assert!(matches!(result, Err(ConfigError::Parse { .. })));
     }
 }
