@@ -21,6 +21,7 @@ use std::time::Duration;
 use crate::config::Config;
 use crate::git::{self, AuthStatus, GitRunner, OwnershipState};
 use crate::paths::{self, AppPaths};
+use crate::systemd;
 
 /// A single check result with a category and status.
 #[derive(Debug, Clone)]
@@ -283,14 +284,68 @@ pub fn run_check(paths: &AppPaths) -> CheckReport {
         }
     }
 
-    // 9. Automation status (placeholder for systemd milestone).
-    results.push(CheckResult {
-        category: "automation",
-        label: "systemd timer".to_string(),
-        status: CheckStatus::Warning("automation check not yet implemented".to_string()),
-    });
+    // 9. Automation status.
+    check_automation(&mut results, paths, &config);
 
     CheckReport { results }
+}
+
+/// Check automation (systemd timer) status.
+fn check_automation(results: &mut Vec<CheckResult>, paths: &AppPaths, config: &Config) {
+    let unit_dir = systemd::user_unit_dir(paths.home());
+
+    // Check if units are installed.
+    let service_path = systemd::service_unit_path(&unit_dir);
+    let timer_path = systemd::timer_unit_path(&unit_dir);
+
+    if !service_path.exists() || !timer_path.exists() {
+        results.push(CheckResult {
+            category: "automation",
+            label: "systemd timer".to_string(),
+            status: CheckStatus::Warning("timer not installed".to_string()),
+        });
+        return;
+    }
+
+    // Check for stale units.
+    let params = match systemd::params_from_config(config) {
+        Ok(p) => p,
+        Err(e) => {
+            results.push(CheckResult {
+                category: "automation",
+                label: "systemd timer".to_string(),
+                status: CheckStatus::Warning(format!("cannot determine binary path: {e}")),
+            });
+            return;
+        }
+    };
+
+    match systemd::is_stale(&params, &unit_dir) {
+        Ok(true) => {
+            results.push(CheckResult {
+                category: "automation",
+                label: "systemd timer".to_string(),
+                status: CheckStatus::Warning(
+                    "installed units are stale (run `dothoard service install` to update)"
+                        .to_string(),
+                ),
+            });
+        }
+        Ok(false) => {
+            results.push(CheckResult {
+                category: "automation",
+                label: "systemd timer".to_string(),
+                status: CheckStatus::Ok,
+            });
+        }
+        Err(e) => {
+            results.push(CheckResult {
+                category: "automation",
+                label: "systemd timer".to_string(),
+                status: CheckStatus::Warning(format!("failed to check staleness: {e}")),
+            });
+        }
+    }
 }
 
 /// Try to load and return the configuration.

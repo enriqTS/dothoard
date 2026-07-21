@@ -7,7 +7,9 @@ use thiserror::Error;
 
 use crate::app::BINARY_NAME;
 use crate::backup::coordinator::{self, BackupOutcome, CoordinatorError};
+use crate::config::Config;
 use crate::paths::AppPaths;
+use crate::systemd;
 
 /// Exit codes for the backup command.
 pub mod exit_code {
@@ -67,6 +69,15 @@ pub enum CliError {
 
     #[error("path resolution failed: {0}")]
     Paths(#[from] crate::paths::PathError),
+
+    #[error("systemd operation failed: {0}")]
+    Systemd(#[from] systemd::SystemdError),
+
+    #[error("configuration error: {0}")]
+    Config(#[from] Box<crate::config::ConfigError>),
+
+    #[error("configuration is invalid: {0}")]
+    Validation(String),
 }
 
 impl CliError {
@@ -81,6 +92,8 @@ impl CliError {
             | Self::Backup(CoordinatorError::Validation(_)) => exit_code::config_error(),
             Self::Backup(_) => exit_code::FAILURE,
             Self::Paths(_) => exit_code::config_error(),
+            Self::Systemd(_) => exit_code::FAILURE,
+            Self::Config(_) | Self::Validation(_) => exit_code::config_error(),
         }
     }
 }
@@ -96,14 +109,11 @@ pub fn execute(cli: Cli) -> Result<ExitCode, CliError> {
         }),
         Some(Command::Backup) => execute_backup(),
         Some(Command::Check) => execute_check(),
-        Some(Command::Service { command }) => {
-            let operation = match command {
-                ServiceCommand::Install => "service install",
-                ServiceCommand::Remove => "service remove",
-                ServiceCommand::Status => "service status",
-            };
-            Err(CliError::NotImplemented { operation })
-        }
+        Some(Command::Service { command }) => match command {
+            ServiceCommand::Install => execute_service_install(),
+            ServiceCommand::Remove => execute_service_remove(),
+            ServiceCommand::Status => execute_service_status(),
+        },
     }
 }
 
@@ -135,6 +145,66 @@ fn execute_check() -> Result<ExitCode, CliError> {
     } else {
         Ok(exit_code::FAILURE)
     }
+}
+
+/// Execute the `service install` command.
+fn execute_service_install() -> Result<ExitCode, CliError> {
+    let paths = AppPaths::from_environment()?;
+    let config = load_and_validate_config(&paths)?;
+    let params = systemd::params_from_config(&config)?;
+    let unit_dir = systemd::user_unit_dir(paths.home());
+
+    systemd::install(&params, &unit_dir)?;
+
+    tracing::info!(
+        timer = crate::app::SYSTEMD_TIMER_UNIT,
+        interval_minutes = config.interval_minutes,
+        "timer installed and started"
+    );
+
+    Ok(exit_code::SUCCESS)
+}
+
+/// Execute the `service remove` command.
+fn execute_service_remove() -> Result<ExitCode, CliError> {
+    let paths = AppPaths::from_environment()?;
+    let unit_dir = systemd::user_unit_dir(paths.home());
+
+    systemd::remove(&unit_dir)?;
+
+    tracing::info!("timer removed");
+
+    Ok(exit_code::SUCCESS)
+}
+
+/// Execute the `service status` command.
+fn execute_service_status() -> Result<ExitCode, CliError> {
+    let paths = AppPaths::from_environment()?;
+    let config = load_and_validate_config(&paths)?;
+    let params = systemd::params_from_config(&config)?;
+    let unit_dir = systemd::user_unit_dir(paths.home());
+
+    let automation_status = systemd::status(&params, &unit_dir)?;
+
+    tracing::info!(status = %automation_status, "automation status");
+
+    match automation_status {
+        systemd::AutomationStatus::Active { .. } => Ok(exit_code::SUCCESS),
+        systemd::AutomationStatus::Installed { .. } => Ok(exit_code::SUCCESS),
+        systemd::AutomationStatus::Failed { .. } => Ok(exit_code::FAILURE),
+        systemd::AutomationStatus::NotInstalled => Ok(exit_code::FAILURE),
+    }
+}
+
+/// Load and validate configuration, returning a CLI-friendly error.
+fn load_and_validate_config(paths: &AppPaths) -> Result<Config, CliError> {
+    let config = Config::load(paths.config_file()).map_err(|e| CliError::Config(Box::new(e)))?;
+    let errors = config.validate();
+    if !errors.is_empty() {
+        let messages: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
+        return Err(CliError::Validation(messages.join("; ")));
+    }
+    Ok(config)
 }
 
 /// Print a human-readable summary of the backup outcome.
@@ -211,33 +281,7 @@ mod tests {
 
     #[test]
     fn reports_unimplemented_operations() {
-        let cases = [
-            (Cli { command: None }, "the TUI"),
-            (
-                Cli {
-                    command: Some(Command::Service {
-                        command: ServiceCommand::Install,
-                    }),
-                },
-                "service install",
-            ),
-            (
-                Cli {
-                    command: Some(Command::Service {
-                        command: ServiceCommand::Remove,
-                    }),
-                },
-                "service remove",
-            ),
-            (
-                Cli {
-                    command: Some(Command::Service {
-                        command: ServiceCommand::Status,
-                    }),
-                },
-                "service status",
-            ),
-        ];
+        let cases = [(Cli { command: None }, "the TUI")];
 
         for (cli, expected_op) in cases {
             let error = execute(cli).expect_err("unimplemented command should return error");
