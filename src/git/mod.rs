@@ -19,6 +19,7 @@ mod init;
 mod ownership;
 mod repository;
 mod runner;
+mod staging;
 mod worktree;
 
 pub use init::{InitAction, InitError, initialize_or_attach, require_usable_state};
@@ -27,4 +28,7 @@ pub use ownership::{
 };
 pub use repository::{BlockingOperation, RepositoryError, RepositoryInfo, validate_repository};
 pub use runner::{GitCommand, GitError, GitOutput, GitRunner};
+pub use staging::{
+    StagingError, has_staged_changes, stage_managed_namespace, verify_staged_boundaries,
+};
 pub use worktree::{WorktreeError, WorktreeStatus, classify_worktree};
