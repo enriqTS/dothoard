@@ -244,23 +244,22 @@ impl App {
 
     /// Remove the source at the given index from configuration.
     fn handle_remove_source(&mut self, idx: usize) {
-        if let Some(ref mut config) = self.config {
-            if idx < config.sources.len() {
-                let removed = config.sources.remove(idx);
-                // Save config.
-                if let Some(ref paths) = self.paths {
-                    let _ = config.save(paths.config_file());
-                }
-                self.sources_screen.mode = screens::sources::Mode::List;
-                self.sources_screen.message = Some(screens::sources::Message {
-                    text: format!("Removed '{}'.", removed.path),
-                    kind: screens::sources::MessageKind::Info,
-                });
-                // Adjust selection if needed.
-                if self.sources_screen.selected >= config.sources.len() && config.sources.len() > 0
-                {
-                    self.sources_screen.selected = config.sources.len() - 1;
-                }
+        if let Some(ref mut config) = self.config
+            && idx < config.sources.len()
+        {
+            let removed = config.sources.remove(idx);
+            // Save config.
+            if let Some(ref paths) = self.paths {
+                let _ = config.save(paths.config_file());
+            }
+            self.sources_screen.mode = screens::sources::Mode::List;
+            self.sources_screen.message = Some(screens::sources::Message {
+                text: format!("Removed '{}'.", removed.path),
+                kind: screens::sources::MessageKind::Info,
+            });
+            // Adjust selection if needed.
+            if self.sources_screen.selected >= config.sources.len() && !config.sources.is_empty() {
+                self.sources_screen.selected = config.sources.len() - 1;
             }
         }
         self.sources_screen.mode = screens::sources::Mode::List;
@@ -268,33 +267,33 @@ impl App {
 
     /// Add a pattern to the source at the given index.
     fn handle_add_pattern(&mut self, src_idx: usize, pattern: String) {
-        if let Some(ref mut config) = self.config {
-            if let Some(source) = config.sources.get_mut(src_idx) {
-                source.ignore.push(pattern.clone());
-                if let Some(ref paths) = self.paths {
-                    let _ = config.save(paths.config_file());
-                }
-                self.ignore_screen.mode = screens::ignore::Mode::List;
-                self.ignore_screen.preview_stale = true;
-                self.ignore_screen.message = Some(format!("Added pattern '{pattern}'."));
+        if let Some(ref mut config) = self.config
+            && let Some(source) = config.sources.get_mut(src_idx)
+        {
+            source.ignore.push(pattern.clone());
+            if let Some(ref paths) = self.paths {
+                let _ = config.save(paths.config_file());
             }
+            self.ignore_screen.mode = screens::ignore::Mode::List;
+            self.ignore_screen.preview_stale = true;
+            self.ignore_screen.message = Some(format!("Added pattern '{pattern}'."));
         }
     }
 
     /// Remove a pattern from the source.
     fn handle_remove_pattern(&mut self, src_idx: usize, pat_idx: usize) {
         if let Some(ref mut config) = self.config {
-            if let Some(source) = config.sources.get_mut(src_idx) {
-                if pat_idx < source.ignore.len() {
-                    let removed = source.ignore.remove(pat_idx);
-                    self.ignore_screen.preview_stale = true;
-                    self.ignore_screen.message = Some(format!("Removed pattern '{removed}'."));
-                    // Adjust selection.
-                    if self.ignore_screen.pattern_idx >= source.ignore.len()
-                        && !source.ignore.is_empty()
-                    {
-                        self.ignore_screen.pattern_idx = source.ignore.len() - 1;
-                    }
+            if let Some(source) = config.sources.get_mut(src_idx)
+                && pat_idx < source.ignore.len()
+            {
+                let removed = source.ignore.remove(pat_idx);
+                self.ignore_screen.preview_stale = true;
+                self.ignore_screen.message = Some(format!("Removed pattern '{removed}'."));
+                // Adjust selection.
+                if self.ignore_screen.pattern_idx >= source.ignore.len()
+                    && !source.ignore.is_empty()
+                {
+                    self.ignore_screen.pattern_idx = source.ignore.len() - 1;
                 }
             }
             // Save config after mutation is complete.
@@ -306,17 +305,16 @@ impl App {
 
     /// Refresh the ignore preview for a source.
     fn handle_refresh_preview(&mut self, src_idx: usize) {
-        if let Some(ref config) = self.config {
-            if let Some(source) = config.sources.get(src_idx) {
-                if let Some(ref paths) = self.paths {
-                    self.ignore_screen.preview = screens::ignore::IgnoreScreen::generate_preview(
-                        &source.path,
-                        &source.ignore,
-                        paths.home(),
-                    );
-                    self.ignore_screen.preview_stale = false;
-                }
-            }
+        if let Some(ref config) = self.config
+            && let Some(source) = config.sources.get(src_idx)
+            && let Some(ref paths) = self.paths
+        {
+            self.ignore_screen.preview = screens::ignore::IgnoreScreen::generate_preview(
+                &source.path,
+                &source.ignore,
+                paths.home(),
+            );
+            self.ignore_screen.preview_stale = false;
         }
     }
 
@@ -498,18 +496,18 @@ impl App {
             match action {
                 screens::automation::Action::Consumed => return,
                 screens::automation::Action::RefreshStatus => {
-                    if let Some(ref config) = self.config {
-                        if let Some(ref paths) = self.paths {
-                            self.automation_screen.refresh_status(config, paths.home());
-                        }
+                    if let Some(ref config) = self.config
+                        && let Some(ref paths) = self.paths
+                    {
+                        self.automation_screen.refresh_status(config, paths.home());
                     }
                     return;
                 }
                 screens::automation::Action::Install => {
-                    if let Some(ref config) = self.config {
-                        if let Some(ref paths) = self.paths {
-                            self.automation_screen.install(config, paths.home());
-                        }
+                    if let Some(ref config) = self.config
+                        && let Some(ref paths) = self.paths
+                    {
+                        self.automation_screen.install(config, paths.home());
                     }
                     return;
                 }

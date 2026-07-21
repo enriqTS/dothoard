@@ -257,10 +257,10 @@ impl IgnoreScreen {
                 let is_dir = entry.is_dir();
                 let match_result = matcher.matches(rel, is_dir);
 
-                let ignored = match &match_result {
-                    crate::backup::ignore::MatchResult::Ignored { .. } => true,
-                    _ => false,
-                };
+                let ignored = matches!(
+                    &match_result,
+                    crate::backup::ignore::MatchResult::Ignored { .. }
+                );
                 let matched_by = match &match_result {
                     crate::backup::ignore::MatchResult::Ignored { pattern } => {
                         Some(pattern.clone())
@@ -294,7 +294,7 @@ fn walk_for_preview(root: &Path) -> std::io::Result<Vec<std::path::PathBuf>> {
 
 /// Recursive helper limited to a max depth.
 fn walk_recursive(
-    root: &Path,
+    _root: &Path,
     current: &Path,
     results: &mut Vec<std::path::PathBuf>,
     max_depth: usize,
@@ -320,7 +320,7 @@ fn walk_recursive(
         results.push(path.clone());
 
         if meta.is_dir() && !meta.is_symlink() {
-            walk_recursive(root, &path, results, max_depth - 1)?;
+            walk_recursive(_root, &path, results, max_depth - 1)?;
         }
 
         if results.len() >= 100 {
