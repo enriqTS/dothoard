@@ -7,14 +7,12 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Current Status
 
-- Active milestone: 7 - TUI (complete).
-- Active task: None; milestone 7 is complete.
-- Next task: H01 - Audit filesystem boundaries (milestone 8, Hardening).
-- Code state: The TUI is fully implemented with 7 screens (Dashboard,
-  Repository, Sources, Ignore, Preview, Automation, History), nonblocking
-  backend execution via thread+channel, screen-specific key handling, and
-  comprehensive rendering tests. All V1 backend capabilities are accessible
-  through the terminal interface.
+- Active milestone: 8 - Hardening (complete).
+- Active task: None; milestone 8 is complete.
+- Next task: D01 - Select licensing and release metadata (milestone 9, Delivery).
+- Code state: All security boundaries have explicit adversarial test coverage.
+  Pre-existing clippy warnings in TUI code fixed (collapsible_if, len_zero,
+  matches! macro, only_used_in_recursion). The complete quality suite passes.
 - Blockers: None.
 
 ## Durable Decisions
@@ -89,24 +87,24 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - No explicit MSRV is selected; use the current stable Rust toolchain until one
   is chosen.
 
-These decisions do not block milestone 8.
+These decisions do not block milestone 9.
 
 ## Next Steps
 
-1. Start H01, Audit filesystem boundaries (milestone 8, Hardening).
-2. Pass adversarial symlink, traversal, deletion, malformed-path, and
-   race-oriented tests.
+1. Start D01, Select licensing and release metadata (milestone 9, Delivery).
+2. Complete and verify Cargo package metadata.
 
 ## Verification
 
 - `cargo fmt --check` — clean
 - `cargo clippy --all-targets --all-features -- -D warnings` — clean
-- `cargo test --lib --all-features` — 595 unit tests passed
-- `cargo test --test bootstrap` — 1 test passed
-- `cargo test --test git_workflow` — 12 tests passed
-- `cargo test --test mirror` — 20 tests passed
-- `cargo test --test orchestration -- --test-threads=1` — 13 tests passed
-- Total: 641 tests (595 unit + 46 integration)
+- `cargo test --all-targets --all-features -- --test-threads=1` — 690 tests passed
+  - 595 unit tests (lib)
+  - 1 bootstrap integration test
+  - 12 git_workflow integration tests
+  - 49 hardening tests
+  - 20 mirror integration tests
+  - 13 orchestration integration tests
 
 ## Update Protocol
 

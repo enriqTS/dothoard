@@ -242,21 +242,21 @@ the TUI (641 tests: 595 unit + 46 integration).
 
 ## 8. Hardening
 
-- [ ] **H01 - Audit filesystem boundaries.** Pass adversarial symlink,
+- [x] **H01 - Audit filesystem boundaries.** Pass adversarial symlink,
   traversal, deletion, malformed-path, and race-oriented tests.
-- [ ] **H02 - Audit Git boundaries.** Prove that unmanaged files cannot be
+- [x] **H02 - Audit Git boundaries.** Prove that unmanaged files cannot be
   staged, modified, discarded, or committed.
-- [ ] **H03 - Audit credential handling.** Ensure logs, errors, state, and
+- [x] **H03 - Audit credential handling.** Ensure logs, errors, state, and
   notifications do not expose credentials or credential-bearing URLs.
-- [ ] **H04 - Test process failures.** Cover timeouts, killed Git commands,
+- [x] **H04 - Test process failures.** Cover timeouts, killed Git commands,
   hook failures, notification failures, and partial filesystem errors.
-- [ ] **H05 - Test shell independence.** Verify equivalent behavior when
+- [x] **H05 - Test shell independence.** Verify equivalent behavior when
   launched from Fish, Bash, and Zsh without shell interpolation.
-- [ ] **H06 - Run the complete quality suite.** Formatting, Clippy, unit tests,
+- [x] **H06 - Run the complete quality suite.** Formatting, Clippy, unit tests,
   integration tests, and systemd verification must pass together.
 
-**Milestone gate:** Security boundaries and failure recovery have explicit test
-coverage and the complete quality suite passes.
+**Milestone gate: Complete.** Security boundaries and failure recovery have
+explicit test coverage and the complete quality suite passes (690 tests).
 
 ## 9. Delivery
 
