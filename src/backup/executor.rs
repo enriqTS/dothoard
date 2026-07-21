@@ -220,17 +220,17 @@ fn normalize_lexical(path: &Path) -> PathBuf {
 /// Creates directories as needed. Validates that no existing parent component
 /// is a symlink before creating missing directories.
 fn ensure_parent_dirs(repository: &Path, destination: &Path) -> ExecutorResult<()> {
-    if let Some(parent) = destination.parent() {
-        if !parent.exists() {
-            fs::create_dir_all(parent).map_err(|source_err| ExecutorError::CreateDir {
-                path: parent.to_path_buf(),
-                source_err,
-            })?;
+    if let Some(parent) = destination.parent()
+        && !parent.exists()
+    {
+        fs::create_dir_all(parent).map_err(|source_err| ExecutorError::CreateDir {
+            path: parent.to_path_buf(),
+            source_err,
+        })?;
 
-            // Re-validate after creation to ensure no symlink was injected
-            // (TOCTOU mitigation — we re-check after directory creation).
-            validate_no_symlinked_parents(repository, destination)?;
-        }
+        // Re-validate after creation to ensure no symlink was injected
+        // (TOCTOU mitigation — we re-check after directory creation).
+        validate_no_symlinked_parents(repository, destination)?;
     }
     Ok(())
 }

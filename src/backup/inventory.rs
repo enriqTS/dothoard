@@ -425,7 +425,7 @@ mod tests {
         let a = inv
             .entries
             .iter()
-            .find(|e| e.relative_path == PathBuf::from("a.txt"))
+            .find(|e| e.relative_path == Path::new("a.txt"))
             .unwrap();
         assert_eq!(a.entry_type, EntryType::RegularFile);
         assert_eq!(a.size, 5);

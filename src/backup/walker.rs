@@ -172,7 +172,7 @@ fn walk_recursive(
             }
         }
     }
-    dir_entries.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+    dir_entries.sort_by_key(|e| e.file_name());
 
     for dir_entry in dir_entries {
         let path = dir_entry.path();
@@ -514,25 +514,21 @@ mod tests {
         // Verify expected entries exist
         let has_file = entries
             .iter()
-            .any(|e| e.relative == PathBuf::from("file.txt") && e.kind == WalkEntryKind::File);
+            .any(|e| e.relative == *"file.txt" && e.kind == WalkEntryKind::File);
         let has_hidden = entries
             .iter()
-            .any(|e| e.relative == PathBuf::from(".hidden") && e.kind == WalkEntryKind::File);
-        let has_executable = entries.iter().any(|e| {
-            e.relative == PathBuf::from("script.sh") && e.kind == WalkEntryKind::ExecutableFile
-        });
+            .any(|e| e.relative == *".hidden" && e.kind == WalkEntryKind::File);
+        let has_executable = entries
+            .iter()
+            .any(|e| e.relative == *"script.sh" && e.kind == WalkEntryKind::ExecutableFile);
         let has_symlink = entries
             .iter()
-            .any(|e| e.relative == PathBuf::from("link") && e.kind == WalkEntryKind::Symlink);
+            .any(|e| e.relative == *"link" && e.kind == WalkEntryKind::Symlink);
         let has_git = entries
             .iter()
-            .any(|e| e.relative == PathBuf::from(".git") && e.kind == WalkEntryKind::GitDirectory);
-        let has_nested = entries
-            .iter()
-            .any(|e| e.relative == PathBuf::from("subdir/nested.txt"));
-        let has_config = entries
-            .iter()
-            .any(|e| e.relative == PathBuf::from(".config/settings"));
+            .any(|e| e.relative == *".git" && e.kind == WalkEntryKind::GitDirectory);
+        let has_nested = entries.iter().any(|e| e.relative == *"subdir/nested.txt");
+        let has_config = entries.iter().any(|e| e.relative == *".config/settings");
 
         assert!(has_file, "missing file.txt");
         assert!(has_hidden, "missing .hidden");
@@ -600,7 +596,7 @@ mod tests {
         assert!(
             entries
                 .iter()
-                .any(|e| e.relative == PathBuf::from(".hidden-dir/sub/file.txt"))
+                .any(|e| e.relative == *".hidden-dir/sub/file.txt")
         );
     }
 }
