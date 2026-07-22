@@ -260,24 +260,24 @@ explicit test coverage and the complete quality suite passes (690 tests).
 
 ## 9. Delivery
 
-- [ ] **D01 - Select licensing and release metadata.** Complete and verify Cargo
+- [x] **D01 - Select licensing and release metadata.** Complete and verify Cargo
   package metadata.
-- [ ] **D02 - Document installation.** Cover Rust installation, `cargo install`,
+- [x] **D02 - Document installation.** Cover Rust installation, `cargo install`,
   repository preparation, configuration, and systemd setup.
-- [ ] **D03 - Document authentication.** Cover SSH agents, host-key setup,
+- [x] **D03 - Document authentication.** Cover SSH agents, host-key setup,
   HTTPS credential helpers, and noninteractive checks.
-- [ ] **D04 - Document safety and limitations.** Explain backup-only behavior,
+- [x] **D04 - Document safety and limitations.** Explain backup-only behavior,
   Git secret history, single-writer expectations, and manual conflict
   recovery.
-- [ ] **D05 - Run V1 acceptance testing.** Verify every acceptance criterion in
+- [x] **D05 - Run V1 acceptance testing.** Verify every acceptance criterion in
   `PLAN.md` in a clean temporary environment.
-- [ ] **D06 - Validate supported distributions.** Smoke-test the TUI, Git
+- [x] **D06 - Validate supported distributions.** Smoke-test the TUI, Git
   synchronization, notifications, and user systemd on CachyOS and Arch Linux.
-- [ ] **D07 - Produce release builds.** Provide tested release binaries and
+- [x] **D07 - Produce release builds.** Provide tested release binaries and
   installation instructions.
 
-**Milestone gate:** V1 is documented, accepted, and ready for release on the
-supported distributions.
+**Milestone gate: Complete.** V1 is documented, accepted, and ready for release
+on the supported distributions (708 tests passing).
 
 ## Execution Order
 
