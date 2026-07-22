@@ -56,6 +56,16 @@ cargo build --release
 cp target/release/dothoard ~/.local/bin/
 ```
 
+Ensure `~/.local/bin` is in your PATH:
+
+```bash
+# fish
+fish_add_path ~/.local/bin
+
+# bash / zsh (add to ~/.bashrc or ~/.zshrc)
+export PATH="$HOME/.local/bin:$PATH"
+```
+
 ### From a Git clone
 
 ```bash
