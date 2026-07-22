@@ -289,7 +289,7 @@ safety boundaries.
   from `TabBar` and `Content` keyboard focus, start on the Dashboard tab bar,
   and implement Left/Right, `h`/`l`, Down/`j`, Enter, Tab, Shift+Tab, and direct
   number-key behavior with interaction tests.
-- [ ] **UX02 - Define screen navigation boundaries.** Let each screen report
+- [x] **UX02 - Define screen navigation boundaries.** Let each screen report
   whether Up/`k` moved locally or reached its upper boundary; preserve modal
   key capture except for global Ctrl+C and the explicit Tab/Shift+Tab focus
   escape, and implement nested navigation for Ignore Rules and boundary

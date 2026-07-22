@@ -10,9 +10,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - All V1 milestones complete (0 through 9).
 - Post-V1 milestone 10 in progress: TUI Usability Improvements.
 - UX01 complete: explicit top-level focus separating tab bar from content.
-- Active task: UX02 - define screen navigation boundaries.
-- Next task: UX03 - build the filesystem-browser model.
-- 727 tests passing (620 unit + 107 integration/acceptance).
+- UX02 complete: screen navigation boundaries with nested ignore focus.
+- Active task: UX03 - build the filesystem-browser model.
+- Next task: UX04 - enforce picker filesystem safety.
+- 640 unit tests + integration tests passing.
 - Release binary: 3.3MB, stripped, LTO-optimized for x86_64 Linux.
 - Blockers: None.
 
@@ -76,6 +77,12 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   enter content; Tab from content returns directly to the tab bar.
 - Up/k leaves content only at its uppermost navigation boundary, including
   nested controls.
+- Ignore screen has nested ListFocus: SourceSelector → PatternList. Up at
+  pattern_idx 0 moves to SourceSelector; Up at SourceSelector returns to tab
+  bar. Left/Right for source switching resets to SourceSelector.
+- Tab and Shift+Tab always return to tab bar even from modal/input states
+  (Repository text input, Sources add/confirm, Ignore add/preview). Screen
+  state is preserved across focus transitions.
 - Repository and source paths will use a shared three-pane filesystem browser;
   Enter opens directories and Space selects an entry.
 - Source browsing is rooted at `$HOME`, shows hidden entries, and never enters
