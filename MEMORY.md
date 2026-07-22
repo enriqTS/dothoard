@@ -1,15 +1,18 @@
 # Project Memory
 
-Last updated: 2026-07-21
+Last updated: 2026-07-22
 
 This file is the concise resume point for ongoing work. Product details belong
 in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Current Status
 
-- All milestones complete (0 through 9).
-- V1 is released: documented, tested, and validated on CachyOS (Arch Linux).
-- 708 tests passing (595 unit + 113 integration/acceptance).
+- All V1 milestones complete (0 through 9).
+- Post-V1 milestone 10 in progress: TUI Usability Improvements.
+- UX01 complete: explicit top-level focus separating tab bar from content.
+- Active task: UX02 - define screen navigation boundaries.
+- Next task: UX03 - build the filesystem-browser model.
+- 727 tests passing (620 unit + 107 integration/acceptance).
 - Release binary: 3.3MB, stripped, LTO-optimized for x86_64 Linux.
 - Blockers: None.
 
@@ -67,20 +70,32 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - TUI uses ratatui + crossterm with 250ms tick rate event loop.
 - TUI has 7 tabs: Dashboard, Repository, Sources, Ignore, Preview, Automation,
   History.
+- Post-V1 TUI navigation separates tab-bar focus from content focus and starts
+  on the Dashboard tab bar.
+- Tab focus uses Left/Right or h/l to select tabs and Down/j, Enter, or Tab to
+  enter content; Tab from content returns directly to the tab bar.
+- Up/k leaves content only at its uppermost navigation boundary, including
+  nested controls.
+- Repository and source paths will use a shared three-pane filesystem browser;
+  Enter opens directories and Space selects an entry.
+- Source browsing is rooted at `$HOME`, shows hidden entries, and never enters
+  symlinked directories. Repository browsing may traverse the local filesystem.
 - Release profile: lto=true, strip=true, codegen-units=1.
 
 ## Verification
 
 - `cargo fmt --check` — clean
 - `cargo clippy --all-targets --all-features -- -D warnings` — clean
-- `cargo test --all-targets --all-features -- --test-threads=1` — 708 tests passed
-  - 595 unit tests (lib)
+- `cargo test --all-targets --all-features` — 620 unit tests passed
+  - 620 unit tests (lib)
   - 18 acceptance tests
   - 1 bootstrap integration test
   - 12 git_workflow integration tests
   - 49 hardening tests
   - 20 mirror integration tests
   - 13 orchestration integration tests
+- Orchestration/acceptance lock-contention races in parallel mode are pre-existing
+  and pass with `--test-threads=1`.
 - Release binary: `target/release/dothoard` (3.3MB, x86_64)
 - Platform: CachyOS (Arch Linux), Rust 1.97.1
 

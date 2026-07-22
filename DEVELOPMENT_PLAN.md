@@ -279,6 +279,60 @@ explicit test coverage and the complete quality suite passes (690 tests).
 **Milestone gate: Complete.** V1 is documented, accepted, and ready for release
 on the supported distributions (708 tests passing).
 
+## 10. TUI Usability Improvements
+
+This post-V1 milestone implements the focus and filesystem-browser behavior in
+`PLAN.md` "Post-V1 TUI Usability" without changing backend backup semantics or
+safety boundaries.
+
+- [x] **UX01 - Introduce explicit top-level focus.** Separate the selected tab
+  from `TabBar` and `Content` keyboard focus, start on the Dashboard tab bar,
+  and implement Left/Right, `h`/`l`, Down/`j`, Enter, Tab, Shift+Tab, and direct
+  number-key behavior with interaction tests.
+- [ ] **UX02 - Define screen navigation boundaries.** Let each screen report
+  whether Up/`k` moved locally or reached its upper boundary; preserve modal
+  key capture except for global Ctrl+C and the explicit Tab/Shift+Tab focus
+  escape, and implement nested navigation for Ignore Rules and boundary
+  behavior for lists and scroll views without resetting screen state.
+- [ ] **UX03 - Build the filesystem-browser model.** Add a reusable three-pane
+  picker with filesystem-native paths, deterministic ordering, hidden entries,
+  parent boundaries, selection and scrolling state, cached shallow listings,
+  metadata errors, and tests using temporary filesystems.
+- [ ] **UX04 - Enforce picker filesystem safety.** Use no-follow metadata,
+  prevent directory traversal through symlinks, identify unsupported special
+  files, reject non-UTF-8 selections cleanly, tolerate disappearing entries,
+  and cover source-root symlinks and boundary failures with tests.
+- [ ] **UX05 - Render and operate the three-pane picker.** Draw parent,
+  directory, and preview/metadata panes with breadcrumbs, entry types,
+  selection, scroll state, and contextual status; implement Arrow/Vim
+  navigation, Enter-to-open, Space-to-select, paging, and narrow-terminal
+  rendering tests.
+- [ ] **UX06 - Integrate repository browsing.** Replace repository path text
+  entry with the picker, validate selected directories using the configured
+  remote and timeout, persist the validated Git worktree root, retain ownership
+  confirmation, and report save failures without false success.
+- [ ] **UX07 - Integrate source browsing.** Replace source path text entry with
+  a `$HOME`-rooted picker, allow regular files, directories, and source-root
+  symlinks, convert selections to validated home-relative paths, and keep the
+  picker open after validation or persistence failure.
+- [ ] **UX08 - Make focus and help visually explicit.** Distinguish focused
+  tabs from active content, show local focus in nested controls, and make the
+  help bar accurate for tab, content, picker, editor, preview, and confirmation
+  modes with style-sensitive rendering tests.
+- [ ] **UX09 - Synchronize dependent TUI state.** After repository or source
+  changes, clamp affected selections, mark backup and ignore previews stale,
+  preserve valid browser state, and test transitions across tabs.
+- [ ] **UX10 - Complete usability acceptance.** Update `README.md`, run the
+  complete formatting, Clippy, and test baseline, and manually smoke-test the
+  focus model and repository/source picker in a real terminal on an Arch-based
+  system.
+
+**Milestone gate:** A user can configure the repository and add files,
+directories, or source-root symlinks without typing a path. Arrow and Vim keys
+navigate tabs and all nested content predictably, Tab always returns from
+content to tab focus, all picker safety tests pass, and the complete quality
+suite remains clean.
+
 ## Execution Order
 
 ```text
@@ -293,6 +347,7 @@ Bootstrap
   -> TUI
   -> Hardening
   -> Delivery
+  -> TUI Usability Improvements
 ```
 
 The explicit naming prerequisite avoids introducing installed paths and unit
