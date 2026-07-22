@@ -29,6 +29,8 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
 /// Draw the tab bar at the top.
 fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
+    use super::Focus;
+
     let titles: Vec<Line> = Screen::ALL
         .iter()
         .enumerate()
@@ -47,19 +49,32 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
         .position(|&s| s == app.active_screen)
         .unwrap_or(0);
 
+    // Highlight style depends on whether the tab bar has focus.
+    let highlight_style = match app.focus {
+        Focus::TabBar => Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+        Focus::Content => Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    };
+
+    // Border style: brighter when focused.
+    let border_style = match app.focus {
+        Focus::TabBar => Style::default().fg(Color::Cyan),
+        Focus::Content => Style::default().fg(Color::DarkGray),
+    };
+
     let tabs = Tabs::new(titles)
         .block(
             Block::default()
                 .borders(Borders::BOTTOM)
+                .border_style(border_style)
                 .title(" dothoard "),
         )
         .select(selected)
         .style(Style::default().fg(Color::White))
-        .highlight_style(
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        );
+        .highlight_style(highlight_style);
 
     frame.render_widget(tabs, area);
 }
@@ -77,57 +92,128 @@ fn draw_screen(frame: &mut Frame, area: Rect, app: &App) {
     }
 }
 
+/// Border style for the active screen block, based on focus.
+fn content_border_style(app: &App) -> Style {
+    match app.focus {
+        super::Focus::Content => Style::default().fg(Color::Cyan),
+        super::Focus::TabBar => Style::default().fg(Color::DarkGray),
+    }
+}
+
 /// Draw the help/status bar at the bottom.
 fn draw_help_bar(frame: &mut Frame, area: Rect, app: &App) {
+    use super::Focus;
+
     let line = if let Some(ref msg) = app.status_message {
         Line::from(vec![
             Span::styled("  ", Style::default()),
             Span::styled(msg.as_str(), Style::default().fg(Color::Yellow)),
         ])
-    } else if app.active_screen == Screen::Dashboard {
-        Line::from(vec![
-            Span::styled("q", Style::default().fg(Color::Cyan)),
-            Span::raw(" quit  "),
-            Span::styled("b", Style::default().fg(Color::Cyan)),
-            Span::raw(" backup  "),
-            Span::styled("c", Style::default().fg(Color::Cyan)),
-            Span::raw(" check  "),
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
-            Span::raw("/"),
-            Span::styled("S-Tab", Style::default().fg(Color::Cyan)),
-            Span::raw(" navigate  "),
-            Span::styled("1-7", Style::default().fg(Color::Cyan)),
-            Span::raw(" jump"),
-        ])
-    } else if app.active_screen == Screen::Repository {
-        Line::from(vec![
-            Span::styled("Enter", Style::default().fg(Color::Cyan)),
-            Span::raw(" validate  "),
-            Span::styled("Ctrl+C", Style::default().fg(Color::Cyan)),
-            Span::raw(" quit  "),
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
-            Span::raw(" next screen"),
-        ])
     } else {
-        Line::from(vec![
-            Span::styled("q", Style::default().fg(Color::Cyan)),
-            Span::raw(" quit  "),
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
-            Span::raw("/"),
-            Span::styled("S-Tab", Style::default().fg(Color::Cyan)),
-            Span::raw(" navigate  "),
-            Span::styled("1-7", Style::default().fg(Color::Cyan)),
-            Span::raw(" jump"),
-        ])
+        match app.focus {
+            Focus::TabBar => help_bar_tab_focus(),
+            Focus::Content => help_bar_content_focus(app),
+        }
     };
 
     let paragraph = Paragraph::new(line);
     frame.render_widget(paragraph, area);
 }
 
+/// Help bar when the tab bar has focus.
+fn help_bar_tab_focus() -> Line<'static> {
+    Line::from(vec![
+        Span::styled("←→/hl", Style::default().fg(Color::Cyan)),
+        Span::raw(" tabs  "),
+        Span::styled("↓/j/Enter", Style::default().fg(Color::Cyan)),
+        Span::raw(" content  "),
+        Span::styled("1-7", Style::default().fg(Color::Cyan)),
+        Span::raw(" jump  "),
+        Span::styled("q", Style::default().fg(Color::Cyan)),
+        Span::raw(" quit"),
+    ])
+}
+
+/// Help bar when content has focus.
+fn help_bar_content_focus(app: &App) -> Line<'static> {
+    match app.active_screen {
+        Screen::Dashboard => Line::from(vec![
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(" tabs  "),
+            Span::styled("b", Style::default().fg(Color::Cyan)),
+            Span::raw(" backup  "),
+            Span::styled("c", Style::default().fg(Color::Cyan)),
+            Span::raw(" check  "),
+            Span::styled("q", Style::default().fg(Color::Cyan)),
+            Span::raw(" quit"),
+        ]),
+        Screen::Repository => Line::from(vec![
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(" tabs  "),
+            Span::styled("Enter", Style::default().fg(Color::Cyan)),
+            Span::raw(" validate  "),
+            Span::styled("Ctrl+C", Style::default().fg(Color::Cyan)),
+            Span::raw(" quit"),
+        ]),
+        Screen::Sources => Line::from(vec![
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(" tabs  "),
+            Span::styled("a", Style::default().fg(Color::Cyan)),
+            Span::raw(" add  "),
+            Span::styled("d", Style::default().fg(Color::Cyan)),
+            Span::raw(" delete  "),
+            Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
+            Span::raw(" navigate"),
+        ]),
+        Screen::Ignore => Line::from(vec![
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(" tabs  "),
+            Span::styled("a", Style::default().fg(Color::Cyan)),
+            Span::raw(" add  "),
+            Span::styled("d", Style::default().fg(Color::Cyan)),
+            Span::raw(" delete  "),
+            Span::styled("p", Style::default().fg(Color::Cyan)),
+            Span::raw(" preview  "),
+            Span::styled("←→/hl", Style::default().fg(Color::Cyan)),
+            Span::raw(" source"),
+        ]),
+        Screen::Preview => Line::from(vec![
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(" tabs  "),
+            Span::styled("r", Style::default().fg(Color::Cyan)),
+            Span::raw(" refresh  "),
+            Span::styled("b", Style::default().fg(Color::Cyan)),
+            Span::raw(" backup  "),
+            Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
+            Span::raw(" scroll"),
+        ]),
+        Screen::Automation => Line::from(vec![
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(" tabs  "),
+            Span::styled("r", Style::default().fg(Color::Cyan)),
+            Span::raw(" refresh  "),
+            Span::styled("i", Style::default().fg(Color::Cyan)),
+            Span::raw(" install  "),
+            Span::styled("x", Style::default().fg(Color::Cyan)),
+            Span::raw(" remove"),
+        ]),
+        Screen::History => Line::from(vec![
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(" tabs  "),
+            Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
+            Span::raw(" navigate  "),
+            Span::styled("q", Style::default().fg(Color::Cyan)),
+            Span::raw(" quit"),
+        ]),
+    }
+}
+
 /// Draw the dashboard screen with real status information.
 fn draw_dashboard(frame: &mut Frame, area: Rect, app: &App) {
-    let block = Block::default().borders(Borders::ALL).title(" Dashboard ");
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(content_border_style(app))
+        .title(" Dashboard ");
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -345,7 +431,10 @@ fn format_time(ts: &chrono::DateTime<chrono::Utc>) -> String {
 fn draw_history(frame: &mut Frame, area: Rect, app: &App) {
     use crate::tui::screens::history::HistoryScreen;
 
-    let block = Block::default().borders(Borders::ALL).title(" History ");
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(content_border_style(app))
+        .title(" History ");
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -496,7 +585,10 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &App) {
 fn draw_automation(frame: &mut Frame, area: Rect, app: &App) {
     use crate::tui::screens::automation::ConfirmAction;
 
-    let block = Block::default().borders(Borders::ALL).title(" Automation ");
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(content_border_style(app))
+        .title(" Automation ");
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -601,6 +693,7 @@ fn draw_preview(frame: &mut Frame, area: Rect, app: &App) {
 
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_style(content_border_style(app))
         .title(" Backup Preview ");
 
     let inner = block.inner(area);
@@ -729,6 +822,7 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &App) {
 
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_style(content_border_style(app))
         .title(" Ignore Rules ");
 
     let inner = block.inner(area);
@@ -895,7 +989,10 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &App) {
 fn draw_sources(frame: &mut Frame, area: Rect, app: &App) {
     use crate::tui::screens::sources::{MessageKind, Mode};
 
-    let block = Block::default().borders(Borders::ALL).title(" Sources ");
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(content_border_style(app))
+        .title(" Sources ");
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -1017,7 +1114,10 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &App) {
 fn draw_repository(frame: &mut Frame, area: Rect, app: &App) {
     use crate::tui::screens::repository::{ConfirmState, OwnershipInfo, ValidationResult};
 
-    let block = Block::default().borders(Borders::ALL).title(" Repository ");
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(content_border_style(app))
+        .title(" Repository ");
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -1738,14 +1838,14 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         let mut app = App::new();
 
-        // Start on Dashboard, tab forward through all screens.
+        // Start on Dashboard with TabBar focus, use Right to navigate tabs.
         for expected in Screen::ALL.iter().skip(1) {
-            app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+            app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
             assert_eq!(app.active_screen, *expected);
 
             terminal
                 .draw(|frame| draw(frame, &app))
-                .expect("draw after tab should not fail");
+                .expect("draw after navigation should not fail");
         }
     }
 
@@ -1792,5 +1892,65 @@ mod tests {
             .iter()
             .map(|cell| cell.symbol().chars().next().unwrap_or(' '))
             .collect()
+    }
+
+    /// Verify help bar reflects tab-bar focus.
+    #[test]
+    fn help_bar_shows_tab_bar_hints_when_tab_focused() {
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let app = App::new(); // Default: TabBar focus, Dashboard.
+        assert_eq!(app.focus, crate::tui::Focus::TabBar);
+
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        // Tab-bar help should mention arrow/tabs navigation and jump.
+        assert!(content.contains("tabs"));
+        assert!(content.contains("content"));
+        assert!(content.contains("jump"));
+    }
+
+    /// Verify help bar reflects content focus.
+    #[test]
+    fn help_bar_shows_content_hints_when_content_focused() {
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = App::new();
+        app.focus = crate::tui::Focus::Content;
+        app.active_screen = Screen::Dashboard;
+
+        terminal
+            .draw(|frame| draw(frame, &app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        // Content help for Dashboard should mention Tab to return and backup/check.
+        assert!(content.contains("Tab"));
+        assert!(content.contains("backup"));
+        assert!(content.contains("check"));
+    }
+
+    /// Verify rendering works correctly for both focus states on every screen.
+    #[test]
+    fn all_screens_render_in_both_focus_states() {
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        for &screen in Screen::ALL {
+            for focus in [crate::tui::Focus::TabBar, crate::tui::Focus::Content] {
+                let mut app = App::new();
+                app.active_screen = screen;
+                app.focus = focus;
+
+                terminal
+                    .draw(|frame| draw(frame, &app))
+                    .unwrap_or_else(|_| panic!("failed on screen {screen:?} with focus {focus:?}"));
+            }
+        }
     }
 }
