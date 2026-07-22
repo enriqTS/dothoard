@@ -42,6 +42,13 @@ Then build and install dothoard:
 cargo install --path .
 ```
 
+Or use the Makefile:
+
+```bash
+make install          # installs to ~/.local/bin/
+make install PREFIX=/usr/local  # installs to /usr/local/bin/
+```
+
 Or build a release binary manually:
 
 ```bash
