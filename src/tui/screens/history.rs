@@ -38,8 +38,11 @@ impl HistoryScreen {
                 if self.selected > 0 {
                     self.selected -= 1;
                     self.scroll = 0;
+                    Action::Consumed
+                } else {
+                    // At upper boundary — let parent handle focus return.
+                    Action::NotConsumed
                 }
-                Action::Consumed
             }
             KeyCode::Down | KeyCode::Char('j') => {
                 if history_len > 0 && self.selected < history_len - 1 {

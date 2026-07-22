@@ -78,9 +78,12 @@ impl SourcesScreen {
                 (_, KeyCode::Up | KeyCode::Char('k')) => {
                     if self.selected > 0 {
                         self.selected -= 1;
+                        self.message = None;
+                        Action::Consumed
+                    } else {
+                        // At upper boundary — let parent handle focus return.
+                        Action::NotConsumed
                     }
-                    self.message = None;
-                    Action::Consumed
                 }
                 (_, KeyCode::Down | KeyCode::Char('j')) => {
                     if source_count > 0 && self.selected < source_count - 1 {
@@ -110,6 +113,11 @@ impl SourcesScreen {
             },
 
             Mode::AddInput => match (key.modifiers, key.code) {
+                // Tab/Shift+Tab escape to tab bar even from input mode.
+                (KeyModifiers::NONE, KeyCode::Tab) | (KeyModifiers::SHIFT, KeyCode::BackTab) => {
+                    Action::NotConsumed
+                }
+
                 // Submit the new source path.
                 (_, KeyCode::Enter) => {
                     let path = self.input.trim().to_string();
@@ -189,9 +197,15 @@ impl SourcesScreen {
                 _ => Action::Consumed, // Swallow unknown keys in input mode.
             },
 
-            Mode::ConfirmDelete => match key.code {
-                KeyCode::Char('y') | KeyCode::Char('Y') => Action::RemoveSource(self.selected),
-                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+            Mode::ConfirmDelete => match (key.modifiers, key.code) {
+                // Tab/Shift+Tab escape to tab bar even from confirmation.
+                (KeyModifiers::NONE, KeyCode::Tab) | (KeyModifiers::SHIFT, KeyCode::BackTab) => {
+                    Action::NotConsumed
+                }
+                (_, KeyCode::Char('y')) | (_, KeyCode::Char('Y')) => {
+                    Action::RemoveSource(self.selected)
+                }
+                (_, KeyCode::Char('n')) | (_, KeyCode::Char('N')) | (_, KeyCode::Esc) => {
                     self.mode = Mode::List;
                     self.message = None;
                     Action::Consumed
@@ -478,5 +492,35 @@ mod tests {
         assert_eq!(screen.selected, 1);
         screen.handle_key(key(KeyCode::Char('k')), 5);
         assert_eq!(screen.selected, 0);
+    }
+
+    #[test]
+    fn up_at_zero_returns_not_consumed() {
+        let mut screen = SourcesScreen::new();
+        screen.selected = 0;
+        let action = screen.handle_key(key(KeyCode::Up), 3);
+        assert_eq!(action, Action::NotConsumed);
+        assert_eq!(screen.selected, 0);
+    }
+
+    #[test]
+    fn tab_in_add_input_returns_not_consumed() {
+        use crossterm::event::KeyModifiers;
+        let mut screen = SourcesScreen::new();
+        screen.mode = Mode::AddInput;
+        screen.input = "partial".to_string();
+        let action = screen.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE), 0);
+        assert_eq!(action, Action::NotConsumed);
+        // Input preserved.
+        assert_eq!(screen.input, "partial");
+    }
+
+    #[test]
+    fn tab_in_confirm_delete_returns_not_consumed() {
+        use crossterm::event::KeyModifiers;
+        let mut screen = SourcesScreen::new();
+        screen.mode = Mode::ConfirmDelete;
+        let action = screen.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE), 3);
+        assert_eq!(action, Action::NotConsumed);
     }
 }

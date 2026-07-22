@@ -1090,12 +1090,10 @@ mod tests {
             }],
         });
         app.history_screen.selected = 0;
-        // Up at the first item: screen reports consumed (doesn't go negative),
-        // but since selected was already 0, in practice the screen consumes it.
-        // Let's verify behavior.
+        // Up at the first item: screen reports NotConsumed, so the parent
+        // content handler detects the boundary and returns to tab bar.
         app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
-        // History screen consumes Up even at position 0, so focus stays content.
-        assert_eq!(app.focus, Focus::Content);
+        assert_eq!(app.focus, Focus::TabBar);
     }
 
     #[test]
@@ -1204,5 +1202,224 @@ mod tests {
         // Re-enter content: selection is preserved.
         app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         assert_eq!(app.sources_screen.selected, 1);
+    }
+
+    // --- UX02: Screen boundary and modal Tab pass-through tests ---
+
+    #[test]
+    fn sources_up_at_top_returns_to_tab_bar() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.focus = Focus::Content;
+        app.active_screen = Screen::Sources;
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![crate::config::SourceConfig {
+                path: ".bashrc".to_string(),
+                ignore: vec![],
+            }],
+        });
+        app.sources_screen.selected = 0;
+        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        assert_eq!(app.focus, Focus::TabBar);
+    }
+
+    #[test]
+    fn sources_down_stays_in_content() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.focus = Focus::Content;
+        app.active_screen = Screen::Sources;
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![
+                crate::config::SourceConfig {
+                    path: ".bashrc".to_string(),
+                    ignore: vec![],
+                },
+                crate::config::SourceConfig {
+                    path: ".zshrc".to_string(),
+                    ignore: vec![],
+                },
+            ],
+        });
+        app.sources_screen.selected = 0;
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        assert_eq!(app.focus, Focus::Content);
+        assert_eq!(app.sources_screen.selected, 1);
+    }
+
+    #[test]
+    fn preview_up_at_scroll_zero_returns_to_tab_bar() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.focus = Focus::Content;
+        app.active_screen = Screen::Preview;
+        app.preview_screen.scroll = 0;
+        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        assert_eq!(app.focus, Focus::TabBar);
+    }
+
+    #[test]
+    fn preview_up_with_scroll_stays_in_content() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.focus = Focus::Content;
+        app.active_screen = Screen::Preview;
+        app.preview_screen.scroll = 3;
+        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        assert_eq!(app.focus, Focus::Content);
+        assert_eq!(app.preview_screen.scroll, 2);
+    }
+
+    #[test]
+    fn repository_tab_escapes_text_input() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.focus = Focus::Content;
+        app.active_screen = Screen::Repository;
+        // Type something in the repo input.
+        app.repo_screen.input = "~/some-repo".to_string();
+        app.repo_screen.cursor = 11;
+        // Tab from text input returns to tab bar.
+        app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        assert_eq!(app.focus, Focus::TabBar);
+        // Input state preserved.
+        assert_eq!(app.repo_screen.input, "~/some-repo");
+    }
+
+    #[test]
+    fn repository_shift_tab_escapes_text_input() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.focus = Focus::Content;
+        app.active_screen = Screen::Repository;
+        app.repo_screen.input = "~/path".to_string();
+        app.handle_key(KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT));
+        assert_eq!(app.focus, Focus::TabBar);
+    }
+
+    #[test]
+    fn sources_tab_escapes_add_input_mode() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.focus = Focus::Content;
+        app.active_screen = Screen::Sources;
+        app.sources_screen.mode = screens::sources::Mode::AddInput;
+        app.sources_screen.input = ".config/partial".to_string();
+        app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        assert_eq!(app.focus, Focus::TabBar);
+        // Input is preserved, mode unchanged (screen state not reset).
+        assert_eq!(app.sources_screen.input, ".config/partial");
+    }
+
+    #[test]
+    fn sources_tab_escapes_confirm_delete() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.focus = Focus::Content;
+        app.active_screen = Screen::Sources;
+        app.sources_screen.mode = screens::sources::Mode::ConfirmDelete;
+        app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        assert_eq!(app.focus, Focus::TabBar);
+    }
+
+    #[test]
+    fn ignore_tab_escapes_add_input_mode() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.focus = Focus::Content;
+        app.active_screen = Screen::Ignore;
+        app.ignore_screen.mode = screens::ignore::Mode::AddInput;
+        app.ignore_screen.input = "*.log".to_string();
+        app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        assert_eq!(app.focus, Focus::TabBar);
+    }
+
+    #[test]
+    fn ignore_tab_escapes_preview_mode() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.focus = Focus::Content;
+        app.active_screen = Screen::Ignore;
+        app.ignore_screen.mode = screens::ignore::Mode::Preview;
+        app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        assert_eq!(app.focus, Focus::TabBar);
+    }
+
+    #[test]
+    fn ignore_nested_boundary_source_to_tab_bar() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.focus = Focus::Content;
+        app.active_screen = Screen::Ignore;
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![crate::config::SourceConfig {
+                path: ".config/fish".to_string(),
+                ignore: vec!["*.log".to_string()],
+            }],
+        });
+        // Start at SourceSelector (default).
+        app.ignore_screen.list_focus = screens::ignore::ListFocus::SourceSelector;
+        // Up from SourceSelector returns to tab bar.
+        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        assert_eq!(app.focus, Focus::TabBar);
+    }
+
+    #[test]
+    fn ignore_nested_boundary_pattern_to_source() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.focus = Focus::Content;
+        app.active_screen = Screen::Ignore;
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![crate::config::SourceConfig {
+                path: ".config/fish".to_string(),
+                ignore: vec!["*.log".to_string(), "*.tmp".to_string()],
+            }],
+        });
+        app.ignore_screen.list_focus = screens::ignore::ListFocus::PatternList;
+        app.ignore_screen.pattern_idx = 0;
+        // Up at pattern_idx 0 moves to SourceSelector, stays in content.
+        app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        assert_eq!(app.focus, Focus::Content);
+        assert_eq!(
+            app.ignore_screen.list_focus,
+            screens::ignore::ListFocus::SourceSelector
+        );
+    }
+
+    #[test]
+    fn repository_tab_escapes_confirmation_dialog() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.focus = Focus::Content;
+        app.active_screen = Screen::Repository;
+        app.repo_screen.confirm_state = screens::repository::ConfirmState::AskInitialize;
+        app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        assert_eq!(app.focus, Focus::TabBar);
+        // Confirmation state is preserved.
+        assert_eq!(
+            app.repo_screen.confirm_state,
+            screens::repository::ConfirmState::AskInitialize
+        );
     }
 }

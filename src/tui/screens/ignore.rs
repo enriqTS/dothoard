@@ -15,6 +15,8 @@ pub struct IgnoreScreen {
     pub mode: Mode,
     /// Index of the selected pattern in the list.
     pub pattern_idx: usize,
+    /// Which nested level has focus within List mode.
+    pub list_focus: ListFocus,
     /// Text input buffer for adding/editing a pattern.
     pub input: String,
     /// Cursor position in the input.
@@ -25,6 +27,15 @@ pub struct IgnoreScreen {
     pub preview_stale: bool,
     /// Feedback message.
     pub message: Option<String>,
+}
+
+/// Within List mode, which nested control has focus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListFocus {
+    /// The source selector row at the top.
+    SourceSelector,
+    /// The pattern list below the source selector.
+    PatternList,
 }
 
 /// A preview entry showing a file and its match status.
@@ -63,6 +74,7 @@ impl IgnoreScreen {
             source_idx: 0,
             mode: Mode::List,
             pattern_idx: 0,
+            list_focus: ListFocus::SourceSelector,
             input: String::new(),
             cursor: 0,
             preview: Vec::new(),
@@ -82,25 +94,42 @@ impl IgnoreScreen {
 
         match self.mode {
             Mode::List => match (key.modifiers, key.code) {
-                // Navigate patterns.
-                (_, KeyCode::Up | KeyCode::Char('k')) => {
-                    if self.pattern_idx > 0 {
-                        self.pattern_idx -= 1;
+                // Navigate patterns or move between nested levels.
+                (_, KeyCode::Up | KeyCode::Char('k')) => match self.list_focus {
+                    ListFocus::PatternList => {
+                        if self.pattern_idx > 0 {
+                            self.pattern_idx -= 1;
+                        } else {
+                            // At top of pattern list — move to source selector.
+                            self.list_focus = ListFocus::SourceSelector;
+                        }
+                        Action::Consumed
                     }
-                    Action::Consumed
-                }
-                (_, KeyCode::Down | KeyCode::Char('j')) => {
-                    if pattern_count > 0 && self.pattern_idx < pattern_count - 1 {
-                        self.pattern_idx += 1;
+                    ListFocus::SourceSelector => {
+                        // At upper boundary — let parent handle focus return.
+                        Action::NotConsumed
                     }
-                    Action::Consumed
-                }
+                },
+                (_, KeyCode::Down | KeyCode::Char('j')) => match self.list_focus {
+                    ListFocus::SourceSelector => {
+                        // Move into the pattern list.
+                        self.list_focus = ListFocus::PatternList;
+                        Action::Consumed
+                    }
+                    ListFocus::PatternList => {
+                        if pattern_count > 0 && self.pattern_idx < pattern_count - 1 {
+                            self.pattern_idx += 1;
+                        }
+                        Action::Consumed
+                    }
+                },
 
-                // Switch source (Left/Right or h/l).
+                // Switch source (Left/Right or h/l) — works in both focus levels.
                 (_, KeyCode::Left | KeyCode::Char('h')) => {
                     if self.source_idx > 0 {
                         self.source_idx -= 1;
                         self.pattern_idx = 0;
+                        self.list_focus = ListFocus::SourceSelector;
                         self.preview_stale = true;
                     }
                     Action::Consumed
@@ -109,6 +138,7 @@ impl IgnoreScreen {
                     if source_count > 0 && self.source_idx < source_count - 1 {
                         self.source_idx += 1;
                         self.pattern_idx = 0;
+                        self.list_focus = ListFocus::SourceSelector;
                         self.preview_stale = true;
                     }
                     Action::Consumed
@@ -138,6 +168,11 @@ impl IgnoreScreen {
             },
 
             Mode::AddInput => match (key.modifiers, key.code) {
+                // Tab/Shift+Tab escape to tab bar even from input mode.
+                (KeyModifiers::NONE, KeyCode::Tab) | (KeyModifiers::SHIFT, KeyCode::BackTab) => {
+                    Action::NotConsumed
+                }
+
                 // Submit the new pattern.
                 (_, KeyCode::Enter) => {
                     let pattern = self.input.clone();
@@ -200,19 +235,23 @@ impl IgnoreScreen {
                 _ => Action::Consumed,
             },
 
-            Mode::Preview => match key.code {
+            Mode::Preview => match (key.modifiers, key.code) {
+                // Tab/Shift+Tab escape to tab bar even from preview mode.
+                (KeyModifiers::NONE, KeyCode::Tab) | (KeyModifiers::SHIFT, KeyCode::BackTab) => {
+                    Action::NotConsumed
+                }
                 // Return to list.
-                KeyCode::Esc | KeyCode::Char('p') | KeyCode::Char('q') => {
+                (_, KeyCode::Esc) | (_, KeyCode::Char('p')) | (_, KeyCode::Char('q')) => {
                     self.mode = Mode::List;
                     Action::Consumed
                 }
                 // Scroll preview.
-                KeyCode::Up | KeyCode::Char('k') => {
+                (_, KeyCode::Up) | (_, KeyCode::Char('k')) => {
                     // Scrolling would be handled by a scroll offset but
                     // for now we just consume the event.
                     Action::Consumed
                 }
-                KeyCode::Down | KeyCode::Char('j') => Action::Consumed,
+                (_, KeyCode::Down) | (_, KeyCode::Char('j')) => Action::Consumed,
                 _ => Action::Consumed,
             },
         }
@@ -363,10 +402,19 @@ mod tests {
     #[test]
     fn up_down_navigates_patterns() {
         let mut screen = IgnoreScreen::new();
+        // Start at SourceSelector; Down enters PatternList.
+        screen.handle_key(key(KeyCode::Down), 3, 1);
+        assert_eq!(screen.list_focus, ListFocus::PatternList);
+        assert_eq!(screen.pattern_idx, 0);
+        // Down again advances pattern_idx.
         screen.handle_key(key(KeyCode::Down), 3, 1);
         assert_eq!(screen.pattern_idx, 1);
+        // Up returns to previous pattern.
         screen.handle_key(key(KeyCode::Up), 3, 1);
         assert_eq!(screen.pattern_idx, 0);
+        // Up at pattern_idx 0 returns to SourceSelector.
+        screen.handle_key(key(KeyCode::Up), 3, 1);
+        assert_eq!(screen.list_focus, ListFocus::SourceSelector);
     }
 
     #[test]
@@ -471,5 +519,41 @@ mod tests {
         let key_entry = entries.iter().find(|e| e.path.contains("id_rsa"));
         assert!(key_entry.is_some());
         assert!(key_entry.unwrap().secret_warning);
+    }
+
+    #[test]
+    fn up_at_source_selector_returns_not_consumed() {
+        let mut screen = IgnoreScreen::new();
+        screen.list_focus = ListFocus::SourceSelector;
+        let action = screen.handle_key(key(KeyCode::Up), 3, 2);
+        assert_eq!(action, Action::NotConsumed);
+    }
+
+    #[test]
+    fn up_at_pattern_zero_moves_to_source_selector() {
+        let mut screen = IgnoreScreen::new();
+        screen.list_focus = ListFocus::PatternList;
+        screen.pattern_idx = 0;
+        let action = screen.handle_key(key(KeyCode::Up), 3, 2);
+        assert_eq!(action, Action::Consumed);
+        assert_eq!(screen.list_focus, ListFocus::SourceSelector);
+    }
+
+    #[test]
+    fn tab_in_add_input_returns_not_consumed() {
+        let mut screen = IgnoreScreen::new();
+        screen.mode = Mode::AddInput;
+        screen.input = "*.log".to_string();
+        let action = screen.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE), 0, 1);
+        assert_eq!(action, Action::NotConsumed);
+        assert_eq!(screen.input, "*.log");
+    }
+
+    #[test]
+    fn tab_in_preview_returns_not_consumed() {
+        let mut screen = IgnoreScreen::new();
+        screen.mode = Mode::Preview;
+        let action = screen.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE), 0, 1);
+        assert_eq!(action, Action::NotConsumed);
     }
 }

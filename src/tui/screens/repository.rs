@@ -115,9 +115,13 @@ impl RepoScreen {
         if self.confirm_state == ConfirmState::AskInitialize
             || self.confirm_state == ConfirmState::AskAttach
         {
-            return match key.code {
-                KeyCode::Char('y') | KeyCode::Char('Y') => KeyResult::Confirm,
-                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+            return match (key.modifiers, key.code) {
+                // Tab/Shift+Tab escape to tab bar even from confirmation.
+                (KeyModifiers::NONE, KeyCode::Tab) | (KeyModifiers::SHIFT, KeyCode::BackTab) => {
+                    KeyResult::NotConsumed
+                }
+                (_, KeyCode::Char('y')) | (_, KeyCode::Char('Y')) => KeyResult::Confirm,
+                (_, KeyCode::Char('n')) | (_, KeyCode::Char('N')) | (_, KeyCode::Esc) => {
                     self.confirm_state = ConfirmState::None;
                     KeyResult::Consumed
                 }
@@ -126,6 +130,10 @@ impl RepoScreen {
         }
 
         match (key.modifiers, key.code) {
+            // Tab/Shift+Tab escape to tab bar even from text input.
+            (KeyModifiers::NONE, KeyCode::Tab) | (KeyModifiers::SHIFT, KeyCode::BackTab) => {
+                KeyResult::NotConsumed
+            }
             // Submit path for validation.
             (_, KeyCode::Enter) => KeyResult::Validate,
 

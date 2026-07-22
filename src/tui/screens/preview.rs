@@ -101,8 +101,11 @@ impl PreviewScreen {
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.scroll > 0 {
                     self.scroll -= 1;
+                    Action::Consumed
+                } else {
+                    // At upper boundary — let parent handle focus return.
+                    Action::NotConsumed
                 }
-                Action::Consumed
             }
             KeyCode::Down | KeyCode::Char('j') => {
                 self.scroll += 1;
