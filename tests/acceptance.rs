@@ -160,8 +160,7 @@ impl AcceptanceEnv {
     }
 
     fn remote_commit_count(&self) -> usize {
-        let cmd =
-            GitCommand::new(&self.repository).args(["rev-list", "--count", "origin/main"]);
+        let cmd = GitCommand::new(&self.repository).args(["rev-list", "--count", "origin/main"]);
         self.runner
             .run(&cmd)
             .unwrap()
@@ -264,8 +263,16 @@ fn ac03_directory_source_is_backed_up() {
     let outcome = env.run_backup();
     assert!(outcome.success);
     assert_eq!(outcome.copies, 2);
-    assert!(env.repository.join("home/.config/hypr/hyprland.conf").exists());
-    assert!(env.repository.join("home/.config/hypr/keybinds.conf").exists());
+    assert!(
+        env.repository
+            .join("home/.config/hypr/hyprland.conf")
+            .exists()
+    );
+    assert!(
+        env.repository
+            .join("home/.config/hypr/keybinds.conf")
+            .exists()
+    );
 }
 
 #[test]
@@ -404,10 +411,7 @@ fn ac05_preview_reports_all_change_types() {
         !changeset.deletions.is_empty(),
         "should report remove.conf as deletion"
     );
-    assert!(
-        !changeset.exclusions.is_empty(),
-        "should report exclusions"
-    );
+    assert!(!changeset.exclusions.is_empty(), "should report exclusions");
 }
 
 // =============================================================================
@@ -524,7 +528,10 @@ fn ac07_offline_commit_preserved_and_pushed_later() {
         let cmd = GitCommand::new(&env.repository).args(["rev-parse", "origin/main"]);
         env.runner.run(&cmd).unwrap().stdout_trimmed().to_string()
     };
-    assert_eq!(local_head, remote_head, "local and remote should be in sync");
+    assert_eq!(
+        local_head, remote_head,
+        "local and remote should be in sync"
+    );
 }
 
 // =============================================================================
@@ -622,8 +629,10 @@ fn ac09_notification_decision_reflects_failure_and_recovery() {
     assert_eq!(urgency, notification::Urgency::Critical);
 
     // Recovery notification: previous state had an error.
-    let mut failed_state = AppState::default();
-    failed_state.latest_error = Some("previous failure".to_string());
+    let failed_state = AppState {
+        latest_error: Some("previous failure".to_string()),
+        ..Default::default()
+    };
     let result = notification::decide_notification(true, None, &failed_state);
     assert!(result.is_some());
     let (summary, _body, urgency) = result.unwrap();
