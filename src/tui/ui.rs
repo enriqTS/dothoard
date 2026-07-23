@@ -147,24 +147,8 @@ fn help_bar_content_focus(app: &App) -> Line<'static> {
             Span::styled("q", Style::default().fg(Color::Cyan)),
             Span::raw(" quit"),
         ]),
-        Screen::Repository => Line::from(vec![
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
-            Span::raw(" tabs  "),
-            Span::styled("Enter", Style::default().fg(Color::Cyan)),
-            Span::raw(" validate  "),
-            Span::styled("Ctrl+C", Style::default().fg(Color::Cyan)),
-            Span::raw(" quit"),
-        ]),
-        Screen::Sources => Line::from(vec![
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
-            Span::raw(" tabs  "),
-            Span::styled("a", Style::default().fg(Color::Cyan)),
-            Span::raw(" add  "),
-            Span::styled("d", Style::default().fg(Color::Cyan)),
-            Span::raw(" delete  "),
-            Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
-            Span::raw(" navigate"),
-        ]),
+        Screen::Repository => help_bar_repository(app),
+        Screen::Sources => help_bar_sources(app),
         Screen::Ignore => Line::from(vec![
             Span::styled("Tab", Style::default().fg(Color::Cyan)),
             Span::raw(" tabs  "),
@@ -204,6 +188,91 @@ fn help_bar_content_focus(app: &App) -> Line<'static> {
             Span::raw(" navigate  "),
             Span::styled("q", Style::default().fg(Color::Cyan)),
             Span::raw(" quit"),
+        ]),
+    }
+}
+
+/// Context-sensitive help for the Repository screen.
+fn help_bar_repository(app: &App) -> Line<'static> {
+    use crate::tui::screens::repository::{ConfirmState, RepoMode};
+
+    if app.repo_screen.confirm_state == ConfirmState::AskInitialize
+        || app.repo_screen.confirm_state == ConfirmState::AskAttach
+    {
+        return Line::from(vec![
+            Span::styled("y", Style::default().fg(Color::Cyan)),
+            Span::raw(" confirm  "),
+            Span::styled("n/Esc", Style::default().fg(Color::Cyan)),
+            Span::raw(" cancel"),
+        ]);
+    }
+
+    match app.repo_screen.mode {
+        RepoMode::Browser => Line::from(vec![
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(" tabs  "),
+            Span::styled("Space", Style::default().fg(Color::Cyan)),
+            Span::raw(" select  "),
+            Span::styled("↑↓←→", Style::default().fg(Color::Cyan)),
+            Span::raw(" navigate  "),
+            Span::styled(":/", Style::default().fg(Color::Cyan)),
+            Span::raw(" text input"),
+        ]),
+        RepoMode::TextInput => Line::from(vec![
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(" tabs  "),
+            Span::styled("Enter", Style::default().fg(Color::Cyan)),
+            Span::raw(" validate  "),
+            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::raw(" browser  "),
+            Span::styled("Ctrl+U", Style::default().fg(Color::Cyan)),
+            Span::raw(" clear"),
+        ]),
+    }
+}
+
+/// Context-sensitive help for the Sources screen.
+fn help_bar_sources(app: &App) -> Line<'static> {
+    use crate::tui::screens::sources::Mode;
+
+    match app.sources_screen.mode {
+        Mode::List => Line::from(vec![
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(" tabs  "),
+            Span::styled("a", Style::default().fg(Color::Cyan)),
+            Span::raw(" add  "),
+            Span::styled("d", Style::default().fg(Color::Cyan)),
+            Span::raw(" delete  "),
+            Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
+            Span::raw(" navigate"),
+        ]),
+        Mode::Browse => Line::from(vec![
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(" tabs  "),
+            Span::styled("Space", Style::default().fg(Color::Cyan)),
+            Span::raw(" select  "),
+            Span::styled("↑↓←→", Style::default().fg(Color::Cyan)),
+            Span::raw(" navigate  "),
+            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::raw(" cancel  "),
+            Span::styled(":/", Style::default().fg(Color::Cyan)),
+            Span::raw(" text"),
+        ]),
+        Mode::AddInput => Line::from(vec![
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(" tabs  "),
+            Span::styled("Enter", Style::default().fg(Color::Cyan)),
+            Span::raw(" add  "),
+            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::raw(" cancel  "),
+            Span::styled("Ctrl+U", Style::default().fg(Color::Cyan)),
+            Span::raw(" clear"),
+        ]),
+        Mode::ConfirmDelete => Line::from(vec![
+            Span::styled("y", Style::default().fg(Color::Cyan)),
+            Span::raw(" confirm  "),
+            Span::styled("n/Esc", Style::default().fg(Color::Cyan)),
+            Span::raw(" cancel"),
         ]),
     }
 }
@@ -2117,5 +2186,129 @@ mod tests {
                     .unwrap_or_else(|_| panic!("failed on screen {screen:?} with focus {focus:?}"));
             }
         }
+    }
+
+    /// Verify help bar shows browser hints for repository in browser mode.
+    #[test]
+    fn help_bar_repository_browser_mode() {
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = App::new();
+        app.focus = crate::tui::Focus::Content;
+        app.active_screen = Screen::Repository;
+        app.repo_screen.mode = crate::tui::screens::repository::RepoMode::Browser;
+
+        terminal
+            .draw(|frame| draw(frame, &mut app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("Space"), "should mention Space for select");
+        assert!(
+            content.contains("text input"),
+            "should mention text input switch"
+        );
+    }
+
+    /// Verify help bar shows text-entry hints for repository in text mode.
+    #[test]
+    fn help_bar_repository_text_mode() {
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = App::new();
+        app.focus = crate::tui::Focus::Content;
+        app.active_screen = Screen::Repository;
+        app.repo_screen.mode = crate::tui::screens::repository::RepoMode::TextInput;
+
+        terminal
+            .draw(|frame| draw(frame, &mut app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("validate"), "should mention validate");
+        assert!(content.contains("browser"), "should mention browser switch");
+    }
+
+    /// Verify help bar shows confirmation hints during repo confirm dialog.
+    #[test]
+    fn help_bar_repository_confirm_mode() {
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = App::new();
+        app.focus = crate::tui::Focus::Content;
+        app.active_screen = Screen::Repository;
+        app.repo_screen.confirm_state =
+            crate::tui::screens::repository::ConfirmState::AskInitialize;
+
+        terminal
+            .draw(|frame| draw(frame, &mut app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("confirm"), "should mention confirm");
+        assert!(content.contains("cancel"), "should mention cancel");
+    }
+
+    /// Verify help bar shows browse hints for sources in browse mode.
+    #[test]
+    fn help_bar_sources_browse_mode() {
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = App::new();
+        app.focus = crate::tui::Focus::Content;
+        app.active_screen = Screen::Sources;
+        app.sources_screen.mode = crate::tui::screens::sources::Mode::Browse;
+
+        terminal
+            .draw(|frame| draw(frame, &mut app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("Space"), "should mention Space for select");
+        assert!(content.contains("cancel"), "should mention cancel");
+    }
+
+    /// Verify help bar shows list hints for sources in list mode.
+    #[test]
+    fn help_bar_sources_list_mode() {
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = App::new();
+        app.focus = crate::tui::Focus::Content;
+        app.active_screen = Screen::Sources;
+        app.sources_screen.mode = crate::tui::screens::sources::Mode::List;
+
+        terminal
+            .draw(|frame| draw(frame, &mut app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("add"), "should mention add");
+        assert!(content.contains("delete"), "should mention delete");
+    }
+
+    /// Verify help bar shows confirm hints for sources in confirm delete mode.
+    #[test]
+    fn help_bar_sources_confirm_mode() {
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = App::new();
+        app.focus = crate::tui::Focus::Content;
+        app.active_screen = Screen::Sources;
+        app.sources_screen.mode = crate::tui::screens::sources::Mode::ConfirmDelete;
+
+        terminal
+            .draw(|frame| draw(frame, &mut app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("confirm"), "should mention confirm");
+        assert!(content.contains("cancel"), "should mention cancel");
     }
 }
