@@ -6,6 +6,7 @@
 
 pub mod browser;
 mod event;
+pub mod picker;
 pub mod screens;
 pub mod task;
 mod terminal;

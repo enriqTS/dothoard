@@ -462,7 +462,7 @@ impl Browser {
 }
 
 /// Result of a successful entry selection.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Selection {
     /// Full path of the selected entry.
     pub path: PathBuf,
