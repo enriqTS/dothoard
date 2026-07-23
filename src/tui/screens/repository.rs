@@ -1,22 +1,39 @@
 //! Repository selection screen state.
 //!
-//! Allows the user to input a repository path, validate it against the
-//! backend (git structure, ownership), and confirm initialization or
-//! attachment.
+//! Allows the user to browse the filesystem or input a repository path,
+//! validate it against the backend (git structure, ownership), and confirm
+//! initialization or attachment.
 
 use std::path::{Path, PathBuf};
+
+use crate::tui::browser::{Browser, BrowserConfig};
+
+/// The interaction mode for repository selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RepoMode {
+    /// Browser-based filesystem navigation (default).
+    Browser,
+    /// Text input for direct path entry.
+    TextInput,
+}
 
 /// The state of the repository selection screen.
 #[derive(Debug)]
 pub struct RepoScreen {
+    /// Current mode: browser or text input.
+    pub mode: RepoMode,
     /// The text input buffer for the repository path.
     pub input: String,
     /// Current cursor position in the input.
     pub cursor: usize,
-    /// Validation result after the user presses Enter.
+    /// The filesystem browser state (for Browser mode).
+    pub browser: Option<Browser>,
+    /// Validation result after the user selects/enters a path.
     pub validation: Option<ValidationResult>,
     /// Whether a confirmation dialog is active.
     pub confirm_state: ConfirmState,
+    /// Error message from a failed selection attempt.
+    pub selection_error: Option<String>,
 }
 
 /// Result of validating the repository path.
@@ -84,13 +101,16 @@ impl Default for RepoScreen {
 }
 
 impl RepoScreen {
-    /// Create a new repository screen, pre-populated with the current config.
+    /// Create a new repository screen, starting in browser mode.
     pub fn new() -> Self {
         Self {
+            mode: RepoMode::Browser,
             input: String::new(),
             cursor: 0,
+            browser: None,
             validation: None,
             confirm_state: ConfirmState::None,
+            selection_error: None,
         }
     }
 
@@ -98,10 +118,37 @@ impl RepoScreen {
     pub fn with_path(path: &str) -> Self {
         let cursor = path.len();
         Self {
+            mode: RepoMode::Browser,
             input: path.to_string(),
             cursor,
+            browser: None,
             validation: None,
             confirm_state: ConfirmState::None,
+            selection_error: None,
+        }
+    }
+
+    /// Initialize the browser if not yet created. Uses `/` as root.
+    pub fn ensure_browser(&mut self, home: &Path) {
+        if self.browser.is_none() {
+            let start = if !self.input.is_empty() {
+                let expanded = expand_tilde(&self.input, home);
+                if expanded.is_dir() {
+                    expanded
+                } else {
+                    expanded
+                        .parent()
+                        .map(|p| p.to_path_buf())
+                        .unwrap_or_else(|| home.to_path_buf())
+                }
+            } else {
+                home.to_path_buf()
+            };
+
+            self.browser = Some(Browser::new(BrowserConfig {
+                root: PathBuf::from("/"),
+                start,
+            }));
         }
     }
 
@@ -129,10 +176,102 @@ impl RepoScreen {
             };
         }
 
+        match self.mode {
+            RepoMode::Browser => self.handle_key_browser(key),
+            RepoMode::TextInput => self.handle_key_text(key),
+        }
+    }
+
+    /// Handle key events in browser mode.
+    fn handle_key_browser(&mut self, key: crossterm::event::KeyEvent) -> KeyResult {
+        use crossterm::event::{KeyCode, KeyModifiers};
+
+        match (key.modifiers, key.code) {
+            // Tab/Shift+Tab escape to tab bar.
+            (KeyModifiers::NONE, KeyCode::Tab) | (KeyModifiers::SHIFT, KeyCode::BackTab) => {
+                KeyResult::NotConsumed
+            }
+            // Switch to text input mode.
+            (_, KeyCode::Char(':')) | (_, KeyCode::Char('/')) => {
+                self.mode = RepoMode::TextInput;
+                KeyResult::Consumed
+            }
+            // Space selects the current directory for validation.
+            (KeyModifiers::NONE, KeyCode::Char(' ')) => {
+                if let Some(ref mut browser) = self.browser {
+                    match browser.try_select() {
+                        Ok(selection) => {
+                            use crate::tui::browser::EntryKind;
+                            if selection.kind == EntryKind::Directory {
+                                // Set the input to the selected path for validation.
+                                self.input = selection.path.to_string_lossy().to_string();
+                                self.cursor = self.input.len();
+                                self.selection_error = None;
+                                return KeyResult::Validate;
+                            } else {
+                                self.selection_error = Some(
+                                    "Only directories can be used as repositories.".to_string(),
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            self.selection_error = Some(e.to_string());
+                        }
+                    }
+                }
+                KeyResult::Consumed
+            }
+            // Delegate all other keys to the picker.
+            _ => {
+                if let Some(ref mut browser) = self.browser {
+                    use crate::tui::picker::{PickerAction, handle_key};
+                    let action = handle_key(browser, key, 20);
+                    match action {
+                        PickerAction::Consumed => KeyResult::Consumed,
+                        PickerAction::Select(Ok(selection)) => {
+                            use crate::tui::browser::EntryKind;
+                            if selection.kind == EntryKind::Directory {
+                                self.input = selection.path.to_string_lossy().to_string();
+                                self.cursor = self.input.len();
+                                self.selection_error = None;
+                                KeyResult::Validate
+                            } else {
+                                self.selection_error = Some(
+                                    "Only directories can be used as repositories.".to_string(),
+                                );
+                                KeyResult::Consumed
+                            }
+                        }
+                        PickerAction::Select(Err(e)) => {
+                            self.selection_error = Some(e.to_string());
+                            KeyResult::Consumed
+                        }
+                        PickerAction::Cancel => {
+                            // Esc in browser mode → pass to parent (quit/escape).
+                            KeyResult::NotConsumed
+                        }
+                        PickerAction::NotConsumed => KeyResult::NotConsumed,
+                    }
+                } else {
+                    KeyResult::NotConsumed
+                }
+            }
+        }
+    }
+
+    /// Handle key events in text input mode.
+    fn handle_key_text(&mut self, key: crossterm::event::KeyEvent) -> KeyResult {
+        use crossterm::event::{KeyCode, KeyModifiers};
+
         match (key.modifiers, key.code) {
             // Tab/Shift+Tab escape to tab bar even from text input.
             (KeyModifiers::NONE, KeyCode::Tab) | (KeyModifiers::SHIFT, KeyCode::BackTab) => {
                 KeyResult::NotConsumed
+            }
+            // Escape returns to browser mode.
+            (_, KeyCode::Esc) => {
+                self.mode = RepoMode::Browser;
+                KeyResult::Consumed
             }
             // Submit path for validation.
             (_, KeyCode::Enter) => KeyResult::Validate,
@@ -347,6 +486,7 @@ mod tests {
     #[test]
     fn typing_inserts_characters() {
         let mut screen = RepoScreen::new();
+        screen.mode = RepoMode::TextInput;
         screen.handle_key(key(KeyCode::Char('/')));
         screen.handle_key(key(KeyCode::Char('t')));
         screen.handle_key(key(KeyCode::Char('m')));
@@ -358,6 +498,7 @@ mod tests {
     #[test]
     fn backspace_deletes_before_cursor() {
         let mut screen = RepoScreen::with_path("/tmp");
+        screen.mode = RepoMode::TextInput;
         screen.handle_key(key(KeyCode::Backspace));
         assert_eq!(screen.input, "/tm");
         assert_eq!(screen.cursor, 3);
@@ -366,6 +507,7 @@ mod tests {
     #[test]
     fn left_right_moves_cursor() {
         let mut screen = RepoScreen::with_path("/tmp");
+        screen.mode = RepoMode::TextInput;
         screen.handle_key(key(KeyCode::Left));
         assert_eq!(screen.cursor, 3);
         screen.handle_key(key(KeyCode::Left));
@@ -377,6 +519,7 @@ mod tests {
     #[test]
     fn home_end_jump_cursor() {
         let mut screen = RepoScreen::with_path("/home/user/repo");
+        screen.mode = RepoMode::TextInput;
         screen.handle_key(key(KeyCode::Home));
         assert_eq!(screen.cursor, 0);
         screen.handle_key(key(KeyCode::End));
@@ -386,6 +529,7 @@ mod tests {
     #[test]
     fn ctrl_u_clears_input() {
         let mut screen = RepoScreen::with_path("/some/path");
+        screen.mode = RepoMode::TextInput;
         screen.handle_key(key_mod(KeyCode::Char('u'), KeyModifiers::CONTROL));
         assert!(screen.input.is_empty());
         assert_eq!(screen.cursor, 0);
@@ -394,6 +538,7 @@ mod tests {
     #[test]
     fn enter_returns_validate() {
         let mut screen = RepoScreen::with_path("/tmp");
+        screen.mode = RepoMode::TextInput;
         let result = screen.handle_key(key(KeyCode::Enter));
         assert_eq!(result, KeyResult::Validate);
     }
@@ -521,5 +666,85 @@ mod tests {
         let result = screen.handle_key(key(KeyCode::Esc));
         assert_eq!(result, KeyResult::Consumed);
         assert_eq!(screen.confirm_state, ConfirmState::None);
+    }
+
+    // --- Browser mode tests ---
+
+    #[test]
+    fn new_screen_defaults_to_browser_mode() {
+        let screen = RepoScreen::new();
+        assert_eq!(screen.mode, RepoMode::Browser);
+    }
+
+    #[test]
+    fn colon_switches_to_text_input() {
+        let mut screen = RepoScreen::new();
+        screen.ensure_browser(Path::new("/tmp"));
+        let result = screen.handle_key(key(KeyCode::Char(':')));
+        assert_eq!(result, KeyResult::Consumed);
+        assert_eq!(screen.mode, RepoMode::TextInput);
+    }
+
+    #[test]
+    fn slash_switches_to_text_input() {
+        let mut screen = RepoScreen::new();
+        screen.ensure_browser(Path::new("/tmp"));
+        let result = screen.handle_key(key(KeyCode::Char('/')));
+        assert_eq!(result, KeyResult::Consumed);
+        assert_eq!(screen.mode, RepoMode::TextInput);
+    }
+
+    #[test]
+    fn esc_in_text_input_returns_to_browser() {
+        let mut screen = RepoScreen::new();
+        screen.mode = RepoMode::TextInput;
+        let result = screen.handle_key(key(KeyCode::Esc));
+        assert_eq!(result, KeyResult::Consumed);
+        assert_eq!(screen.mode, RepoMode::Browser);
+    }
+
+    #[test]
+    fn browser_ensure_creates_browser() {
+        let mut screen = RepoScreen::new();
+        assert!(screen.browser.is_none());
+        screen.ensure_browser(Path::new("/tmp"));
+        assert!(screen.browser.is_some());
+    }
+
+    #[test]
+    fn browser_space_on_directory_validates() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(tmp.path().join("subdir")).unwrap();
+
+        let mut screen = RepoScreen::new();
+        screen.ensure_browser(tmp.path());
+        // Navigate browser to start at the temp dir.
+        if let Some(ref mut browser) = screen.browser {
+            browser.navigate_to(tmp.path());
+            let _ = browser.current_listing();
+            // Select the subdir (should be index 0 since it's the only entry).
+        }
+
+        let result = screen.handle_key(key(KeyCode::Char(' ')));
+        // Should try to validate a directory.
+        assert_eq!(result, KeyResult::Validate);
+    }
+
+    #[test]
+    fn browser_rejects_file_selection() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("file.txt"), "x").unwrap();
+
+        let mut screen = RepoScreen::new();
+        screen.ensure_browser(tmp.path());
+        if let Some(ref mut browser) = screen.browser {
+            browser.navigate_to(tmp.path());
+            let _ = browser.current_listing();
+        }
+
+        let result = screen.handle_key(key(KeyCode::Char(' ')));
+        // Should not validate — only dirs allowed.
+        assert_eq!(result, KeyResult::Consumed);
+        assert!(screen.selection_error.is_some());
     }
 }

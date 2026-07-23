@@ -488,6 +488,11 @@ impl App {
 
     /// Repository content key handling.
     fn handle_repository_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
+        // Ensure the browser is initialized when entering this screen.
+        if let Some(ref paths) = self.paths {
+            self.repo_screen.ensure_browser(paths.home());
+        }
+
         let result = self.repo_screen.handle_key(key);
         match result {
             screens::repository::KeyResult::Consumed => true,

@@ -12,7 +12,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Tabs};
 use super::{App, Screen};
 
 /// Draw the complete UI for one frame.
-pub fn draw(frame: &mut Frame, app: &App) {
+pub fn draw(frame: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -80,7 +80,7 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 /// Dispatch to the active screen's renderer.
-fn draw_screen(frame: &mut Frame, area: Rect, app: &App) {
+fn draw_screen(frame: &mut Frame, area: Rect, app: &mut App) {
     match app.active_screen {
         Screen::Dashboard => draw_dashboard(frame, area, app),
         Screen::Repository => draw_repository(frame, area, app),
@@ -1111,8 +1111,8 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 /// Draw the repository selection screen.
-fn draw_repository(frame: &mut Frame, area: Rect, app: &App) {
-    use crate::tui::screens::repository::{ConfirmState, OwnershipInfo, ValidationResult};
+fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
+    use crate::tui::screens::repository::{RepoMode, ValidationResult};
 
     let block = Block::default()
         .borders(Borders::ALL)
@@ -1122,101 +1122,227 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &App) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let mut lines: Vec<Line> = Vec::new();
+    match app.repo_screen.mode {
+        RepoMode::Browser => {
+            // Split: browser takes most space, status/validation at the bottom.
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Min(5),    // Browser
+                    Constraint::Length(4), // Status/validation area
+                ])
+                .split(inner);
 
-    lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(
-        "  Repository path:",
-        Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD),
-    )));
-    lines.push(Line::from(""));
+            // Draw the filesystem browser.
+            if let Some(ref mut browser) = app.repo_screen.browser {
+                crate::tui::picker::draw(frame, chunks[0], browser);
+            } else {
+                let msg = Paragraph::new(Line::from(Span::styled(
+                    " Loading browser...",
+                    Style::default().fg(Color::DarkGray),
+                )));
+                frame.render_widget(msg, chunks[0]);
+            }
 
-    // Input field with cursor indicator.
-    let input_display = format!("  > {}", app.repo_screen.input);
-    lines.push(Line::from(Span::raw(input_display)));
+            // Status/validation area.
+            let mut lines: Vec<Line> = Vec::new();
 
-    // Cursor position indicator.
-    let cursor_line = format!("  {}^", " ".repeat(app.repo_screen.cursor + 1));
-    lines.push(Line::from(Span::styled(
-        cursor_line,
-        Style::default().fg(Color::DarkGray),
-    )));
-    lines.push(Line::from(""));
+            if let Some(ref err) = app.repo_screen.selection_error {
+                lines.push(Line::from(vec![
+                    Span::raw(" "),
+                    Span::styled(format!("✗ {err}"), Style::default().fg(Color::Red)),
+                ]));
+            }
 
-    // Validation result.
-    match &app.repo_screen.validation {
-        Some(ValidationResult::Valid(info)) => {
-            lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled("✓ Valid repository", Style::default().fg(Color::Green)),
-            ]));
-            lines.push(field_line("    Branch", info.branch.clone()));
-            lines.push(field_line("    Path", info.path.display().to_string()));
-            lines.push(Line::from(""));
-
-            // Ownership info.
-            match &info.ownership {
-                OwnershipInfo::New => {
+            match &app.repo_screen.validation {
+                Some(ValidationResult::Valid(info)) => {
                     lines.push(Line::from(vec![
-                        Span::raw("  "),
-                        Span::styled(
-                            "New namespace — no existing data.",
-                            Style::default().fg(Color::Green),
-                        ),
+                        Span::raw(" "),
+                        Span::styled("✓ Valid repository", Style::default().fg(Color::Green)),
+                        Span::raw(" — "),
+                        Span::styled(&info.branch, Style::default().fg(Color::Cyan)),
+                    ]));
+                    draw_ownership_line(&info.ownership, &mut lines);
+                }
+                Some(ValidationResult::Invalid(msg)) => {
+                    lines.push(Line::from(vec![
+                        Span::raw(" "),
+                        Span::styled(format!("✗ {msg}"), Style::default().fg(Color::Red)),
                     ]));
                 }
-                OwnershipInfo::Owned { sources } => {
-                    lines.push(Line::from(vec![
-                        Span::raw("  "),
-                        Span::styled(
-                            "Existing manifest found.",
-                            Style::default().fg(Color::Yellow),
-                        ),
-                    ]));
-                    lines.push(dim_line(format!("    Sources: {}", sources.len())));
-                    for s in sources.iter().take(5) {
-                        lines.push(dim_line(format!("      • {s}")));
-                    }
-                }
-                OwnershipInfo::InvalidManifest(reason) => {
-                    lines.push(Line::from(vec![
-                        Span::raw("  "),
-                        Span::styled(
-                            format!("✗ Invalid manifest: {reason}"),
-                            Style::default().fg(Color::Red),
-                        ),
-                    ]));
-                }
-                OwnershipInfo::Ambiguous(reason) => {
-                    lines.push(Line::from(vec![
-                        Span::raw("  "),
-                        Span::styled(
-                            format!("✗ Ambiguous: {reason}"),
-                            Style::default().fg(Color::Red),
-                        ),
-                    ]));
+                None => {
+                    lines.push(Line::from(Span::styled(
+                        " Space: select directory │ :/  text input │ ↑↓←→ navigate",
+                        Style::default().fg(Color::DarkGray),
+                    )));
                 }
             }
+
+            // Confirmation dialog overlay.
+            draw_confirm_line(&app.repo_screen.confirm_state, &mut lines);
+
+            let paragraph = Paragraph::new(lines);
+            frame.render_widget(paragraph, chunks[1]);
         }
-        Some(ValidationResult::Invalid(msg)) => {
-            lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled(format!("✗ {msg}"), Style::default().fg(Color::Red)),
-            ]));
-        }
-        None => {
-            lines.push(dim_line("  Press Enter to validate the path."));
+        RepoMode::TextInput => {
+            let mut lines: Vec<Line> = Vec::new();
+
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                "  Repository path (Esc → browser):",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )));
+            lines.push(Line::from(""));
+
+            // Input field with cursor indicator.
+            let input_display = format!("  > {}", app.repo_screen.input);
+            lines.push(Line::from(Span::raw(input_display)));
+
+            // Cursor position indicator.
+            let cursor_line = format!("  {}^", " ".repeat(app.repo_screen.cursor + 1));
+            lines.push(Line::from(Span::styled(
+                cursor_line,
+                Style::default().fg(Color::DarkGray),
+            )));
+            lines.push(Line::from(""));
+
+            // Validation result.
+            match &app.repo_screen.validation {
+                Some(ValidationResult::Valid(info)) => {
+                    lines.push(Line::from(vec![
+                        Span::raw("  "),
+                        Span::styled("✓ Valid repository", Style::default().fg(Color::Green)),
+                    ]));
+                    lines.push(field_line("    Branch", info.branch.clone()));
+                    lines.push(field_line("    Path", info.path.display().to_string()));
+                    lines.push(Line::from(""));
+                    draw_ownership_lines(&info.ownership, &mut lines);
+                }
+                Some(ValidationResult::Invalid(msg)) => {
+                    lines.push(Line::from(vec![
+                        Span::raw("  "),
+                        Span::styled(format!("✗ {msg}"), Style::default().fg(Color::Red)),
+                    ]));
+                }
+                None => {
+                    lines.push(dim_line("  Press Enter to validate the path."));
+                }
+            }
+
+            // Confirmation dialog.
+            draw_confirm_line(&app.repo_screen.confirm_state, &mut lines);
+
+            let paragraph = Paragraph::new(lines);
+            frame.render_widget(paragraph, inner);
         }
     }
+}
 
-    // Confirmation dialog.
-    match app.repo_screen.confirm_state {
-        ConfirmState::AskInitialize => {
-            lines.push(Line::from(""));
+/// Draw a one-line ownership summary.
+fn draw_ownership_line(
+    ownership: &crate::tui::screens::repository::OwnershipInfo,
+    lines: &mut Vec<Line>,
+) {
+    use crate::tui::screens::repository::OwnershipInfo;
+    match ownership {
+        OwnershipInfo::New => {
+            lines.push(Line::from(vec![
+                Span::raw(" "),
+                Span::styled("New namespace", Style::default().fg(Color::Green)),
+            ]));
+        }
+        OwnershipInfo::Owned { sources } => {
+            lines.push(Line::from(vec![
+                Span::raw(" "),
+                Span::styled(
+                    format!("Existing manifest ({} sources)", sources.len()),
+                    Style::default().fg(Color::Yellow),
+                ),
+            ]));
+        }
+        OwnershipInfo::InvalidManifest(reason) => {
+            lines.push(Line::from(vec![
+                Span::raw(" "),
+                Span::styled(
+                    format!("✗ Invalid manifest: {reason}"),
+                    Style::default().fg(Color::Red),
+                ),
+            ]));
+        }
+        OwnershipInfo::Ambiguous(reason) => {
+            lines.push(Line::from(vec![
+                Span::raw(" "),
+                Span::styled(
+                    format!("✗ Ambiguous: {reason}"),
+                    Style::default().fg(Color::Red),
+                ),
+            ]));
+        }
+    }
+}
+
+/// Draw ownership info with detail lines (for text input mode).
+fn draw_ownership_lines(
+    ownership: &crate::tui::screens::repository::OwnershipInfo,
+    lines: &mut Vec<Line>,
+) {
+    use crate::tui::screens::repository::OwnershipInfo;
+    match ownership {
+        OwnershipInfo::New => {
             lines.push(Line::from(vec![
                 Span::raw("  "),
+                Span::styled(
+                    "New namespace — no existing data.",
+                    Style::default().fg(Color::Green),
+                ),
+            ]));
+        }
+        OwnershipInfo::Owned { sources } => {
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(
+                    "Existing manifest found.",
+                    Style::default().fg(Color::Yellow),
+                ),
+            ]));
+            lines.push(dim_line(format!("    Sources: {}", sources.len())));
+            for s in sources.iter().take(5) {
+                lines.push(dim_line(format!("      • {s}")));
+            }
+        }
+        OwnershipInfo::InvalidManifest(reason) => {
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(
+                    format!("✗ Invalid manifest: {reason}"),
+                    Style::default().fg(Color::Red),
+                ),
+            ]));
+        }
+        OwnershipInfo::Ambiguous(reason) => {
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(
+                    format!("✗ Ambiguous: {reason}"),
+                    Style::default().fg(Color::Red),
+                ),
+            ]));
+        }
+    }
+}
+
+/// Draw confirmation dialog line.
+fn draw_confirm_line(
+    confirm_state: &crate::tui::screens::repository::ConfirmState,
+    lines: &mut Vec<Line>,
+) {
+    use crate::tui::screens::repository::ConfirmState;
+    match confirm_state {
+        ConfirmState::AskInitialize => {
+            lines.push(Line::from(vec![
+                Span::raw(" "),
                 Span::styled(
                     "Initialize this repository? (y/n)",
                     Style::default()
@@ -1226,9 +1352,8 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &App) {
             ]));
         }
         ConfirmState::AskAttach => {
-            lines.push(Line::from(""));
             lines.push(Line::from(vec![
-                Span::raw("  "),
+                Span::raw(" "),
                 Span::styled(
                     "Attach to this repository? (y/n)",
                     Style::default()
@@ -1238,9 +1363,8 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &App) {
             ]));
         }
         ConfirmState::Done => {
-            lines.push(Line::from(""));
             lines.push(Line::from(vec![
-                Span::raw("  "),
+                Span::raw(" "),
                 Span::styled(
                     "✓ Repository configured.",
                     Style::default().fg(Color::Green),
@@ -1249,9 +1373,6 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &App) {
         }
         ConfirmState::None => {}
     }
-
-    let paragraph = Paragraph::new(lines);
-    frame.render_widget(paragraph, inner);
 }
 
 #[cfg(test)]
@@ -1295,10 +1416,10 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
 
         for &screen in Screen::ALL {
-            let app = app_on(screen);
+            let mut app = app_on(screen);
 
             terminal
-                .draw(|frame| draw(frame, &app))
+                .draw(|frame| draw(frame, &mut app))
                 .expect("draw should not fail");
         }
     }
@@ -1309,10 +1430,10 @@ mod tests {
         let backend = TestBackend::new(100, 30);
         let mut terminal = Terminal::new(backend).unwrap();
 
-        let app = app_on(Screen::Automation);
+        let mut app = app_on(Screen::Automation);
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
     }
 
@@ -1322,10 +1443,10 @@ mod tests {
         let backend = TestBackend::new(100, 30);
         let mut terminal = Terminal::new(backend).unwrap();
 
-        let app = app_with_state();
+        let mut app = app_with_state();
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let buffer = terminal.backend().buffer().clone();
@@ -1345,10 +1466,10 @@ mod tests {
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
 
-        let app = app_on(Screen::Dashboard);
+        let mut app = app_on(Screen::Dashboard);
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let buffer = terminal.backend().buffer().clone();
@@ -1372,7 +1493,7 @@ mod tests {
         }
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let buffer = terminal.backend().buffer().clone();
@@ -1396,7 +1517,7 @@ mod tests {
         }
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let buffer = terminal.backend().buffer().clone();
@@ -1418,7 +1539,7 @@ mod tests {
         app.tasks.active = Some(task::TaskKind::Backup);
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let buffer = terminal.backend().buffer().clone();
@@ -1440,7 +1561,7 @@ mod tests {
         app.status_message = Some("Test status message".to_string());
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let buffer = terminal.backend().buffer().clone();
@@ -1458,9 +1579,9 @@ mod tests {
         let backend = TestBackend::new(20, 5);
         let mut terminal = Terminal::new(backend).unwrap();
 
-        let app = App::new();
+        let mut app = App::new();
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("should handle small terminal");
     }
 
@@ -1474,9 +1595,10 @@ mod tests {
 
         let mut app = app_on(Screen::Repository);
         app.repo_screen = crate::tui::screens::repository::RepoScreen::with_path("~/my-repo");
+        app.repo_screen.mode = crate::tui::screens::repository::RepoMode::TextInput;
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
@@ -1497,7 +1619,7 @@ mod tests {
             ));
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
@@ -1515,7 +1637,7 @@ mod tests {
             crate::tui::screens::repository::ConfirmState::AskInitialize;
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
@@ -1548,7 +1670,7 @@ mod tests {
         });
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
@@ -1562,10 +1684,10 @@ mod tests {
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
 
-        let app = app_on(Screen::Sources);
+        let mut app = app_on(Screen::Sources);
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
@@ -1583,7 +1705,7 @@ mod tests {
         app.sources_screen.input = ".config/waybar".to_string();
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
@@ -1610,7 +1732,7 @@ mod tests {
         });
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
@@ -1653,7 +1775,7 @@ mod tests {
         ];
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
@@ -1666,10 +1788,10 @@ mod tests {
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
 
-        let app = app_on(Screen::Preview);
+        let mut app = app_on(Screen::Preview);
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
@@ -1705,7 +1827,7 @@ mod tests {
         });
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
@@ -1725,7 +1847,7 @@ mod tests {
         app.config = Some(crate::config::Config::new("~/repo"));
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
@@ -1743,7 +1865,7 @@ mod tests {
         app.automation_screen.confirm = crate::tui::screens::automation::ConfirmAction::Install;
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
@@ -1787,7 +1909,7 @@ mod tests {
         });
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
@@ -1801,10 +1923,10 @@ mod tests {
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
 
-        let app = app_on(Screen::History);
+        let mut app = app_on(Screen::History);
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
@@ -1821,9 +1943,9 @@ mod tests {
             let mut terminal = Terminal::new(backend).unwrap();
 
             for &screen in Screen::ALL {
-                let app = app_on(screen);
+                let mut app = app_on(screen);
                 terminal
-                    .draw(|frame| draw(frame, &app))
+                    .draw(|frame| draw(frame, &mut app))
                     .unwrap_or_else(|_| panic!("failed on screen {screen:?} at {w}x{h}"));
             }
         }
@@ -1844,7 +1966,7 @@ mod tests {
             assert_eq!(app.active_screen, *expected);
 
             terminal
-                .draw(|frame| draw(frame, &app))
+                .draw(|frame| draw(frame, &mut app))
                 .expect("draw after navigation should not fail");
         }
     }
@@ -1877,7 +1999,7 @@ mod tests {
         assert!(app.status_message.as_ref().unwrap().contains("success"));
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw after backup result should not fail");
 
         let content = buffer_text(terminal.backend());
@@ -1900,11 +2022,11 @@ mod tests {
         let backend = TestBackend::new(100, 30);
         let mut terminal = Terminal::new(backend).unwrap();
 
-        let app = App::new(); // Default: TabBar focus, Dashboard.
+        let mut app = App::new(); // Default: TabBar focus, Dashboard.
         assert_eq!(app.focus, crate::tui::Focus::TabBar);
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
@@ -1925,7 +2047,7 @@ mod tests {
         app.active_screen = Screen::Dashboard;
 
         terminal
-            .draw(|frame| draw(frame, &app))
+            .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
@@ -1948,7 +2070,7 @@ mod tests {
                 app.focus = focus;
 
                 terminal
-                    .draw(|frame| draw(frame, &app))
+                    .draw(|frame| draw(frame, &mut app))
                     .unwrap_or_else(|_| panic!("failed on screen {screen:?} with focus {focus:?}"));
             }
         }

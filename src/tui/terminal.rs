@@ -41,7 +41,7 @@ fn run_loop(terminal: &mut Term) -> io::Result<()> {
         // Poll for completed background tasks before drawing.
         app.poll_tasks();
 
-        terminal.draw(|frame| ui::draw(frame, &app))?;
+        terminal.draw(|frame| ui::draw(frame, &mut app))?;
 
         match next_event()? {
             AppEvent::Key(key) => app.handle_key(key),
