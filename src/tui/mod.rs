@@ -244,6 +244,9 @@ impl App {
                             screens::sources::MessageKind::Info
                         },
                     });
+                    // Mark previews stale after source change.
+                    self.preview_screen.stale = true;
+                    self.ignore_screen.preview_stale = true;
                 }
                 Err(e) => {
                     self.sources_screen.message = Some(screens::sources::Message {
@@ -275,10 +278,21 @@ impl App {
                 text: format!("Removed '{}'.", removed.path),
                 kind: screens::sources::MessageKind::Info,
             });
-            // Adjust selection if needed.
+            // Adjust source list selection.
             if self.sources_screen.selected >= config.sources.len() && !config.sources.is_empty() {
                 self.sources_screen.selected = config.sources.len() - 1;
             }
+            // Clamp ignore screen's source index.
+            if config.sources.is_empty() {
+                self.ignore_screen.source_idx = 0;
+                self.ignore_screen.pattern_idx = 0;
+            } else if self.ignore_screen.source_idx >= config.sources.len() {
+                self.ignore_screen.source_idx = config.sources.len() - 1;
+                self.ignore_screen.pattern_idx = 0;
+            }
+            // Mark previews stale.
+            self.preview_screen.stale = true;
+            self.ignore_screen.preview_stale = true;
         }
         self.sources_screen.mode = screens::sources::Mode::List;
     }
@@ -1442,6 +1456,232 @@ mod tests {
         assert_eq!(
             app.repo_screen.confirm_state,
             screens::repository::ConfirmState::AskInitialize
+        );
+    }
+
+    // --- UX09: Dependent state synchronization tests ---
+
+    #[test]
+    fn add_source_marks_preview_stale() {
+        let mut app = test_app();
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+
+        // Setup: create a source directory and configure paths.
+        std::fs::create_dir(home.join(".config")).unwrap();
+        std::fs::create_dir_all(home.join(".local/share/dothoard")).unwrap();
+        std::fs::create_dir_all(home.join(".config/dothoard")).unwrap();
+        std::fs::create_dir_all(home.join(".run")).unwrap();
+        app.paths = Some(
+            crate::paths::AppPaths::resolve(crate::paths::PathInputs {
+                home: Some(home.to_path_buf()),
+                config_dir: Some(home.join(".config/dothoard")),
+                state_dir: Some(home.join(".local/share/dothoard")),
+                runtime_dir: Some(home.join(".run")),
+                use_environment: false,
+            })
+            .unwrap(),
+        );
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: Vec::new(),
+        });
+        app.preview_screen.stale = false;
+        app.ignore_screen.preview_stale = false;
+
+        // Add a source.
+        app.handle_add_source(".config".to_string());
+
+        // Preview should be marked stale.
+        assert!(app.preview_screen.stale);
+        assert!(app.ignore_screen.preview_stale);
+    }
+
+    #[test]
+    fn remove_source_marks_preview_stale() {
+        let mut app = test_app();
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![
+                crate::config::SourceConfig {
+                    path: ".bashrc".to_string(),
+                    ignore: vec![],
+                },
+                crate::config::SourceConfig {
+                    path: ".zshrc".to_string(),
+                    ignore: vec![],
+                },
+            ],
+        });
+        app.preview_screen.stale = false;
+
+        app.handle_remove_source(0);
+
+        assert!(app.preview_screen.stale);
+        assert!(app.ignore_screen.preview_stale);
+    }
+
+    #[test]
+    fn remove_source_clamps_sources_selection() {
+        let mut app = test_app();
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![
+                crate::config::SourceConfig {
+                    path: ".bashrc".to_string(),
+                    ignore: vec![],
+                },
+                crate::config::SourceConfig {
+                    path: ".zshrc".to_string(),
+                    ignore: vec![],
+                },
+            ],
+        });
+        app.sources_screen.selected = 1; // pointing at last item
+
+        app.handle_remove_source(1);
+
+        // Selection should be clamped to 0 (only 1 item left).
+        assert_eq!(app.sources_screen.selected, 0);
+    }
+
+    #[test]
+    fn remove_source_clamps_ignore_source_idx() {
+        let mut app = test_app();
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![
+                crate::config::SourceConfig {
+                    path: ".bashrc".to_string(),
+                    ignore: vec!["*.log".to_string()],
+                },
+                crate::config::SourceConfig {
+                    path: ".zshrc".to_string(),
+                    ignore: vec![],
+                },
+            ],
+        });
+        app.ignore_screen.source_idx = 1;
+        app.ignore_screen.pattern_idx = 0;
+
+        app.handle_remove_source(1);
+
+        // Ignore screen source index should be clamped.
+        assert_eq!(app.ignore_screen.source_idx, 0);
+    }
+
+    #[test]
+    fn remove_all_sources_resets_ignore_indices() {
+        let mut app = test_app();
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![crate::config::SourceConfig {
+                path: ".bashrc".to_string(),
+                ignore: vec!["*.tmp".to_string()],
+            }],
+        });
+        app.ignore_screen.source_idx = 0;
+        app.ignore_screen.pattern_idx = 0;
+
+        app.handle_remove_source(0);
+
+        assert_eq!(app.ignore_screen.source_idx, 0);
+        assert_eq!(app.ignore_screen.pattern_idx, 0);
+    }
+
+    #[test]
+    fn browser_state_preserved_across_tab_switches() {
+        let mut app = test_app();
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+        std::fs::create_dir(home.join("dir_a")).unwrap();
+        std::fs::create_dir(home.join("dir_b")).unwrap();
+        std::fs::write(home.join("file.txt"), "x").unwrap();
+
+        app.repo_screen.ensure_browser(home);
+
+        // Move down in the browser.
+        if let Some(ref mut browser) = app.repo_screen.browser {
+            browser.move_down();
+            browser.move_down();
+        }
+        let saved_selected = app.repo_screen.browser.as_ref().unwrap().selected();
+        assert!(saved_selected > 0);
+
+        // Switch to another tab and back.
+        app.focus = Focus::TabBar;
+        app.active_screen = Screen::Dashboard;
+        app.active_screen = Screen::Repository;
+        app.focus = Focus::Content;
+
+        // Browser selection should be preserved.
+        assert_eq!(
+            app.repo_screen.browser.as_ref().unwrap().selected(),
+            saved_selected
+        );
+    }
+
+    #[test]
+    fn source_add_failure_keeps_error_message() {
+        let mut app = test_app();
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+        std::fs::create_dir(home.join(".config")).unwrap();
+        std::fs::create_dir_all(home.join(".local/share/dothoard")).unwrap();
+        std::fs::create_dir_all(home.join(".config/dothoard")).unwrap();
+        std::fs::create_dir_all(home.join(".run")).unwrap();
+
+        app.paths = Some(
+            crate::paths::AppPaths::resolve(crate::paths::PathInputs {
+                home: Some(home.to_path_buf()),
+                config_dir: Some(home.join(".config/dothoard")),
+                state_dir: Some(home.join(".local/share/dothoard")),
+                runtime_dir: Some(home.join(".run")),
+                use_environment: false,
+            })
+            .unwrap(),
+        );
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![crate::config::SourceConfig {
+                path: ".config".to_string(),
+                ignore: vec![],
+            }],
+        });
+
+        // Try to add a duplicate source (will fail validation).
+        app.sources_screen.mode = screens::sources::Mode::Browse;
+        app.handle_add_source(".config".to_string());
+
+        // On failure, the message should indicate the error.
+        assert!(app.sources_screen.message.is_some());
+        assert_eq!(
+            app.sources_screen.message.as_ref().unwrap().kind,
+            screens::sources::MessageKind::Error,
         );
     }
 }
