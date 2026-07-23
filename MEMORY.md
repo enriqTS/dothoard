@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-07-22
+Last updated: 2026-07-23
 
 This file is the concise resume point for ongoing work. Product details belong
 in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
@@ -8,14 +8,12 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 ## Current Status
 
 - All V1 milestones complete (0 through 9).
-- Post-V1 milestone 10 in progress: TUI Usability Improvements.
-- UX01 complete: explicit top-level focus separating tab bar from content.
-- UX02 complete: screen navigation boundaries with nested ignore focus.
-- Active task: UX03 - build the filesystem-browser model.
-- Next task: UX04 - enforce picker filesystem safety.
-- 640 unit tests + integration tests passing.
+- Post-V1 milestone 10 complete: TUI Usability Improvements.
+- UX01–UX10 all complete.
+- 743 unit tests + integration tests passing.
 - Release binary: 3.3MB, stripped, LTO-optimized for x86_64 Linux.
 - Blockers: None.
+- No active task — milestone 10 is fully delivered.
 
 ## Durable Decisions
 
@@ -83,18 +81,26 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Tab and Shift+Tab always return to tab bar even from modal/input states
   (Repository text input, Sources add/confirm, Ignore add/preview). Screen
   state is preserved across focus transitions.
-- Repository and source paths will use a shared three-pane filesystem browser;
+- Repository and source paths use a shared three-pane filesystem browser;
   Enter opens directories and Space selects an entry.
 - Source browsing is rooted at `$HOME`, shows hidden entries, and never enters
   symlinked directories. Repository browsing may traverse the local filesystem.
+- Browser uses ranger/yazi-style three-pane layout: parent context, current
+  entries, and preview/metadata. Entries sorted dirs-first, case-insensitive.
+- Browser validates selections: rejects non-UTF-8, special files, and
+  disappeared entries; re-checks with symlink_metadata at selection time.
+- Help bar is context-sensitive: shows mode-appropriate shortcuts for browser,
+  text input, and confirmation states.
+- Source/repository changes mark preview and ignore previews stale and clamp
+  dependent screen selections (sources list, ignore source index).
 - Release profile: lto=true, strip=true, codegen-units=1.
 
 ## Verification
 
 - `cargo fmt --check` — clean
 - `cargo clippy --all-targets --all-features -- -D warnings` — clean
-- `cargo test --all-targets --all-features` — 620 unit tests passed
-  - 620 unit tests (lib)
+- `cargo test --all-targets --all-features` — 743 unit tests passed
+  - 743 unit tests (lib) including browser, picker, and state-sync tests
   - 18 acceptance tests
   - 1 bootstrap integration test
   - 12 git_workflow integration tests

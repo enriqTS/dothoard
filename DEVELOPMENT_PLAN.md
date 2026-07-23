@@ -294,40 +294,40 @@ safety boundaries.
   key capture except for global Ctrl+C and the explicit Tab/Shift+Tab focus
   escape, and implement nested navigation for Ignore Rules and boundary
   behavior for lists and scroll views without resetting screen state.
-- [ ] **UX03 - Build the filesystem-browser model.** Add a reusable three-pane
+- [x] **UX03 - Build the filesystem-browser model.** Add a reusable three-pane
   picker with filesystem-native paths, deterministic ordering, hidden entries,
   parent boundaries, selection and scrolling state, cached shallow listings,
   metadata errors, and tests using temporary filesystems.
-- [ ] **UX04 - Enforce picker filesystem safety.** Use no-follow metadata,
+- [x] **UX04 - Enforce picker filesystem safety.** Use no-follow metadata,
   prevent directory traversal through symlinks, identify unsupported special
   files, reject non-UTF-8 selections cleanly, tolerate disappearing entries,
   and cover source-root symlinks and boundary failures with tests.
-- [ ] **UX05 - Render and operate the three-pane picker.** Draw parent,
+- [x] **UX05 - Render and operate the three-pane picker.** Draw parent,
   directory, and preview/metadata panes with breadcrumbs, entry types,
   selection, scroll state, and contextual status; implement Arrow/Vim
   navigation, Enter-to-open, Space-to-select, paging, and narrow-terminal
   rendering tests.
-- [ ] **UX06 - Integrate repository browsing.** Replace repository path text
+- [x] **UX06 - Integrate repository browsing.** Replace repository path text
   entry with the picker, validate selected directories using the configured
   remote and timeout, persist the validated Git worktree root, retain ownership
   confirmation, and report save failures without false success.
-- [ ] **UX07 - Integrate source browsing.** Replace source path text entry with
+- [x] **UX07 - Integrate source browsing.** Replace source path text entry with
   a `$HOME`-rooted picker, allow regular files, directories, and source-root
   symlinks, convert selections to validated home-relative paths, and keep the
   picker open after validation or persistence failure.
-- [ ] **UX08 - Make focus and help visually explicit.** Distinguish focused
+- [x] **UX08 - Make focus and help visually explicit.** Distinguish focused
   tabs from active content, show local focus in nested controls, and make the
   help bar accurate for tab, content, picker, editor, preview, and confirmation
   modes with style-sensitive rendering tests.
-- [ ] **UX09 - Synchronize dependent TUI state.** After repository or source
+- [x] **UX09 - Synchronize dependent TUI state.** After repository or source
   changes, clamp affected selections, mark backup and ignore previews stale,
   preserve valid browser state, and test transitions across tabs.
-- [ ] **UX10 - Complete usability acceptance.** Update `README.md`, run the
+- [x] **UX10 - Complete usability acceptance.** Update `README.md`, run the
   complete formatting, Clippy, and test baseline, and manually smoke-test the
   focus model and repository/source picker in a real terminal on an Arch-based
   system.
 
-**Milestone gate:** A user can configure the repository and add files,
+**Milestone gate: Complete.** A user can configure the repository and add files,
 directories, or source-root symlinks without typing a path. Arrow and Vim keys
 navigate tabs and all nested content predictably, Tab always returns from
 content to tab focus, all picker safety tests pass, and the complete quality
