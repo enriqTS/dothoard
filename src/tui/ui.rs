@@ -986,7 +986,7 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 /// Draw the sources management screen.
-fn draw_sources(frame: &mut Frame, area: Rect, app: &App) {
+fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
     use crate::tui::screens::sources::{MessageKind, Mode};
 
     let block = Block::default()
@@ -996,6 +996,49 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &App) {
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
+
+    // In Browse mode, show the filesystem picker.
+    if app.sources_screen.mode == Mode::Browse {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(5),    // Browser
+                Constraint::Length(3), // Status/message area
+            ])
+            .split(inner);
+
+        if let Some(ref mut browser) = app.sources_screen.browser {
+            crate::tui::picker::draw(frame, chunks[0], browser);
+        } else {
+            let msg = Paragraph::new(Line::from(Span::styled(
+                " Loading browser...",
+                Style::default().fg(Color::DarkGray),
+            )));
+            frame.render_widget(msg, chunks[0]);
+        }
+
+        // Status area.
+        let mut status_lines: Vec<Line> = Vec::new();
+        if let Some(ref msg) = app.sources_screen.message {
+            let color = match msg.kind {
+                MessageKind::Info => Color::Green,
+                MessageKind::Warning => Color::Yellow,
+                MessageKind::Error => Color::Red,
+            };
+            status_lines.push(Line::from(vec![
+                Span::raw(" "),
+                Span::styled(msg.text.clone(), Style::default().fg(color)),
+            ]));
+        } else {
+            status_lines.push(Line::from(Span::styled(
+                " Space: select │ :/  text input │ Esc: cancel │ ↑↓←→ navigate",
+                Style::default().fg(Color::DarkGray),
+            )));
+        }
+        let paragraph = Paragraph::new(status_lines);
+        frame.render_widget(paragraph, chunks[1]);
+        return;
+    }
 
     let mut lines: Vec<Line> = Vec::new();
 

@@ -551,10 +551,25 @@ impl App {
 
     /// Sources content key handling.
     fn handle_sources_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
+        // Ensure browser is initialized when in browse mode.
+        if self.sources_screen.mode == screens::sources::Mode::Browse {
+            if let Some(ref paths) = self.paths {
+                self.sources_screen.ensure_browser(paths.home());
+            }
+        }
+
         let source_count = self.config.as_ref().map(|c| c.sources.len()).unwrap_or(0);
         let action = self.sources_screen.handle_key(key, source_count);
         match action {
-            screens::sources::Action::Consumed => true,
+            screens::sources::Action::Consumed => {
+                // If we just switched to Browse mode, ensure browser exists.
+                if self.sources_screen.mode == screens::sources::Mode::Browse {
+                    if let Some(ref paths) = self.paths {
+                        self.sources_screen.ensure_browser(paths.home());
+                    }
+                }
+                true
+            }
             screens::sources::Action::AddSource(path) => {
                 self.handle_add_source(path);
                 true

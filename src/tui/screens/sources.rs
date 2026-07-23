@@ -1,12 +1,14 @@
 //! Source management screen state.
 //!
-//! Displays the list of configured sources, allows adding new sources by path,
-//! removing selected sources, and shows validation warnings (overlap, symlinks).
+//! Displays the list of configured sources, allows adding new sources via
+//! a filesystem browser or path entry, removing selected sources, and shows
+//! validation warnings (overlap, symlinks).
 
 use std::path::Path;
 
 use crate::config::SourceConfig;
 use crate::paths;
+use crate::tui::browser::{Browser, BrowserConfig, EntryKind};
 
 /// The state of the sources management screen.
 #[derive(Debug)]
@@ -21,6 +23,8 @@ pub struct SourcesScreen {
     pub cursor: usize,
     /// Validation/feedback message.
     pub message: Option<Message>,
+    /// The filesystem browser for source selection (rooted at $HOME).
+    pub browser: Option<Browser>,
 }
 
 /// The mode the sources screen is in.
@@ -28,6 +32,8 @@ pub struct SourcesScreen {
 pub enum Mode {
     /// Browsing the source list.
     List,
+    /// Browsing the filesystem to select a source.
+    Browse,
     /// Typing a new source path.
     AddInput,
     /// Confirming deletion of the selected source.
@@ -63,6 +69,17 @@ impl SourcesScreen {
             input: String::new(),
             cursor: 0,
             message: None,
+            browser: None,
+        }
+    }
+
+    /// Ensure the browser is initialized for source selection.
+    pub fn ensure_browser(&mut self, home: &Path) {
+        if self.browser.is_none() {
+            self.browser = Some(Browser::new(BrowserConfig {
+                root: home.to_path_buf(),
+                start: home.to_path_buf(),
+            }));
         }
     }
 
@@ -93,11 +110,9 @@ impl SourcesScreen {
                     Action::Consumed
                 }
 
-                // Add a new source.
+                // Add a new source (opens browser).
                 (_, KeyCode::Char('a')) => {
-                    self.mode = Mode::AddInput;
-                    self.input.clear();
-                    self.cursor = 0;
+                    self.mode = Mode::Browse;
                     self.message = None;
                     Action::Consumed
                 }
@@ -111,6 +126,8 @@ impl SourcesScreen {
 
                 _ => Action::NotConsumed,
             },
+
+            Mode::Browse => self.handle_key_browse(key),
 
             Mode::AddInput => match (key.modifiers, key.code) {
                 // Tab/Shift+Tab escape to tab bar even from input mode.
@@ -212,6 +229,118 @@ impl SourcesScreen {
                 }
                 _ => Action::Consumed,
             },
+        }
+    }
+
+    /// Handle key events in browser mode.
+    fn handle_key_browse(&mut self, key: crossterm::event::KeyEvent) -> Action {
+        use crossterm::event::{KeyCode, KeyModifiers};
+
+        match (key.modifiers, key.code) {
+            // Tab/Shift+Tab escape to tab bar.
+            (KeyModifiers::NONE, KeyCode::Tab) | (KeyModifiers::SHIFT, KeyCode::BackTab) => {
+                Action::NotConsumed
+            }
+            // Escape returns to list mode.
+            (_, KeyCode::Esc) => {
+                self.mode = Mode::List;
+                self.message = None;
+                Action::Consumed
+            }
+            // ':' or '/' switches to text input mode for manual path entry.
+            (_, KeyCode::Char(':')) | (_, KeyCode::Char('/')) => {
+                self.mode = Mode::AddInput;
+                self.input.clear();
+                self.cursor = 0;
+                self.message = None;
+                Action::Consumed
+            }
+            // Space selects the current entry.
+            (KeyModifiers::NONE, KeyCode::Char(' ')) => {
+                if let Some(ref mut browser) = self.browser {
+                    match browser.try_select() {
+                        Ok(selection) => {
+                            // Accept files, directories, and symlinks.
+                            match selection.kind {
+                                EntryKind::File | EntryKind::Directory | EntryKind::Symlink => {
+                                    // Convert absolute path to home-relative.
+                                    let home = browser.root();
+                                    if let Ok(relative) = selection.path.strip_prefix(home) {
+                                        let rel_str = relative.to_string_lossy().to_string();
+                                        return Action::AddSource(rel_str);
+                                    } else {
+                                        self.message = Some(Message {
+                                            text: "Cannot determine home-relative path."
+                                                .to_string(),
+                                            kind: MessageKind::Error,
+                                        });
+                                    }
+                                }
+                                _ => {
+                                    self.message = Some(Message {
+                                        text: "Cannot select this file type.".to_string(),
+                                        kind: MessageKind::Error,
+                                    });
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            self.message = Some(Message {
+                                text: e.to_string(),
+                                kind: MessageKind::Error,
+                            });
+                        }
+                    }
+                }
+                Action::Consumed
+            }
+            // Delegate all other keys to the picker.
+            _ => {
+                if let Some(ref mut browser) = self.browser {
+                    use crate::tui::picker::{PickerAction, handle_key};
+                    let action = handle_key(browser, key, 20);
+                    match action {
+                        PickerAction::Consumed => Action::Consumed,
+                        PickerAction::Select(Ok(selection)) => match selection.kind {
+                            EntryKind::File | EntryKind::Directory | EntryKind::Symlink => {
+                                let home = browser.root();
+                                if let Ok(relative) = selection.path.strip_prefix(home) {
+                                    let rel_str = relative.to_string_lossy().to_string();
+                                    Action::AddSource(rel_str)
+                                } else {
+                                    self.message = Some(Message {
+                                        text: "Cannot determine home-relative path.".to_string(),
+                                        kind: MessageKind::Error,
+                                    });
+                                    Action::Consumed
+                                }
+                            }
+                            _ => {
+                                self.message = Some(Message {
+                                    text: "Cannot select this file type.".to_string(),
+                                    kind: MessageKind::Error,
+                                });
+                                Action::Consumed
+                            }
+                        },
+                        PickerAction::Select(Err(e)) => {
+                            self.message = Some(Message {
+                                text: e.to_string(),
+                                kind: MessageKind::Error,
+                            });
+                            Action::Consumed
+                        }
+                        PickerAction::Cancel => {
+                            self.mode = Mode::List;
+                            self.message = None;
+                            Action::Consumed
+                        }
+                        PickerAction::NotConsumed => Action::NotConsumed,
+                    }
+                } else {
+                    Action::NotConsumed
+                }
+            }
         }
     }
 
@@ -347,11 +476,11 @@ mod tests {
     }
 
     #[test]
-    fn a_enters_add_mode() {
+    fn a_enters_browse_mode() {
         let mut screen = SourcesScreen::new();
         let action = screen.handle_key(key(KeyCode::Char('a')), 0);
         assert_eq!(action, Action::Consumed);
-        assert_eq!(screen.mode, Mode::AddInput);
+        assert_eq!(screen.mode, Mode::Browse);
     }
 
     #[test]
@@ -521,6 +650,108 @@ mod tests {
         let mut screen = SourcesScreen::new();
         screen.mode = Mode::ConfirmDelete;
         let action = screen.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE), 3);
+        assert_eq!(action, Action::NotConsumed);
+    }
+
+    // --- Browser mode tests ---
+
+    #[test]
+    fn browse_esc_returns_to_list() {
+        let mut screen = SourcesScreen::new();
+        screen.mode = Mode::Browse;
+        let action = screen.handle_key(key(KeyCode::Esc), 0);
+        assert_eq!(action, Action::Consumed);
+        assert_eq!(screen.mode, Mode::List);
+    }
+
+    #[test]
+    fn browse_colon_switches_to_text_input() {
+        let mut screen = SourcesScreen::new();
+        screen.mode = Mode::Browse;
+        screen.ensure_browser(Path::new("/tmp"));
+        let action = screen.handle_key(key(KeyCode::Char(':')), 0);
+        assert_eq!(action, Action::Consumed);
+        assert_eq!(screen.mode, Mode::AddInput);
+    }
+
+    #[test]
+    fn browse_space_selects_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+        std::fs::create_dir(home.join(".config")).unwrap();
+
+        let mut screen = SourcesScreen::new();
+        screen.mode = Mode::Browse;
+        screen.ensure_browser(home);
+
+        // The browser should be rooted at home; .config should be selectable.
+        let action = screen.handle_key(key(KeyCode::Char(' ')), 0);
+        assert_eq!(action, Action::AddSource(".config".to_string()));
+    }
+
+    #[test]
+    fn browse_space_selects_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+        std::fs::write(home.join(".bashrc"), "# bash").unwrap();
+
+        let mut screen = SourcesScreen::new();
+        screen.mode = Mode::Browse;
+        screen.ensure_browser(home);
+
+        let action = screen.handle_key(key(KeyCode::Char(' ')), 0);
+        assert_eq!(action, Action::AddSource(".bashrc".to_string()));
+    }
+
+    #[test]
+    fn browse_space_selects_symlink() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+        std::fs::create_dir(home.join("real")).unwrap();
+        std::os::unix::fs::symlink("real", home.join("link")).unwrap();
+
+        let mut screen = SourcesScreen::new();
+        screen.mode = Mode::Browse;
+        screen.ensure_browser(home);
+
+        // Navigate to the symlink entry.
+        if let Some(ref mut browser) = screen.browser {
+            let _ = browser.current_listing();
+            // Find "link" index.
+            use crate::tui::browser::DirListing;
+            let listing = browser.current_listing().clone();
+            if let DirListing::Entries(entries) = &listing {
+                let idx = entries
+                    .iter()
+                    .position(|e| e.display_name == "link")
+                    .unwrap();
+                for _ in 0..idx {
+                    browser.move_down();
+                }
+            }
+        }
+
+        let action = screen.handle_key(key(KeyCode::Char(' ')), 0);
+        assert_eq!(action, Action::AddSource("link".to_string()));
+    }
+
+    #[test]
+    fn browser_root_is_home() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+        let mut screen = SourcesScreen::new();
+        screen.ensure_browser(home);
+        assert!(screen.browser.is_some());
+        let browser = screen.browser.as_ref().unwrap();
+        assert_eq!(browser.root(), home);
+    }
+
+    #[test]
+    fn browse_tab_escapes_to_tab_bar() {
+        use crossterm::event::KeyModifiers;
+        let mut screen = SourcesScreen::new();
+        screen.mode = Mode::Browse;
+        let action = screen.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE), 0);
         assert_eq!(action, Action::NotConsumed);
     }
 }
