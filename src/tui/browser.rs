@@ -389,6 +389,123 @@ impl Browser {
         self.scroll_offset = 0;
         true
     }
+
+    /// Attempt to select the current entry for use as a path.
+    ///
+    /// This validates the selection against safety rules:
+    /// - Rejects non-UTF-8 file names (cannot be stored in config).
+    /// - Rejects special files (sockets, devices, FIFOs).
+    /// - Rejects error entries (disappeared or unreadable).
+    /// - Returns metadata about the selection (kind, whether it's a symlink).
+    ///
+    /// The caller decides which kinds are acceptable (e.g., source picker
+    /// accepts files, directories, and source-root symlinks; repository
+    /// picker accepts only directories).
+    pub fn try_select(&mut self) -> Result<Selection, SelectionError> {
+        let dir = self.current_dir.clone();
+        self.ensure_cached(&dir);
+
+        let entry = match self.cache.get(&dir) {
+            Some(DirListing::Entries(entries)) => match entries.get(self.selected) {
+                Some(e) => e.clone(),
+                None => return Err(SelectionError::NoEntry),
+            },
+            Some(DirListing::Error(e)) => {
+                return Err(SelectionError::DirectoryError(e.clone()));
+            }
+            None => return Err(SelectionError::NoEntry),
+        };
+
+        // Reject non-UTF-8 names.
+        if entry.is_lossy {
+            return Err(SelectionError::NonUtf8(entry.display_name.clone()));
+        }
+
+        // Reject special files.
+        if entry.kind == EntryKind::Special {
+            return Err(SelectionError::SpecialFile(entry.display_name.clone()));
+        }
+
+        // Reject error entries (disappeared or unreadable).
+        if entry.kind == EntryKind::Error {
+            return Err(SelectionError::Disappeared(entry.display_name.clone()));
+        }
+
+        // Re-validate that the entry still exists on disk (handle races).
+        let full_path = self.current_dir.join(&entry.name);
+        match std::fs::symlink_metadata(&full_path) {
+            Ok(meta) => {
+                let ft = meta.file_type();
+                let actual_kind = if ft.is_dir() {
+                    EntryKind::Directory
+                } else if ft.is_symlink() {
+                    EntryKind::Symlink
+                } else if ft.is_file() {
+                    EntryKind::File
+                } else {
+                    return Err(SelectionError::SpecialFile(entry.display_name.clone()));
+                };
+
+                Ok(Selection {
+                    path: full_path,
+                    kind: actual_kind,
+                    is_symlink: actual_kind == EntryKind::Symlink,
+                    link_target: entry.link_target.clone(),
+                })
+            }
+            Err(_) => {
+                // Entry disappeared between listing and selection.
+                Err(SelectionError::Disappeared(entry.display_name.clone()))
+            }
+        }
+    }
+}
+
+/// Result of a successful entry selection.
+#[derive(Debug, Clone)]
+pub struct Selection {
+    /// Full path of the selected entry.
+    pub path: PathBuf,
+    /// Kind of the entry at selection time.
+    pub kind: EntryKind,
+    /// Whether the entry is a symbolic link.
+    pub is_symlink: bool,
+    /// Raw link target if it is a symlink.
+    pub link_target: Option<String>,
+}
+
+/// Reasons a selection may be rejected.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SelectionError {
+    /// No entry at the current selection index.
+    NoEntry,
+    /// The file name is not valid UTF-8 and cannot be stored in configuration.
+    NonUtf8(String),
+    /// The entry is a special file (socket, device, FIFO) and cannot be selected.
+    SpecialFile(String),
+    /// The entry disappeared or became unreadable since listing.
+    Disappeared(String),
+    /// The directory listing itself failed.
+    DirectoryError(String),
+}
+
+impl std::fmt::Display for SelectionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoEntry => write!(f, "No entry selected"),
+            Self::NonUtf8(name) => write!(
+                f,
+                "'{name}' contains non-UTF-8 characters and cannot be used"
+            ),
+            Self::SpecialFile(name) => {
+                write!(f, "'{name}' is a special file and cannot be selected")
+            }
+            Self::Disappeared(name) => {
+                write!(f, "'{name}' no longer exists or is unreadable")
+            }
+            Self::DirectoryError(e) => write!(f, "Directory error: {e}"),
+        }
+    }
 }
 
 /// Read a directory and return a sorted listing.
@@ -1211,5 +1328,358 @@ mod tests {
 
         let parent = browser.parent_listing();
         assert!(parent.is_some());
+    }
+
+    // --- UX04: Safety tests ---
+
+    #[test]
+    fn select_regular_file_succeeds() {
+        let tmp = setup_test_dir();
+        let mut browser = Browser::new(BrowserConfig {
+            root: tmp.path().to_path_buf(),
+            start: tmp.path().to_path_buf(),
+        });
+
+        // Find a regular file.
+        let _ = browser.current_listing();
+        let listing = browser.cache.get(tmp.path()).unwrap().clone();
+        if let DirListing::Entries(entries) = &listing {
+            let file_idx = entries
+                .iter()
+                .position(|e| e.kind == EntryKind::File)
+                .unwrap();
+            browser.selected = file_idx;
+        }
+
+        let result = browser.try_select();
+        assert!(result.is_ok());
+        let sel = result.unwrap();
+        assert_eq!(sel.kind, EntryKind::File);
+        assert!(!sel.is_symlink);
+    }
+
+    #[test]
+    fn select_directory_succeeds() {
+        let tmp = setup_test_dir();
+        let mut browser = Browser::new(BrowserConfig {
+            root: tmp.path().to_path_buf(),
+            start: tmp.path().to_path_buf(),
+        });
+
+        let _ = browser.current_listing();
+        let listing = browser.cache.get(tmp.path()).unwrap().clone();
+        if let DirListing::Entries(entries) = &listing {
+            let dir_idx = entries
+                .iter()
+                .position(|e| e.kind == EntryKind::Directory && e.display_name == "alpha")
+                .unwrap();
+            browser.selected = dir_idx;
+        }
+
+        let result = browser.try_select();
+        assert!(result.is_ok());
+        let sel = result.unwrap();
+        assert_eq!(sel.kind, EntryKind::Directory);
+        assert!(!sel.is_symlink);
+    }
+
+    #[test]
+    fn select_symlink_succeeds_with_metadata() {
+        let tmp = setup_test_dir();
+        let mut browser = Browser::new(BrowserConfig {
+            root: tmp.path().to_path_buf(),
+            start: tmp.path().to_path_buf(),
+        });
+
+        let _ = browser.current_listing();
+        let listing = browser.cache.get(tmp.path()).unwrap().clone();
+        if let DirListing::Entries(entries) = &listing {
+            let link_idx = entries
+                .iter()
+                .position(|e| e.kind == EntryKind::Symlink)
+                .unwrap();
+            browser.selected = link_idx;
+        }
+
+        let result = browser.try_select();
+        assert!(result.is_ok());
+        let sel = result.unwrap();
+        assert_eq!(sel.kind, EntryKind::Symlink);
+        assert!(sel.is_symlink);
+        assert_eq!(sel.link_target.as_deref(), Some("alpha"));
+    }
+
+    #[test]
+    fn select_special_file_rejected() {
+        let tmp = TempDir::new().unwrap();
+        // Create a FIFO (named pipe).
+        let fifo_path = tmp.path().join("test_fifo");
+        unsafe {
+            let c_path = std::ffi::CString::new(fifo_path.to_str().unwrap()).unwrap();
+            libc::mkfifo(c_path.as_ptr(), 0o644);
+        }
+
+        let mut browser = Browser::new(BrowserConfig {
+            root: tmp.path().to_path_buf(),
+            start: tmp.path().to_path_buf(),
+        });
+
+        let _ = browser.current_listing();
+        let listing = browser.cache.get(tmp.path()).unwrap().clone();
+        if let DirListing::Entries(entries) = &listing {
+            let special_idx = entries
+                .iter()
+                .position(|e| e.kind == EntryKind::Special)
+                .unwrap();
+            browser.selected = special_idx;
+        }
+
+        let result = browser.try_select();
+        assert!(matches!(result, Err(SelectionError::SpecialFile(_))));
+    }
+
+    #[test]
+    fn select_non_utf8_entry_rejected() {
+        use std::os::unix::ffi::OsStrExt;
+        let tmp = TempDir::new().unwrap();
+        // Create a file with a non-UTF-8 name.
+        let invalid_name = std::ffi::OsStr::from_bytes(b"invalid\xff\xfename.txt");
+        let invalid_path = tmp.path().join(invalid_name);
+        std::fs::write(&invalid_path, "content").unwrap();
+
+        let mut browser = Browser::new(BrowserConfig {
+            root: tmp.path().to_path_buf(),
+            start: tmp.path().to_path_buf(),
+        });
+
+        let _ = browser.current_listing();
+        let listing = browser.cache.get(tmp.path()).unwrap().clone();
+        if let DirListing::Entries(entries) = &listing {
+            let lossy_idx = entries.iter().position(|e| e.is_lossy).unwrap();
+            browser.selected = lossy_idx;
+        }
+
+        let result = browser.try_select();
+        assert!(matches!(result, Err(SelectionError::NonUtf8(_))));
+    }
+
+    #[test]
+    fn select_disappeared_entry_detected() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("ephemeral.txt"), "here now").unwrap();
+
+        let mut browser = Browser::new(BrowserConfig {
+            root: tmp.path().to_path_buf(),
+            start: tmp.path().to_path_buf(),
+        });
+
+        // Load the listing (entry visible).
+        let _ = browser.current_listing();
+        browser.selected = 0;
+
+        // Remove the file between listing and selection.
+        std::fs::remove_file(tmp.path().join("ephemeral.txt")).unwrap();
+
+        let result = browser.try_select();
+        assert!(matches!(result, Err(SelectionError::Disappeared(_))));
+    }
+
+    #[test]
+    fn select_empty_directory_returns_no_entry() {
+        let tmp = TempDir::new().unwrap();
+        let empty = tmp.path().join("empty");
+        std::fs::create_dir(&empty).unwrap();
+
+        let mut browser = Browser::new(BrowserConfig {
+            root: tmp.path().to_path_buf(),
+            start: empty,
+        });
+
+        let _ = browser.current_listing();
+        let result = browser.try_select();
+        assert!(matches!(result, Err(SelectionError::NoEntry)));
+    }
+
+    #[test]
+    fn cannot_enter_symlink_to_directory() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir(tmp.path().join("real_dir")).unwrap();
+        std::fs::write(tmp.path().join("real_dir").join("secret.txt"), "hidden").unwrap();
+        std::os::unix::fs::symlink("real_dir", tmp.path().join("link_dir")).unwrap();
+
+        let mut browser = Browser::new(BrowserConfig {
+            root: tmp.path().to_path_buf(),
+            start: tmp.path().to_path_buf(),
+        });
+
+        let _ = browser.current_listing();
+        let listing = browser.cache.get(tmp.path()).unwrap().clone();
+        if let DirListing::Entries(entries) = &listing {
+            let link_idx = entries
+                .iter()
+                .position(|e| e.display_name == "link_dir")
+                .unwrap();
+            browser.selected = link_idx;
+            // Confirm it's classified as symlink, not directory.
+            assert_eq!(entries[link_idx].kind, EntryKind::Symlink);
+        }
+
+        // Cannot enter through symlink.
+        assert!(!browser.enter_selected());
+    }
+
+    #[test]
+    fn source_root_symlink_selectable() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir(tmp.path().join("real_config")).unwrap();
+        std::os::unix::fs::symlink("real_config", tmp.path().join(".config")).unwrap();
+
+        let mut browser = Browser::new(BrowserConfig {
+            root: tmp.path().to_path_buf(),
+            start: tmp.path().to_path_buf(),
+        });
+
+        let _ = browser.current_listing();
+        let listing = browser.cache.get(tmp.path()).unwrap().clone();
+        if let DirListing::Entries(entries) = &listing {
+            let link_idx = entries
+                .iter()
+                .position(|e| e.display_name == ".config")
+                .unwrap();
+            browser.selected = link_idx;
+        }
+
+        // try_select succeeds for a symlink (caller decides policy).
+        let result = browser.try_select();
+        assert!(result.is_ok());
+        let sel = result.unwrap();
+        assert!(sel.is_symlink);
+        assert_eq!(sel.kind, EntryKind::Symlink);
+        assert_eq!(sel.link_target.as_deref(), Some("real_config"));
+    }
+
+    #[test]
+    fn unreadable_directory_produces_error_listing() {
+        let tmp = TempDir::new().unwrap();
+        let restricted = tmp.path().join("restricted");
+        std::fs::create_dir(&restricted).unwrap();
+        std::fs::write(restricted.join("secret.txt"), "x").unwrap();
+        // Remove read permission.
+        std::fs::set_permissions(&restricted, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        let listing = read_directory(&restricted);
+        // Restore permissions for cleanup.
+        std::fs::set_permissions(&restricted, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert!(matches!(listing, DirListing::Error(_)));
+    }
+
+    #[test]
+    fn selection_error_display() {
+        assert_eq!(SelectionError::NoEntry.to_string(), "No entry selected");
+        assert_eq!(
+            SelectionError::NonUtf8("bad\u{fffd}name".to_string()).to_string(),
+            "'bad\u{fffd}name' contains non-UTF-8 characters and cannot be used"
+        );
+        assert_eq!(
+            SelectionError::SpecialFile("my_socket".to_string()).to_string(),
+            "'my_socket' is a special file and cannot be selected"
+        );
+        assert_eq!(
+            SelectionError::Disappeared("gone.txt".to_string()).to_string(),
+            "'gone.txt' no longer exists or is unreadable"
+        );
+    }
+
+    #[test]
+    fn refresh_tolerates_disappeared_current_dir() {
+        let tmp = TempDir::new().unwrap();
+        let sub = tmp.path().join("sub");
+        std::fs::create_dir(&sub).unwrap();
+        std::fs::write(sub.join("file.txt"), "x").unwrap();
+
+        let mut browser = Browser::new(BrowserConfig {
+            root: tmp.path().to_path_buf(),
+            start: sub.clone(),
+        });
+
+        let _ = browser.current_listing();
+        assert_eq!(browser.entry_count(), 1);
+
+        // Remove the current directory.
+        std::fs::remove_dir_all(&sub).unwrap();
+        browser.refresh_current();
+
+        // Should produce an error listing, not crash.
+        let listing = browser.current_listing();
+        assert!(matches!(listing, DirListing::Error(_)));
+    }
+
+    #[test]
+    fn navigate_does_not_follow_symlinks_in_path() {
+        let tmp = TempDir::new().unwrap();
+        let real = tmp.path().join("real");
+        std::fs::create_dir(&real).unwrap();
+        std::fs::create_dir(real.join("inner")).unwrap();
+        std::os::unix::fs::symlink("real", tmp.path().join("link")).unwrap();
+
+        let mut browser = Browser::new(BrowserConfig {
+            root: tmp.path().to_path_buf(),
+            start: tmp.path().to_path_buf(),
+        });
+
+        // The symlink "link" is listed but cannot be entered.
+        let _ = browser.current_listing();
+        let listing = browser.cache.get(tmp.path()).unwrap().clone();
+        if let DirListing::Entries(entries) = &listing {
+            let link_idx = entries
+                .iter()
+                .position(|e| e.display_name == "link")
+                .unwrap();
+            browser.selected = link_idx;
+            assert_eq!(entries[link_idx].kind, EntryKind::Symlink);
+        }
+
+        // enter_selected refuses symlinks.
+        assert!(!browser.enter_selected());
+        assert_eq!(browser.current_dir(), tmp.path());
+    }
+
+    #[test]
+    fn boundary_prevents_navigation_above_root() {
+        let tmp = TempDir::new().unwrap();
+        let inner = tmp.path().join("inner");
+        std::fs::create_dir(&inner).unwrap();
+        std::fs::create_dir(inner.join("deep")).unwrap();
+
+        let mut browser = Browser::new(BrowserConfig {
+            root: inner.clone(),
+            start: inner.join("deep"),
+        });
+
+        // Can go up to root.
+        assert!(browser.go_parent());
+        assert_eq!(browser.current_dir(), &inner);
+
+        // Cannot go above root.
+        assert!(!browser.go_parent());
+        assert_eq!(browser.current_dir(), &inner);
+    }
+
+    #[test]
+    fn navigate_to_rejects_paths_outside_root() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().join("root");
+        let outside = tmp.path().join("outside");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir(&outside).unwrap();
+
+        let mut browser = Browser::new(BrowserConfig {
+            root: root.clone(),
+            start: root.clone(),
+        });
+
+        assert!(!browser.navigate_to(&outside));
+        assert_eq!(browser.current_dir(), &root);
     }
 }
