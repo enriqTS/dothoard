@@ -4,6 +4,7 @@
 //! monitoring dothoard. It depends on backend services but the backend
 //! never depends on TUI code.
 
+pub mod browser;
 mod event;
 pub mod screens;
 pub mod task;
