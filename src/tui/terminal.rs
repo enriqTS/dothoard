@@ -12,10 +12,13 @@ use crossterm::terminal::{
 };
 use ratatui::Terminal;
 use ratatui::prelude::CrosstermBackend;
+use tracing_appender::non_blocking::WorkerGuard;
 
 use super::App;
 use super::event::{AppEvent, next_event};
 use super::ui;
+use crate::diagnostics;
+use crate::paths::AppPaths;
 
 type Term = Terminal<CrosstermBackend<Stdout>>;
 
@@ -23,7 +26,11 @@ type Term = Terminal<CrosstermBackend<Stdout>>;
 ///
 /// This function takes ownership of the terminal, runs the event loop until
 /// the user quits, and restores the terminal on exit (including panics).
+/// It initializes tracing to a log file to prevent display corruption.
 pub fn run() -> io::Result<()> {
+    // Initialize tracing to a log file for TUI mode
+    let _log_guard = init_tui_logging().map_err(io::Error::other)?;
+
     install_panic_hook();
     let mut terminal = setup_terminal()?;
 
@@ -31,6 +38,16 @@ pub fn run() -> io::Result<()> {
 
     restore_terminal()?;
     result
+}
+
+/// Initialize logging for TUI mode, writing to a log file.
+///
+/// Returns a `WorkerGuard` that must be held for the lifetime of the TUI
+/// to ensure logs are flushed to the file.
+fn init_tui_logging() -> anyhow::Result<WorkerGuard> {
+    let paths = AppPaths::from_environment()?;
+    let log_path = paths.state_dir().join("dothoard.log");
+    diagnostics::init_for_tui(&log_path)
 }
 
 /// The main event loop: draw, poll events, update state, repeat.
