@@ -352,3 +352,47 @@ Bootstrap
 
 The explicit naming prerequisite avoids introducing installed paths and unit
 names that would require a migration before release.
+
+## 11. TUI Bug Fixes
+
+Three bugs degrade the TUI experience: backup tracing output corrupts the
+display, the repository browser never auto-loads, and sync errors show
+unhelpful messages with no log access. These must be resolved before further
+feature work.
+
+- [ ] **F01 - Redirect tracing to a log file during TUI mode.** Add
+  `tracing-appender` to dependencies. Create a `diagnostics::init_for_tui()`
+  function that writes to `~/.local/state/dothoard/dothoard.log` using a
+  non-blocking file appender. Call it from the TUI entry point instead of the
+  default stderr subscriber. Hold the `WorkerGuard` for the entire event loop
+  lifetime. Verify that running a backup from the TUI no longer corrupts the
+  display and that log lines appear in the file.
+
+- [ ] **F02 - Fix repository browser initialization and placeholder.** Call
+  `ensure_browser()` when focus transitions from the tab bar into content on
+  the Repository screen (in `handle_key_tab_bar` after setting
+  `Focus::Content`). Change the "Loading browser..." fallback message to
+  "Press Enter or ↓ to start browsing". Add a test that after simulating a
+  Down key from TabBar on the Repository screen, `app.repo_screen.browser` is
+  `Some(...)`.
+
+- [ ] **F03 - Fix SyncError display to include underlying GitError.** Change
+  `SyncError::Git` from `#[error("sync failed")]` to
+  `#[error("sync failed: {0}")]` so the inner `GitError` details propagate.
+  Remove the redundant "sync failed:" prefix in the coordinator's
+  `format!("sync failed: {e}")`, replacing it with `format!("{e}")`. Add a
+  unit test that `SyncError::Git(GitError::Failed { .. })` includes the git
+  error details in its Display output.
+
+- [ ] **F04 - Add a scrollable log viewer to the History screen.** Add a
+  `LogView` mode to `HistoryScreen` with scroll state and cached filtered
+  lines. When the user presses Enter on a selected history entry, read the
+  log file, filter lines by the run's timestamp range (`started_at` to
+  `finished_at`), and display them in a scrollable paragraph. Add `j`/`k`
+  and Up/Down for scrolling, Escape to return to the history list. Update
+  the detail help line to show `Enter: view logs`. Add tests for
+  timestamp-based filtering and log-view key handling.
+
+**Milestone gate:** The TUI remains visually intact during background backups,
+the repository browser loads on focus entry, sync errors show actionable
+details, and run logs are viewable from the History screen.

@@ -356,6 +356,145 @@ Install, enable, disable, remove, and inspect the systemd user timer.
 
 Show recent runs, commits, push results, and actionable error details.
 
+## Post-V1 TUI Usability
+
+The first post-V1 improvement replaces manual filesystem path entry and makes
+keyboard focus predictable across the complete TUI. These changes affect only
+interactive configuration and navigation. They do not weaken backend path,
+ownership, symlink, or publication safety rules.
+
+### Focus and Tab Navigation
+
+The TUI has two explicit top-level focus states: the tab bar and the active
+tab's content. The selected tab remains visible in both states, but rendering
+must distinguish which level currently receives keyboard input.
+
+The application starts on Dashboard with focus on the tab bar. While the tab
+bar has focus:
+
+- Left and Right, or `h` and `l`, select the previous and next tabs.
+- Tab, Down, `j`, or Enter moves focus into the selected tab.
+- Shift+Tab selects the previous tab without entering its content.
+- Number keys `1` through `7` select a tab directly.
+
+While tab content has focus:
+
+- Screen-specific navigation and actions receive keyboard input.
+- Tab returns directly to tab-bar focus without changing the selected tab.
+- Shift+Tab also returns to tab-bar focus without changing the selected tab;
+  pressing it again there selects the previous tab.
+- Up or `k` moves upward inside the tab while another item or parent control
+  exists.
+- Up or `k` returns to tab-bar focus only from the uppermost item or control.
+- Left and Right, or `h` and `l`, remain local to the active screen and do not
+  change tabs.
+
+Arrow and Vim keys are exact navigation aliases. A screen with nested
+navigation must expose its hierarchy rather than making the application infer
+it. For example, Ignore Rules moves from its pattern list to its source
+selector before it can return to the tab bar.
+
+Tab always provides a direct route from content to the tab bar, including from
+nested browsers, editors, and confirmation states. Ctrl+C remains a global
+exit. Other quit, cancel, and action keys retain their screen-specific meaning
+and must not leak through a modal dialog or text editor.
+
+Changing focus or tabs preserves screen-local state, including selections,
+scroll positions, browser location, validation results, and open confirmation
+states. Entering a tab again resumes that state rather than silently resetting
+the user's work.
+
+The help bar must describe the currently focused level and mode. Tab focus,
+content focus, filesystem browsing, text editing, and confirmation dialogs
+must not display shortcuts that are unavailable in that state.
+
+### Filesystem Browser
+
+Repository and source selection use a shared three-pane filesystem browser
+instead of free-form path entry. The browser follows a ranger/yazi-style
+layout:
+
+- The left pane provides parent-directory context.
+- The center pane lists entries in the current directory and owns selection.
+- The right pane previews a selected directory or shows file, symlink, and
+  metadata details.
+- A header or breadcrumb shows the complete current path.
+- A status area reports loading, permission, validation, and selection errors.
+
+Inside the browser:
+
+- Up and Down, or `k` and `j`, move the selected entry.
+- Left or `h` moves to the parent directory when the picker boundary permits
+  it.
+- Right, `l`, or Enter opens the selected real directory.
+- Space selects the highlighted entry for the calling screen.
+- Home, End, PageUp, and PageDown provide efficient navigation in long lists.
+- Tab returns to the application tab bar without discarding browser state.
+
+Hidden entries are visible because dotfiles are primary backup candidates.
+Entries are ordered deterministically with directories grouped before other
+entry types. Selection and scrolling remain visible in small terminals and in
+directories containing more entries than the available viewport.
+
+Directory data is loaded and cached when browser state changes, not during
+rendering. Listings are shallow and never recursively scan a tree. Read,
+metadata, permission, and race errors are shown without crashing or replacing
+the last usable location.
+
+The browser keeps paths as filesystem-native `PathBuf` values. Since the
+configuration schema stores UTF-8 strings, a non-UTF-8 entry may be displayed
+lossily for navigation but cannot be selected; the UI must explain why.
+
+### Repository Selection
+
+Repository browsing may move throughout the local filesystem. Only existing
+directories that validate as Git worktrees can be configured. Selecting a
+directory starts the existing repository validation and ownership review; it
+does not bypass initialization or attachment confirmation.
+
+Validation uses the configured remote name and network timeout when replacing
+an existing repository. If Git accepts a selected subdirectory, the TUI stores
+the worktree root returned by repository validation rather than the arbitrary
+subdirectory. Configuration persistence errors are reported and must not be
+presented as successful repository setup.
+
+Repository selection continues to distinguish new, owned, invalid-manifest,
+and ambiguous namespaces. Invalid or ambiguous managed content remains
+unselectable for operation even when it is visible in the browser.
+
+### Source Selection
+
+Source browsing is rooted at `$HOME` and cannot navigate above it. Space may
+select a regular file, a real directory, or a source-root symbolic link. The
+stored path is derived by stripping the trusted home prefix and is then
+validated through the existing source and overlap rules before configuration
+is saved.
+
+The browser uses `symlink_metadata` and never opens or previews a symlink as a
+directory. A selected source-root symlink is configured as the link itself and
+the UI explains that its target will not be followed. Symlinks in parent
+components remain invalid. Sockets, devices, FIFOs, and other unsupported
+special files may be identified in the listing but cannot be selected.
+
+Adding a source remains a one-source-at-a-time operation. A successful change
+marks backup and ignore previews stale. Validation or persistence failure
+leaves the picker open with the selected path and an actionable error.
+
+### TUI Verification
+
+Interaction tests cover the complete focus transition matrix, nested upward
+navigation, modal key precedence, tab-state persistence, and Arrow/Vim key
+parity. Filesystem-browser tests use temporary roots and cover deterministic
+ordering, hidden entries, files, directories, symlinks, special files,
+unreadable and disappearing entries, root boundaries, scrolling, and
+non-UTF-8 names.
+
+Repository and source integration tests cover selection, validation,
+confirmation, worktree-root normalization, home-relative conversion,
+configuration persistence failure, and dependent-preview invalidation.
+Rendering tests verify focused and unfocused tab styles, content focus,
+three-pane layouts, contextual help, errors, and narrow terminals.
+
 ## Project Structure
 
 ```text
@@ -518,3 +657,55 @@ detection. They must not install or enable real user units.
 - Multiple backup profiles.
 - Encryption before committing.
 - AUR packaging and support for distributions other than Arch-based systems.
+
+## TUI Bug Fixes
+
+Three bugs degrade the TUI experience and must be resolved before further
+feature work.
+
+### Bug 1: Backup Corrupts TUI Display
+
+Running a backup from the TUI (e.g. pressing `b` on the Preview or Dashboard
+screen) causes tracing output to appear below the alternate screen, breaking
+the terminal display. The root cause is that `diagnostics::init()` sets up
+`tracing_subscriber::fmt()` writing to stderr. When the background backup
+thread emits `tracing::info!()` calls, the output bypasses the alternate
+screen and corrupts the display.
+
+**Fix:** When the TUI is active, redirect tracing to a log file at
+`~/.local/state/dothoard/dothoard.log` using `tracing-appender`. The file
+serves both as a persistent debug log and as the backing store for a future
+scrollable log viewer in the History screen. The `WorkerGuard` must be held
+for the entire TUI event loop lifetime.
+
+### Bug 2: Repository Browser Never Loads
+
+The Repository tab shows "Loading browser..." indefinitely because
+`ensure_browser()` is only called inside `handle_repository_key()`, which
+executes on content-focus key events. If the user navigates to the tab and
+enters content focus, the browser is not initialized until another keypress.
+
+**Fix:** Call `ensure_browser()` when the user transitions focus from the tab
+bar into content on the Repository screen. Change the placeholder message from
+"Loading browser..." to an actionable hint such as "Press Enter or ↓ to start
+browsing" for the rare case where browser initialization has not yet occurred.
+
+### Bug 3: History Shows Unhelpful Error Messages
+
+When a sync fails, the History detail pane shows "sync failed: sync failed"
+because `SyncError::Git` has `#[error("sync failed")]` which discards the
+inner `GitError` details. The actual cause (authentication failure, network
+timeout, remote rejection) is lost.
+
+Additionally, there is no way to see full log output for a specific run.
+
+**Fix (error chain):** Change `SyncError::Git`'s error attribute to include
+the source: `#[error("sync failed: {0}")]`. Remove the redundant "sync
+failed:" prefix in the coordinator's error formatting so the final message
+reads something like "sync failed: git push origin main failed with exit code
+128: fatal: ...".
+
+**Fix (log viewer):** Add a scrollable log viewer accessible from the History
+screen. When the user presses Enter on a selected run, the TUI reads the log
+file, filters lines by the run's timestamp range, and displays them in a
+scrollable view. Escape returns to the history list.
