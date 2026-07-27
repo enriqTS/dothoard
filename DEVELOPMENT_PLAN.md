@@ -366,18 +366,19 @@ feature work.
   error details in its Display output.  
   **Verification**: Test passes, clippy clean, fmt clean.
 
-- [ ] **F04 - Add a scrollable log viewer to the History screen.** Add a
+- [x] **F04 - Add a scrollable log viewer to the History screen.** Add a
   `LogView` mode to `HistoryScreen` with scroll state and cached filtered
   lines. When the user presses Enter on a selected history entry, read the
   log file, filter lines by the run's timestamp range (`started_at` to
   `finished_at`), and display them in a scrollable paragraph. Add `j`/`k`
   and Up/Down for scrolling, Escape to return to the history list. Update
   the detail help line to show `Enter: view logs`. Add tests for
-  timestamp-based filtering and log-view key handling.
+  timestamp-based filtering and log-view key handling.  
+  **Verification**: Tests pass, clippy clean, fmt clean.
 
-**Milestone gate:** The TUI remains visually intact during background backups,
+**Milestone gate: Complete.** The TUI remains visually intact during background backups,
 the repository browser loads on focus entry, sync errors show actionable
-details, and run logs are viewable from the History screen.
+details, and run logs are viewable from the History screen. All tests pass.
 
 ## Execution Order
 

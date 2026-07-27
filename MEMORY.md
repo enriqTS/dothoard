@@ -18,8 +18,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   placeholder message changed from "Loading browser..." to actionable hint.
 - **F03 complete**: SyncError::Git now includes inner error details; removed redundant
   prefix from coordinator error formatting.
-- Active task: F04 (scrollable log viewer in History screen).
-- 746 unit tests + integration tests passing (1 new test for F03).
+- **F04 complete**: Added scrollable log viewer to History screen; Enter on a history entry
+  shows filtered log lines by timestamp; Escape returns to history list.
+- Milestone 11 complete: TUI Bug Fixes.
+- 757 unit tests + integration tests passing (11 new tests for F04).
 
 ## Durable Decisions
 
