@@ -137,6 +137,23 @@ Use these test layers:
 - Manual smoke tests only for real notification, shell, distribution, and user
   systemd integration.
 
+### Regression Testing Policy
+
+Every bug fix must include a test that would have caught the bug. This prevents
+regressions and documents the expected behavior:
+
+1. **When fixing a bug**, first write a test that reproduces the bug and fails.
+2. **Then fix the code** to make the test pass.
+3. **When investigating flaky or failing tests**, debug thoroughly to distinguish
+   between code bugs and test bugs. Both are equally important to fix.
+
+Example: The TUI rendering tests `sources_screen_renders_empty` and
+`history_screen_renders_empty` were found to have incorrect assertions that
+didn't match the actual rendered output. The tests were expecting text that
+wasn't being rendered because `App::new()` pre-populates test data. The fix
+involved clearing the pre-populated data in the test setup to properly test
+the empty state rendering.
+
 Once the Rust crate exists, the normal verification baseline is:
 
 ```text
