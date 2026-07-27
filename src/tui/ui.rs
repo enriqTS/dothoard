@@ -1797,13 +1797,17 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
 
         let mut app = app_on(Screen::Sources);
+        // Clear config sources to test empty state
+        if let Some(ref mut config) = app.config {
+            config.sources.clear();
+        }
 
         terminal
             .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
-        assert!(content.contains("No sources"));
+        assert!(content.contains("No sources configured"));
     }
 
     /// Verify sources screen shows add input mode.
@@ -2036,13 +2040,17 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
 
         let mut app = app_on(Screen::History);
+        // Clear state history to test empty state
+        if let Some(ref mut state) = app.state {
+            state.history.clear();
+        }
 
         terminal
             .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
-        assert!(content.contains("No backup history"));
+        assert!(content.contains("No backup history available"));
     }
 
     /// Verify all screens render without panic at various terminal sizes.
