@@ -333,26 +333,6 @@ navigate tabs and all nested content predictably, Tab always returns from
 content to tab focus, all picker safety tests pass, and the complete quality
 suite remains clean.
 
-## Execution Order
-
-```text
-Bootstrap
-  -> Core Models
-  -> Backup Planner
-  -> Mirror Executor
-  -> Git Layer
-  -> Orchestration
-  -> Permanent Name
-  -> Systemd Automation
-  -> TUI
-  -> Hardening
-  -> Delivery
-  -> TUI Usability Improvements
-```
-
-The explicit naming prerequisite avoids introducing installed paths and unit
-names that would require a migration before release.
-
 ## 11. TUI Bug Fixes
 
 Three bugs degrade the TUI experience: backup tracing output corrupts the
@@ -360,7 +340,7 @@ display, the repository browser never auto-loads, and sync errors show
 unhelpful messages with no log access. These must be resolved before further
 feature work.
 
-- [ ] **F01 - Redirect tracing to a log file during TUI mode.** Add
+- [x] **F01 - Redirect tracing to a log file during TUI mode.** Add
   `tracing-appender` to dependencies. Create a `diagnostics::init_for_tui()`
   function that writes to `~/.local/state/dothoard/dothoard.log` using a
   non-blocking file appender. Call it from the TUI entry point instead of the
@@ -396,3 +376,24 @@ feature work.
 **Milestone gate:** The TUI remains visually intact during background backups,
 the repository browser loads on focus entry, sync errors show actionable
 details, and run logs are viewable from the History screen.
+
+## Execution Order
+
+```text
+Bootstrap
+  -> Core Models
+  -> Backup Planner
+  -> Mirror Executor
+  -> Git Layer
+  -> Orchestration
+  -> Permanent Name
+  -> Systemd Automation
+  -> TUI
+  -> Hardening
+  -> Delivery
+  -> TUI Usability Improvements
+  -> TUI Bug Fixes
+```
+
+The explicit naming prerequisite avoids introducing installed paths and unit
+names that would require a migration before release.
