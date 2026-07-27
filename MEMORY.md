@@ -14,8 +14,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - **F01 complete**: Tracing redirected to log file during TUI mode.
 - **Bug fix**: Fixed two TUI rendering tests that had incorrect assertions
   (`sources_screen_renders_empty` and `history_screen_renders_empty`).
-- Active task: F02 (repository browser initialization fix).
-- 744 unit tests + integration tests passing (1 new test for F01).
+- **F02 complete**: Repository browser now initializes when entering content focus;
+  placeholder message changed from "Loading browser..." to actionable hint.
+- Active task: F03 (SyncError display fix).
+- 745 unit tests + integration tests passing (1 new test for F02).
 
 ## Durable Decisions
 

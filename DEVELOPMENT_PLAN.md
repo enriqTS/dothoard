@@ -348,13 +348,14 @@ feature work.
   lifetime. Verify that running a backup from the TUI no longer corrupts the
   display and that log lines appear in the file.
 
-- [ ] **F02 - Fix repository browser initialization and placeholder.** Call
+- [x] **F02 - Fix repository browser initialization and placeholder.** Call
   `ensure_browser()` when focus transitions from the tab bar into content on
   the Repository screen (in `handle_key_tab_bar` after setting
   `Focus::Content`). Change the "Loading browser..." fallback message to
   "Press Enter or ↓ to start browsing". Add a test that after simulating a
   Down key from TabBar on the Repository screen, `app.repo_screen.browser` is
-  `Some(...)`.
+  `Some(...)`.  
+  **Verification**: Test passes, clippy clean, fmt clean.
 
 - [ ] **F03 - Fix SyncError display to include underlying GitError.** Change
   `SyncError::Git` from `#[error("sync failed")]` to
