@@ -1,7 +1,9 @@
 //! Process-wide structured diagnostics setup.
 
 use std::borrow::Cow;
+use std::path::Path;
 
+use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::EnvFilter;
 
 pub fn init() -> anyhow::Result<()> {
@@ -13,6 +15,39 @@ pub fn init() -> anyhow::Result<()> {
         .compact()
         .try_init()
         .map_err(|error| anyhow::anyhow!(error))
+}
+
+/// Initialize tracing for TUI mode, writing to a log file instead of stderr.
+///
+/// Returns a `WorkerGuard` that must be held for the lifetime of the TUI
+/// to ensure logs are flushed. When the guard is dropped, the background
+/// thread that writes to the log file will be shut down.
+pub fn init_for_tui(log_path: &Path) -> anyhow::Result<WorkerGuard> {
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
+    // Ensure the parent directory exists
+    if let Some(parent) = log_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    // Create a non-blocking file appender
+    let file_appender = tracing_appender::rolling::never(
+        log_path.parent().unwrap_or(Path::new("")),
+        log_path
+            .file_name()
+            .unwrap_or(std::ffi::OsStr::new("dothoard.log")),
+    );
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(false)
+        .with_writer(non_blocking)
+        .compact()
+        .try_init()
+        .map_err(|error| anyhow::anyhow!(error))?;
+
+    Ok(guard)
 }
 
 pub fn redact_remote_url(value: &str) -> Cow<'_, str> {
@@ -162,5 +197,32 @@ mod tests {
         let value = "fetch from https://example.com/public.git failed";
 
         assert!(matches!(redact_sensitive_text(value), Cow::Borrowed(_)));
+    }
+
+    /// Test that init_for_tui creates a log file and writes to it.
+    ///
+    /// Note: This test initializes tracing, which can only be done once per process.
+    /// Run this test in isolation if needed, or run with `--test-threads=1`.
+    #[test]
+    fn init_for_tui_creates_log_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let log_path = tmp.path().join("dothoard.log");
+
+        // Initialize tracing with file appender
+        let _guard = init_for_tui(&log_path).expect("should initialize successfully");
+
+        // Log a test message
+        tracing::info!("test log message from init_for_tui");
+
+        // Drop the guard to ensure all logs are flushed
+        drop(_guard);
+
+        // Read the log file and verify it contains our message
+        let log_contents = std::fs::read_to_string(&log_path).expect("should read log file");
+        assert!(
+            log_contents.contains("test log message from init_for_tui"),
+            "log file should contain the test message. Contents: {}",
+            log_contents
+        );
     }
 }
