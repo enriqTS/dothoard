@@ -396,7 +396,7 @@ fn execute_workflow(
             Err(e) => {
                 // Other sync errors.
                 BackupOutcome::failed_with_commit(
-                    format!("sync failed: {e}"),
+                    format!("{e}"),
                     commit_sha,
                     warnings,
                     copies,

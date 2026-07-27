@@ -33,7 +33,7 @@ pub enum SyncResult {
 #[derive(Debug, Error)]
 pub enum SyncError {
     /// A git command failed.
-    #[error("sync failed")]
+    #[error("sync failed: {0}")]
     Git(#[from] GitError),
 
     /// The pull resulted in a conflict that could not be automatically resolved.
@@ -501,5 +501,28 @@ mod tests {
         ));
         assert!(is_push_rejected("error: failed to push some refs"));
         assert!(!is_push_rejected("Everything up-to-date"));
+    }
+
+    #[test]
+    fn sync_error_git_includes_inner_error_details() {
+        use super::GitError;
+
+        let inner_error = GitError::Failed {
+            code: 128,
+            args: "push origin main".to_string(),
+            stdout: String::new(),
+            stderr: "fatal: Authentication failed".to_string(),
+        };
+        let sync_error = SyncError::Git(inner_error);
+        let message = format!("{sync_error}");
+
+        assert!(
+            message.contains("sync failed"),
+            "message should contain 'sync failed' prefix"
+        );
+        assert!(
+            message.contains("Authentication failed"),
+            "message should include inner error details: {message}"
+        );
     }
 }
