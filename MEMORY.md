@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-07-23
+Last updated: 2026-07-27
 
 This file is the concise resume point for ongoing work. Product details belong
 in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
@@ -10,10 +10,12 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - All V1 milestones complete (0 through 9).
 - Post-V1 milestone 10 complete: TUI Usability Improvements.
 - UX01–UX10 all complete.
-- 743 unit tests + integration tests passing.
-- Release binary: 3.3MB, stripped, LTO-optimized for x86_64 Linux.
-- Blockers: None.
-- No active task — milestone 10 is fully delivered.
+- Milestone 11 in progress: TUI Bug Fixes.
+- **F01 complete**: Tracing redirected to log file during TUI mode.
+- **Bug fix**: Fixed two TUI rendering tests that had incorrect assertions
+  (`sources_screen_renders_empty` and `history_screen_renders_empty`).
+- Active task: F02 (repository browser initialization fix).
+- 744 unit tests + integration tests passing (1 new test for F01).
 
 ## Durable Decisions
 
@@ -99,8 +101,8 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 - `cargo fmt --check` — clean
 - `cargo clippy --all-targets --all-features -- -D warnings` — clean
-- `cargo test --all-targets --all-features` — 743 unit tests passed
-  - 743 unit tests (lib) including browser, picker, and state-sync tests
+- `cargo test --all-targets --all-features` — 744 unit tests passed
+  - 744 unit tests (lib) including browser, picker, state-sync, and diagnostics tests
   - 18 acceptance tests
   - 1 bootstrap integration test
   - 12 git_workflow integration tests
@@ -109,6 +111,7 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   - 13 orchestration integration tests
 - Orchestration/acceptance lock-contention races in parallel mode are pre-existing
   and pass with `--test-threads=1`.
+- All tests passing after fixing incorrect test assertions in TUI rendering tests.
 - Release binary: `target/release/dothoard` (3.3MB, x86_64)
 - Platform: CachyOS (Arch Linux), Rust 1.97.1
 
