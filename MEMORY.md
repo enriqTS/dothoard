@@ -16,8 +16,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   (`sources_screen_renders_empty` and `history_screen_renders_empty`).
 - **F02 complete**: Repository browser now initializes when entering content focus;
   placeholder message changed from "Loading browser..." to actionable hint.
-- Active task: F03 (SyncError display fix).
-- 745 unit tests + integration tests passing (1 new test for F02).
+- **F03 complete**: SyncError::Git now includes inner error details; removed redundant
+  prefix from coordinator error formatting.
+- Active task: F04 (scrollable log viewer in History screen).
+- 746 unit tests + integration tests passing (1 new test for F03).
 
 ## Durable Decisions
 

@@ -357,13 +357,14 @@ feature work.
   `Some(...)`.  
   **Verification**: Test passes, clippy clean, fmt clean.
 
-- [ ] **F03 - Fix SyncError display to include underlying GitError.** Change
+- [x] **F03 - Fix SyncError display to include underlying GitError.** Change
   `SyncError::Git` from `#[error("sync failed")]` to
   `#[error("sync failed: {0}")]` so the inner `GitError` details propagate.
   Remove the redundant "sync failed:" prefix in the coordinator's
   `format!("sync failed: {e}")`, replacing it with `format!("{e}")`. Add a
   unit test that `SyncError::Git(GitError::Failed { .. })` includes the git
-  error details in its Display output.
+  error details in its Display output.  
+  **Verification**: Test passes, clippy clean, fmt clean.
 
 - [ ] **F04 - Add a scrollable log viewer to the History screen.** Add a
   `LogView` mode to `HistoryScreen` with scroll state and cached filtered
