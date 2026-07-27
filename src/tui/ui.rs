@@ -181,14 +181,7 @@ fn help_bar_content_focus(app: &App) -> Line<'static> {
             Span::styled("x", Style::default().fg(Color::Cyan)),
             Span::raw(" remove"),
         ]),
-        Screen::History => Line::from(vec![
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
-            Span::raw(" tabs  "),
-            Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
-            Span::raw(" navigate  "),
-            Span::styled("q", Style::default().fg(Color::Cyan)),
-            Span::raw(" quit"),
-        ]),
+        Screen::History => help_bar_history(app),
     }
 }
 
@@ -273,6 +266,32 @@ fn help_bar_sources(app: &App) -> Line<'static> {
             Span::raw(" confirm  "),
             Span::styled("n/Esc", Style::default().fg(Color::Cyan)),
             Span::raw(" cancel"),
+        ]),
+    }
+}
+
+/// Context-sensitive help for the History screen.
+fn help_bar_history(app: &App) -> Line<'static> {
+    use crate::tui::screens::history::Mode;
+
+    match app.history_screen.mode {
+        Mode::LogView => Line::from(vec![
+            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::raw(" back  "),
+            Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
+            Span::raw(" scroll  "),
+            Span::styled("PgUp/PgDn", Style::default().fg(Color::Cyan)),
+            Span::raw(" page"),
+        ]),
+        Mode::History => Line::from(vec![
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(" tabs  "),
+            Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
+            Span::raw(" navigate  "),
+            Span::styled("Enter", Style::default().fg(Color::Cyan)),
+            Span::raw(" view logs  "),
+            Span::styled("q", Style::default().fg(Color::Cyan)),
+            Span::raw(" quit"),
         ]),
     }
 }
@@ -498,7 +517,7 @@ fn format_time(ts: &chrono::DateTime<chrono::Utc>) -> String {
 
 /// Draw the history screen with recent runs and detail for the selected entry.
 fn draw_history(frame: &mut Frame, area: Rect, app: &App) {
-    use crate::tui::screens::history::HistoryScreen;
+    use crate::tui::screens::history::{HistoryScreen, Mode};
 
     let block = Block::default()
         .borders(Borders::ALL)
@@ -523,6 +542,12 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &App) {
         lines.push(dim_line("  Run a backup to see results here."));
         let paragraph = Paragraph::new(lines);
         frame.render_widget(paragraph, inner);
+        return;
+    }
+
+    // If in log view mode, show the log viewer.
+    if app.history_screen.mode == Mode::LogView {
+        draw_log_view(frame, inner, app);
         return;
     }
 
@@ -643,11 +668,73 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &App) {
     detail_lines.push(Line::from(vec![
         Span::raw(" "),
         Span::styled("↑↓/jk", Style::default().fg(Color::DarkGray)),
-        Span::styled(" navigate", Style::default().fg(Color::DarkGray)),
+        Span::styled(" navigate  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Enter", Style::default().fg(Color::DarkGray)),
+        Span::styled(" view logs", Style::default().fg(Color::DarkGray)),
     ]));
 
     let detail_paragraph = Paragraph::new(detail_lines);
     frame.render_widget(detail_paragraph, columns[1]);
+}
+
+/// Draw the log view for a selected history entry.
+fn draw_log_view(frame: &mut Frame, area: Rect, app: &App) {
+    let mut lines: Vec<Line> = Vec::new();
+
+    lines.push(Line::from(Span::styled(
+        " Log View (Esc to return):",
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from(""));
+
+    if app.history_screen.log_lines.is_empty() {
+        lines.push(dim_line("  No log entries found for this run."));
+        lines.push(Line::from(""));
+        lines.push(dim_line(
+            "  Logs may have been rotated or the log file is not available.",
+        ));
+    } else {
+        // Calculate visible lines based on scroll offset.
+        let visible_height = area.height.saturating_sub(3) as usize;
+        let scroll = app.history_screen.scroll.min(
+            app.history_screen
+                .log_lines
+                .len()
+                .saturating_sub(visible_height),
+        );
+
+        for line in app
+            .history_screen
+            .log_lines
+            .iter()
+            .skip(scroll)
+            .take(visible_height)
+        {
+            // Truncate very long lines to prevent wrapping issues.
+            let display_line = if line.len() > 200 {
+                format!("{}...", &line[..197])
+            } else {
+                line.clone()
+            };
+            lines.push(Line::from(Span::raw(display_line)));
+        }
+
+        // Scroll indicator.
+        if app.history_screen.log_lines.len() > visible_height {
+            lines.push(Line::from(""));
+            lines.push(dim_line(format!(
+                "  [{}-{} of {}] ↑↓/jk to scroll",
+                scroll + 1,
+                (scroll + visible_height).min(app.history_screen.log_lines.len()),
+                app.history_screen.log_lines.len()
+            )));
+        }
+    }
+
+    let paragraph = Paragraph::new(lines);
+    frame.render_widget(paragraph, area);
 }
 
 /// Draw the automation controls screen.

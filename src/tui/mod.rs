@@ -695,6 +695,17 @@ impl App {
         let action = self.history_screen.handle_key(key, history_len);
         match action {
             screens::history::Action::Consumed => true,
+            screens::history::Action::ViewLogs => {
+                // Enter log view mode for the selected entry.
+                if let Some(ref state) = self.state
+                    && let Some(ref paths) = self.paths
+                    && let Some(record) = state.history.get(self.history_screen.selected)
+                {
+                    let log_path = paths.state_dir().join("dothoard.log");
+                    self.history_screen.enter_log_view(record, &log_path);
+                }
+                true
+            }
             screens::history::Action::NotConsumed => false,
         }
     }
