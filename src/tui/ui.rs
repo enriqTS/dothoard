@@ -1250,7 +1250,7 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
                 crate::tui::picker::draw(frame, chunks[0], browser);
             } else {
                 let msg = Paragraph::new(Line::from(Span::styled(
-                    " Loading browser...",
+                    " Press Enter or ↓ to start browsing",
                     Style::default().fg(Color::DarkGray),
                 )));
                 frame.render_widget(msg, chunks[0]);

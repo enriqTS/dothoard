@@ -410,6 +410,12 @@ impl App {
             // Enter content focus.
             (_, KeyCode::Down) | (_, KeyCode::Char('j')) | (_, KeyCode::Enter) => {
                 self.focus = Focus::Content;
+                // Initialize repository browser when entering Repository screen content.
+                if self.active_screen == Screen::Repository {
+                    if let Some(ref paths) = self.paths {
+                        self.repo_screen.ensure_browser(paths.home());
+                    }
+                }
             }
             // Direct tab selection via number keys.
             (_, KeyCode::Char(c @ '1'..='7')) => {
@@ -1683,5 +1689,48 @@ mod tests {
             app.sources_screen.message.as_ref().unwrap().kind,
             screens::sources::MessageKind::Error,
         );
+    }
+
+    // --- F02: Repository browser initialization test ---
+
+    #[test]
+    fn repository_browser_initializes_on_focus_entry() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+
+        // Create necessary directories.
+        std::fs::create_dir_all(home.join(".config/dothoard")).unwrap();
+        std::fs::create_dir_all(home.join(".local/share/dothoard")).unwrap();
+        std::fs::create_dir_all(home.join(".run")).unwrap();
+
+        // Setup paths.
+        app.paths = Some(
+            crate::paths::AppPaths::resolve(crate::paths::PathInputs {
+                home: Some(home.to_path_buf()),
+                config_dir: Some(home.join(".config/dothoard")),
+                state_dir: Some(home.join(".local/share/dothoard")),
+                runtime_dir: Some(home.join(".run")),
+                use_environment: false,
+            })
+            .unwrap(),
+        );
+
+        // Navigate to Repository tab.
+        app.active_screen = Screen::Repository;
+        app.focus = Focus::TabBar;
+
+        // Browser should be None initially.
+        assert!(app.repo_screen.browser.is_none());
+
+        // Press Down to enter content focus on Repository screen.
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+
+        // Focus should be Content now.
+        assert_eq!(app.focus, Focus::Content);
+
+        // Browser should be initialized (Some).
+        assert!(app.repo_screen.browser.is_some());
     }
 }
