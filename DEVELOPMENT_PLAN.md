@@ -414,7 +414,7 @@ sources, and applies all changes atomically on Escape.
   (repository browser), render without checkboxes. Add rendering tests at
   various terminal widths.
 
-- [ ] **MS04 - Update key handling for multi-select.** In
+- [x] **MS04 - Update key handling for multi-select.** In
   `SourcesScreen::handle_key_browse`, intercept Space before delegating to
   the picker: get the current entry path, call `selection.toggle()`, return
   `Action::Consumed`. Esc now transitions to the apply step instead of

@@ -867,4 +867,58 @@ mod tests {
         assert_eq!(action, Action::Consumed);
         assert_eq!(screen.mode, Mode::Browse);
     }
+
+    #[test]
+    fn browse_space_toggles_inherited_entry_to_deselected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+        let config_dir = home.join(".config");
+        std::fs::create_dir(&config_dir).unwrap();
+        std::fs::write(config_dir.join("file.txt"), "x").unwrap();
+
+        let sources = vec![SourceConfig {
+            path: ".config".to_string(),
+            ignore: vec![],
+        }];
+
+        let mut screen = SourcesScreen::new();
+        screen.mode = Mode::Browse;
+        screen.ensure_browser(home);
+        screen.ensure_selection(&sources, home);
+
+        // Navigate into .config.
+        if let Some(ref mut browser) = screen.browser {
+            let _ = browser.current_listing();
+            use crate::tui::browser::DirListing;
+            let listing = browser.current_listing().clone();
+            if let DirListing::Entries(entries) = &listing {
+                let idx = entries
+                    .iter()
+                    .position(|e| e.display_name == ".config")
+                    .unwrap();
+                for _ in 0..idx {
+                    browser.move_down();
+                }
+            }
+            browser.enter_selected();
+        }
+
+        // file.txt inside .config should be inherited.
+        let sel = screen.selection.as_ref().unwrap();
+        assert_eq!(
+            sel.is_selected(&config_dir.join("file.txt")),
+            crate::tui::selection::CheckState::Inherited
+        );
+
+        // Toggle it (deselect).
+        let action = screen.handle_key(key(KeyCode::Char(' ')), 0);
+        assert_eq!(action, Action::Consumed);
+        assert_eq!(screen.mode, Mode::Browse);
+
+        let sel = screen.selection.as_ref().unwrap();
+        assert_eq!(
+            sel.is_selected(&config_dir.join("file.txt")),
+            crate::tui::selection::CheckState::Unchecked
+        );
+    }
 }
