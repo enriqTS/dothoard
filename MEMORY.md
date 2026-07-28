@@ -10,8 +10,12 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - All V1 milestones complete (0 through 9).
 - Post-V1 milestones 10 and 11 complete.
 - Milestone 12 in progress: Multi-Select Source Browser.
-- **Active task**: MS01 — Add a multi-selection state model.
-- 757 unit tests + integration tests passing.
+- **MS01 complete**: Added `SourceSelection` model in `src/tui/selection.rs`
+  with `CheckState` enum, `load_from_config`, `is_selected` (ancestor walking),
+  `toggle` (Explicit/Inherited/Unchecked transitions), `diff_against_config`,
+  and 23 unit tests.
+- **Active task**: MS02 — Integrate selection state into the sources screen.
+- 789 unit tests passing.
 
 ## Durable Decisions
 

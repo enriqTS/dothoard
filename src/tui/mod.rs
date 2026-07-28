@@ -8,6 +8,7 @@ pub mod browser;
 mod event;
 pub mod picker;
 pub mod screens;
+pub mod selection;
 pub mod task;
 mod terminal;
 mod ui;
