@@ -89,6 +89,32 @@ pub enum CoordinatorError {
     State(#[from] crate::state::StateError),
 }
 
+/// A simple synchronous log writer for per-run log files.
+///
+/// Writes timestamped lines directly to a file, independent of the tracing
+/// system. This ensures log content is available immediately on disk.
+struct RunLog {
+    file: Option<std::fs::File>,
+}
+
+impl RunLog {
+    /// Open a run log file for writing.
+    fn open(path: &std::path::Path) -> Self {
+        Self {
+            file: std::fs::File::create(path).ok(),
+        }
+    }
+
+    /// Write a timestamped line to the log file.
+    fn write(&mut self, message: &str) {
+        use std::io::Write;
+        if let Some(ref mut f) = self.file {
+            let ts = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ");
+            let _ = writeln!(f, "{ts}  {message}");
+        }
+    }
+}
+
 /// Execute a complete backup run.
 ///
 /// This is the main entry point for both the CLI `backup` command and the
@@ -117,22 +143,37 @@ pub fn run_backup_at(
 ) -> Result<BackupOutcome, CoordinatorError> {
     let log_filename = crate::diagnostics::run_log_filename(&started_at);
 
+    // Ensure the per-run log directory exists and open the log file for direct writes.
+    let log_dir = crate::diagnostics::log_dir(paths.state_dir());
+    let _ = std::fs::create_dir_all(&log_dir);
+    let mut run_log = RunLog::open(&log_dir.join(&log_filename));
+
+    run_log.write(&format!("backup started at {started_at}"));
+
     // Step 1: Acquire exclusive lock.
     let _lock = crate::locking::try_acquire(paths.runtime_dir())?;
     tracing::info!("backup lock acquired");
+    run_log.write("lock acquired");
 
     // Step 2: Load and validate configuration.
     let config = Config::load(paths.config_file())?;
     let validation_errors = config.validate();
     if !validation_errors.is_empty() {
         let messages: Vec<String> = validation_errors.iter().map(|e| e.to_string()).collect();
-        return Err(CoordinatorError::Validation(messages.join("; ")));
+        let msg = messages.join("; ");
+        run_log.write(&format!("configuration invalid: {msg}"));
+        return Err(CoordinatorError::Validation(msg));
     }
     tracing::info!(
         sources = config.sources.len(),
         repository = %config.repository,
         "configuration loaded"
     );
+    run_log.write(&format!(
+        "configuration loaded: {} sources, repository={}",
+        config.sources.len(),
+        config.repository
+    ));
 
     // Resolve repository path.
     let repository = config.repository_path(paths.home());
@@ -144,6 +185,26 @@ pub fn run_backup_at(
 
     // Execute the backup workflow (steps 3-14).
     let outcome = execute_workflow(paths, &config, &repository, &runner, started_at);
+
+    // Write outcome to per-run log.
+    if outcome.success {
+        if let Some(ref sha) = outcome.commit {
+            run_log.write(&format!(
+                "backup succeeded: commit={sha}, copies={}, deletions={}, pushed={}",
+                outcome.copies, outcome.deletions, outcome.pushed
+            ));
+        } else {
+            run_log.write("backup succeeded: no changes");
+        }
+    } else {
+        run_log.write(&format!(
+            "backup failed: {}",
+            outcome.error.as_deref().unwrap_or("unknown error")
+        ));
+    }
+    for warning in &outcome.warnings {
+        run_log.write(&format!("warning: {warning}"));
+    }
 
     // Step 15: Persist the result.
     if let Err(e) = persist_outcome(paths, &outcome, started_at, Some(log_filename)) {
