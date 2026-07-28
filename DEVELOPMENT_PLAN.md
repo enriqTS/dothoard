@@ -380,6 +380,87 @@ feature work.
 the repository browser loads on focus entry, sync errors show actionable
 details, and run logs are viewable from the History screen. All tests pass.
 
+## 12. Multi-Select Source Browser
+
+Replace the single-select source browser with a persistent multi-select
+browser that shows existing sources as pre-checked, supports toggling
+selections, generates ignore rules for deselected children inside folder
+sources, and applies all changes atomically on Escape.
+
+- [ ] **MS01 - Add a multi-selection state model.** Create a `SourceSelection`
+  struct with `selected: HashSet<PathBuf>` (explicitly checked sources) and
+  `deselected: HashMap<PathBuf, Vec<String>>` (per-source relative paths to
+  ignore). Implement `toggle(path)`, `is_selected(path) -> CheckState`
+  (returning `Explicit`, `Inherited`, or `Unchecked`),
+  `load_from_config(sources, home)`, and
+  `diff_against_config(sources, home)` (producing adds, removes, and new
+  ignore rules). Add unit tests for toggling, inheritance detection, config
+  loading, and diffing.
+
+- [ ] **MS02 - Integrate selection state into the sources screen.** Add
+  `selection: Option<SourceSelection>` to `SourcesScreen`. Initialize it from
+  the current config when entering Browse mode (if not already initialized,
+  preserving session persistence). Change Space in Browse mode to call
+  `selection.toggle()` and return `Action::Consumed` instead of
+  `Action::AddSource`. Keep the browser open after toggle. Add tests that
+  Space toggles without closing, and that re-entering Browse mode preserves
+  selection state.
+
+- [ ] **MS03 - Render checkboxes in the picker.** Add an optional
+  `check_state: Option<&dyn Fn(&Path) -> CheckState>` parameter to
+  `picker::draw()`. Render a prefix per entry: `[●]` (green/cyan) for
+  `Explicit`, `[◉]` (dim) for `Inherited`, `[ ]` (dim) for `Unchecked`. Adjust
+  column width for the 4-char prefix. When no check function is provided
+  (repository browser), render without checkboxes. Add rendering tests at
+  various terminal widths.
+
+- [ ] **MS04 - Update key handling for multi-select.** In
+  `SourcesScreen::handle_key_browse`, intercept Space before delegating to
+  the picker: get the current entry path, call `selection.toggle()`, return
+  `Action::Consumed`. Esc now transitions to the apply step instead of
+  returning to List mode immediately. Navigation keys remain unchanged. Add
+  tests for Space toggling explicit/inherited/unchecked entries and Esc
+  triggering apply.
+
+- [ ] **MS05 - Implement apply-on-Esc with removal confirmation.** Add
+  `Mode::ConfirmApply` to the sources screen. On Esc from Browse mode,
+  compute the diff. If removals exist, transition to `ConfirmApply` showing
+  a summary ("Add N, remove M, add K ignore rules. Remove sources? y/n").
+  On `y`, apply all changes (add new `SourceConfig` entries, remove unchecked
+  ones, append anchored ignore rules), save config atomically, mark previews
+  stale, return to List mode. On `n`/Esc, return to Browse mode. If no
+  removals, apply immediately. Add tests for confirmation flow, no-removal
+  fast path, and config persistence.
+
+- [ ] **MS06 - Handle inherited selection and ignore-rule generation.**
+  Implement ancestor-walking in `is_selected()` to detect inheritance.
+  When toggling an inherited entry off, compute the relative path from the
+  ancestor source and store in `deselected[ancestor]`. Ignore rules use full
+  relative paths with leading `/` for anchoring (e.g., `/completions/git.fish`,
+  `/subfolder/`). Toggling a deselected entry back on removes it from the
+  deselect list. Add tests for nested navigation, multi-level inheritance,
+  directory vs file rule format, and re-selection.
+
+- [ ] **MS07 - Update UI rendering and help bar.** Update the browser status
+  area to show selection summary ("N sources, M excluded"). Update help bar
+  for Browse mode: `Space: toggle │ Esc: apply │ ↑↓←→ navigate │ :/ text`.
+  Add `ConfirmApply` rendering with change summary and y/n prompt. Update
+  feedback message after apply ("Added 2 sources, removed 1, added 3 ignore
+  rules"). Add rendering tests at various terminal sizes.
+
+- [ ] **MS08 - Integration testing and edge cases.** Add end-to-end tests:
+  enter browser → multi-select → Esc → confirm → verify config. Test:
+  uncheck existing source with confirmation, inherited deselection produces
+  correct anchored ignore rules, re-entering browser reflects applied config,
+  empty selection is a no-op, overlap validation still catches conflicts,
+  source validation rejects invalid entries, repository browser remains
+  unaffected (no checkboxes). Run full quality suite.
+
+**Milestone gate:** The source browser supports persistent multi-select with
+visual checkbox indicators. Existing sources appear pre-checked, folder
+selection inherits to children, deselecting children generates anchored ignore
+rules, removals require confirmation, and the complete quality suite passes.
+
 ## Execution Order
 
 ```text
@@ -396,6 +477,7 @@ Bootstrap
   -> Delivery
   -> TUI Usability Improvements
   -> TUI Bug Fixes
+  -> Multi-Select Source Browser
 ```
 
 The explicit naming prerequisite avoids introducing installed paths and unit

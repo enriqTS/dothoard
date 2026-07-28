@@ -8,20 +8,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 ## Current Status
 
 - All V1 milestones complete (0 through 9).
-- Post-V1 milestone 10 complete: TUI Usability Improvements.
-- UX01–UX10 all complete.
-- Milestone 11 in progress: TUI Bug Fixes.
-- **F01 complete**: Tracing redirected to log file during TUI mode.
-- **Bug fix**: Fixed two TUI rendering tests that had incorrect assertions
-  (`sources_screen_renders_empty` and `history_screen_renders_empty`).
-- **F02 complete**: Repository browser now initializes when entering content focus;
-  placeholder message changed from "Loading browser..." to actionable hint.
-- **F03 complete**: SyncError::Git now includes inner error details; removed redundant
-  prefix from coordinator error formatting.
-- **F04 complete**: Added scrollable log viewer to History screen; Enter on a history entry
-  shows filtered log lines by timestamp; Escape returns to history list.
-- Milestone 11 complete: TUI Bug Fixes.
-- 757 unit tests + integration tests passing (11 new tests for F04).
+- Post-V1 milestones 10 and 11 complete.
+- Milestone 12 in progress: Multi-Select Source Browser.
+- **Active task**: MS01 — Add a multi-selection state model.
+- 757 unit tests + integration tests passing.
 
 ## Durable Decisions
 

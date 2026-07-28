@@ -464,11 +464,9 @@ unselectable for operation even when it is visible in the browser.
 
 ### Source Selection
 
-Source browsing is rooted at `$HOME` and cannot navigate above it. Space may
-select a regular file, a real directory, or a source-root symbolic link. The
-stored path is derived by stripping the trusted home prefix and is then
-validated through the existing source and overlap rules before configuration
-is saved.
+Source browsing is rooted at `$HOME` and cannot navigate above it. The browser
+operates in a persistent multi-select mode: it remains open while the user
+selects and deselects multiple entries before applying all changes at once.
 
 The browser uses `symlink_metadata` and never opens or previews a symlink as a
 directory. A selected source-root symlink is configured as the link itself and
@@ -476,9 +474,66 @@ the UI explains that its target will not be followed. Symlinks in parent
 components remain invalid. Sockets, devices, FIFOs, and other unsupported
 special files may be identified in the listing but cannot be selected.
 
-Adding a source remains a one-source-at-a-time operation. A successful change
-marks backup and ignore previews stale. Validation or persistence failure
-leaves the picker open with the selected path and an actionable error.
+#### Multi-Select Behavior
+
+Each entry in the browser displays a checkbox indicator:
+
+- `[●]` — Explicitly selected as a source (green/cyan).
+- `[◉]` — Inherited selection: the entry is inside a selected folder source
+  (dim/gray).
+- `[ ]` — Not selected (dim).
+
+Space toggles the selection state of the highlighted entry:
+
+- An unselected file or directory becomes explicitly selected.
+- An explicitly selected entry becomes unselected.
+- An inherited entry (child of a selected folder) becomes deselected, which
+  will generate an ignore rule for that path within the parent source.
+- A deselected inherited entry returns to inherited state when toggled again.
+
+Selecting a folder implicitly selects everything inside it. Navigating into a
+selected folder shows its children with the inherited `[◉]` indicator.
+Deselecting specific children inside a selected folder creates per-source
+ignore rules using the full relative path anchored from the source root (e.g.,
+`/completions/git.fish` or `/subfolder/`). This prevents accidental matches
+against files with the same name in unrelated directories.
+
+#### Session Persistence
+
+When entering the browser, existing configured sources appear pre-checked.
+The browser remembers its navigation position within the TUI session but not
+across restarts. Re-entering the browser after a previous apply resumes from
+the last browsed directory.
+
+#### Apply on Escape
+
+Pressing Escape closes the browser and computes a diff between the current
+selection state and the persisted configuration:
+
+- New selections are added as sources.
+- Deselected children within folder sources are added as anchored ignore
+  rules on the corresponding source.
+- Previously configured sources that were unchecked are candidates for
+  removal.
+
+If the diff includes source removals, a confirmation dialog lists the sources
+to be removed and requires explicit `y` to proceed. Pressing `n` or Escape
+returns to the browser with the selection intact.
+
+If the diff contains only additions or ignore-rule changes, it is applied
+immediately without confirmation.
+
+After a successful apply, backup and ignore previews are marked stale.
+Validation or persistence failure leaves the browser open with an actionable
+error message.
+
+#### Validation
+
+Source validation continues to reject absolute paths, parent traversal,
+overlapping sources, repository recursion, and symlinked parent components.
+Each new source candidate is validated individually before the complete diff
+is applied. A validation failure for one source does not discard the rest of
+the pending changes.
 
 ### TUI Verification
 
