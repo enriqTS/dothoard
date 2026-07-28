@@ -432,7 +432,7 @@ sources, and applies all changes atomically on Escape.
   removals, apply immediately. Add tests for confirmation flow, no-removal
   fast path, and config persistence.
 
-- [ ] **MS06 - Handle inherited selection and ignore-rule generation.**
+- [x] **MS06 - Handle inherited selection and ignore-rule generation.**
   Implement ancestor-walking in `is_selected()` to detect inheritance.
   When toggling an inherited entry off, compute the relative path from the
   ancestor source and store in `deselected[ancestor]`. Ignore rules use full

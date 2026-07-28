@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-07-27
+Last updated: 2026-07-28
 
 This file is the concise resume point for ongoing work. Product details belong
 in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
@@ -19,8 +19,13 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - **MS05 complete**: Apply-on-Esc with removal confirmation tested end-to-end.
   5 new app-level integration tests verify no-change, additions-only,
   removals-confirmation, confirm-apply execution, and ignore-rule addition.
-- **Active task**: MS06 — Handle inherited selection and ignore-rule generation.
-- 804 unit tests passing.
+- **MS06 complete**: Fixed `is_selected()` to detect deselected directory
+  children (parent-directory deselection blocks inheritance for all descendants).
+  Added 11 new tests covering multi-level inheritance, deselection at various
+  depths, deselected directory blocking children, reselection workflows, and
+  deeply nested ignore-rule generation.
+- **Active task**: MS07 — Update UI rendering and help bar.
+- 816 unit tests passing.
 
 ## Durable Decisions
 
@@ -106,8 +111,8 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 - `cargo fmt --check` — clean
 - `cargo clippy --all-targets --all-features -- -D warnings` — clean
-- `cargo test --all-targets --all-features` — 744 unit tests passed
-  - 744 unit tests (lib) including browser, picker, state-sync, and diagnostics tests
+- `cargo test --all-targets --all-features` — 816 unit tests passed
+  - 816 unit tests (lib) including browser, picker, state-sync, selection, and diagnostics tests
   - 18 acceptance tests
   - 1 bootstrap integration test
   - 12 git_workflow integration tests
