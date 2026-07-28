@@ -168,6 +168,8 @@ fn help_bar_content_focus(app: &App) -> Line<'static> {
             Span::raw(" refresh  "),
             Span::styled("b", Style::default().fg(Color::Cyan)),
             Span::raw(" backup  "),
+            Span::styled("p", Style::default().fg(Color::Cyan)),
+            Span::raw(" push  "),
             Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
             Span::raw(" scroll"),
         ]),
@@ -331,6 +333,7 @@ fn draw_dashboard_status(frame: &mut Frame, area: Rect, app: &App) {
         let kind = match app.tasks.active_task() {
             Some(super::task::TaskKind::Backup) => "backup",
             Some(super::task::TaskKind::Check) => "check",
+            Some(super::task::TaskKind::Push) => "push",
             None => "task",
         };
         lines.push(Line::from(vec![

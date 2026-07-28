@@ -194,6 +194,18 @@ impl App {
                     };
                     self.last_check = Some(r);
                 }
+                task::TaskResult::Push(r) => {
+                    self.status_message = if r.success {
+                        Some("Push completed successfully.".to_string())
+                    } else {
+                        Some(format!(
+                            "Push failed: {}",
+                            r.error.as_deref().unwrap_or("unknown error")
+                        ))
+                    };
+                    // Reload state to reflect updated pending_push status.
+                    self.reload_state();
+                }
             }
         }
     }
@@ -792,6 +804,18 @@ impl App {
                 } else {
                     self.status_message =
                         Some("Cannot run backup: paths not resolved.".to_string());
+                }
+                true
+            }
+            screens::preview::Action::Push => {
+                if self.tasks.is_busy() {
+                    self.status_message = Some("A task is already running.".to_string());
+                } else if let Some(ref paths) = self.paths {
+                    if self.tasks.spawn_push(paths.clone()) {
+                        self.status_message = Some("Pushing to remote...".to_string());
+                    }
+                } else {
+                    self.status_message = Some("Cannot push: paths not resolved.".to_string());
                 }
                 true
             }

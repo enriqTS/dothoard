@@ -97,6 +97,8 @@ impl PreviewScreen {
             }
             // Run backup.
             KeyCode::Char('b') => Action::RunBackup,
+            // Push pending commits to remote.
+            KeyCode::Char('p') => Action::Push,
             // Scroll.
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.scroll > 0 {
@@ -222,6 +224,8 @@ pub enum Action {
     Refresh,
     /// Execute the backup.
     RunBackup,
+    /// Push pending commits to remote.
+    Push,
 }
 
 #[cfg(test)]
@@ -253,6 +257,14 @@ mod tests {
         let mut screen = PreviewScreen::new();
         let action = screen.handle_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE));
         assert_eq!(action, Action::RunBackup);
+    }
+
+    #[test]
+    fn p_triggers_push() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut screen = PreviewScreen::new();
+        let action = screen.handle_key(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE));
+        assert_eq!(action, Action::Push);
     }
 
     #[test]

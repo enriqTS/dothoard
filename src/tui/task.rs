@@ -14,6 +14,8 @@ pub enum TaskResult {
     Backup(BackupResult),
     /// A check operation completed.
     Check(CheckResult),
+    /// A push operation completed.
+    Push(PushResult),
 }
 
 /// Outcome of a background backup.
@@ -33,6 +35,13 @@ pub struct BackupResult {
 pub struct CheckResult {
     pub healthy: bool,
     pub results: Vec<CheckItem>,
+}
+
+/// Outcome of a background push.
+#[derive(Debug, Clone)]
+pub struct PushResult {
+    pub success: bool,
+    pub error: Option<String>,
 }
 
 /// A single check result item for display.
@@ -56,6 +65,7 @@ pub enum CheckItemStatus {
 pub enum TaskKind {
     Backup,
     Check,
+    Push,
 }
 
 /// Manages background task spawning and result collection.
@@ -152,6 +162,27 @@ impl TaskManager {
 
         true
     }
+
+    /// Spawn a push-only operation in the background.
+    ///
+    /// This performs a pull-with-rebase and push without running the full
+    /// backup workflow. Useful for retrying after a previous push failure.
+    ///
+    /// Returns `false` if a task is already running.
+    pub fn spawn_push(&mut self, paths: crate::paths::AppPaths) -> bool {
+        if self.is_busy() {
+            return false;
+        }
+        self.active = Some(TaskKind::Push);
+        let sender = self.sender.clone();
+
+        thread::spawn(move || {
+            let result = run_push_task(&paths);
+            let _ = sender.send(TaskResult::Push(result));
+        });
+
+        true
+    }
 }
 
 /// Execute the backup workflow on the background thread.
@@ -206,6 +237,69 @@ fn run_check_task(paths: &crate::paths::AppPaths) -> CheckResult {
     CheckResult {
         healthy: report.is_healthy(),
         results,
+    }
+}
+
+/// Execute a push-only sync on the background thread.
+///
+/// Loads config, validates the repository, and runs pull+push without
+/// performing any backup/copy operations.
+fn run_push_task(paths: &crate::paths::AppPaths) -> PushResult {
+    use crate::config::Config;
+    use crate::git;
+    use std::time::Duration;
+
+    // Load config.
+    let config = match Config::load(paths.config_file()) {
+        Ok(c) => c,
+        Err(e) => {
+            return PushResult {
+                success: false,
+                error: Some(format!("failed to load config: {e}")),
+            };
+        }
+    };
+
+    let repo_path = config.repository_path(paths.home());
+
+    // Validate repository state.
+    let runner = git::GitRunner::new(Duration::from_secs(u64::from(
+        config.network_timeout_seconds,
+    )));
+
+    let repo_info = match git::validate_repository(&runner, &repo_path, &config.remote) {
+        Ok(info) => info,
+        Err(e) => {
+            return PushResult {
+                success: false,
+                error: Some(format!("repository error: {e}")),
+            };
+        }
+    };
+
+    // Run sync (pull with rebase + push).
+    match git::sync_with_remote(
+        &runner,
+        &repo_info.worktree,
+        &config.remote,
+        &repo_info.branch,
+    ) {
+        Ok(_) => {
+            // Update state to clear pending_push.
+            if let Ok(mut state) = crate::state::AppState::load(paths.state_dir()) {
+                state.pending_push = false;
+                state.last_push = Some(chrono::Utc::now());
+                let _ = state.save(paths.state_dir());
+            }
+            PushResult {
+                success: true,
+                error: None,
+            }
+        }
+        Err(e) => PushResult {
+            success: false,
+            error: Some(format!("{e}")),
+        },
     }
 }
 
