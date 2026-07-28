@@ -9,6 +9,7 @@ use std::path::Path;
 use crate::config::SourceConfig;
 use crate::paths;
 use crate::tui::browser::{Browser, BrowserConfig, EntryKind};
+use crate::tui::selection::{SelectionDiff, SourceSelection};
 
 /// The state of the sources management screen.
 #[derive(Debug)]
@@ -25,6 +26,10 @@ pub struct SourcesScreen {
     pub message: Option<Message>,
     /// The filesystem browser for source selection (rooted at $HOME).
     pub browser: Option<Browser>,
+    /// Multi-selection state for the browser (persists within session).
+    pub selection: Option<SourceSelection>,
+    /// Cached diff for the confirm-apply dialog.
+    pub pending_diff: Option<SelectionDiff>,
 }
 
 /// The mode the sources screen is in.
@@ -38,6 +43,8 @@ pub enum Mode {
     AddInput,
     /// Confirming deletion of the selected source.
     ConfirmDelete,
+    /// Confirming apply of multi-selection changes (when removals exist).
+    ConfirmApply,
 }
 
 /// A feedback message to display.
@@ -70,6 +77,8 @@ impl SourcesScreen {
             cursor: 0,
             message: None,
             browser: None,
+            selection: None,
+            pending_diff: None,
         }
     }
 
@@ -80,6 +89,17 @@ impl SourcesScreen {
                 root: home.to_path_buf(),
                 start: home.to_path_buf(),
             }));
+        }
+    }
+
+    /// Ensure the selection state is initialized from config.
+    ///
+    /// Only initializes once per session — re-entering Browse mode reuses it.
+    pub fn ensure_selection(&mut self, sources: &[SourceConfig], home: &Path) {
+        if self.selection.is_none() {
+            let mut sel = SourceSelection::new(home);
+            sel.load_from_config(sources);
+            self.selection = Some(sel);
         }
     }
 
@@ -229,6 +249,25 @@ impl SourcesScreen {
                 }
                 _ => Action::Consumed,
             },
+
+            Mode::ConfirmApply => match (key.modifiers, key.code) {
+                // Tab/Shift+Tab escape to tab bar.
+                (KeyModifiers::NONE, KeyCode::Tab) | (KeyModifiers::SHIFT, KeyCode::BackTab) => {
+                    Action::NotConsumed
+                }
+                (_, KeyCode::Char('y')) | (_, KeyCode::Char('Y')) => {
+                    // Confirm: apply the pending diff.
+                    Action::ConfirmApply
+                }
+                (_, KeyCode::Char('n')) | (_, KeyCode::Char('N')) | (_, KeyCode::Esc) => {
+                    // Cancel: return to browser with selection intact.
+                    self.mode = Mode::Browse;
+                    self.pending_diff = None;
+                    self.message = None;
+                    Action::Consumed
+                }
+                _ => Action::Consumed,
+            },
         }
     }
 
@@ -241,12 +280,8 @@ impl SourcesScreen {
             (KeyModifiers::NONE, KeyCode::Tab) | (KeyModifiers::SHIFT, KeyCode::BackTab) => {
                 Action::NotConsumed
             }
-            // Escape returns to list mode.
-            (_, KeyCode::Esc) => {
-                self.mode = Mode::List;
-                self.message = None;
-                Action::Consumed
-            }
+            // Escape triggers apply (multi-select workflow).
+            (_, KeyCode::Esc) => Action::ApplySelection,
             // ':' or '/' switches to text input mode for manual path entry.
             (_, KeyCode::Char(':')) | (_, KeyCode::Char('/')) => {
                 self.mode = Mode::AddInput;
@@ -255,26 +290,18 @@ impl SourcesScreen {
                 self.message = None;
                 Action::Consumed
             }
-            // Space selects the current entry.
+            // Space toggles the current entry's selection state.
             (KeyModifiers::NONE, KeyCode::Char(' ')) => {
                 if let Some(ref mut browser) = self.browser {
                     match browser.try_select() {
                         Ok(selection) => {
-                            // Accept files, directories, and symlinks.
                             match selection.kind {
                                 EntryKind::File | EntryKind::Directory | EntryKind::Symlink => {
-                                    // Convert absolute path to home-relative.
-                                    let home = browser.root();
-                                    if let Ok(relative) = selection.path.strip_prefix(home) {
-                                        let rel_str = relative.to_string_lossy().to_string();
-                                        return Action::AddSource(rel_str);
-                                    } else {
-                                        self.message = Some(Message {
-                                            text: "Cannot determine home-relative path."
-                                                .to_string(),
-                                            kind: MessageKind::Error,
-                                        });
+                                    // Toggle the selection state.
+                                    if let Some(ref mut sel) = self.selection {
+                                        sel.toggle(&selection.path);
                                     }
+                                    self.message = None;
                                 }
                                 _ => {
                                     self.message = Some(Message {
@@ -301,40 +328,13 @@ impl SourcesScreen {
                     let action = handle_key(browser, key, 20);
                     match action {
                         PickerAction::Consumed => Action::Consumed,
-                        PickerAction::Select(Ok(selection)) => match selection.kind {
-                            EntryKind::File | EntryKind::Directory | EntryKind::Symlink => {
-                                let home = browser.root();
-                                if let Ok(relative) = selection.path.strip_prefix(home) {
-                                    let rel_str = relative.to_string_lossy().to_string();
-                                    Action::AddSource(rel_str)
-                                } else {
-                                    self.message = Some(Message {
-                                        text: "Cannot determine home-relative path.".to_string(),
-                                        kind: MessageKind::Error,
-                                    });
-                                    Action::Consumed
-                                }
-                            }
-                            _ => {
-                                self.message = Some(Message {
-                                    text: "Cannot select this file type.".to_string(),
-                                    kind: MessageKind::Error,
-                                });
-                                Action::Consumed
-                            }
-                        },
-                        PickerAction::Select(Err(e)) => {
-                            self.message = Some(Message {
-                                text: e.to_string(),
-                                kind: MessageKind::Error,
-                            });
+                        PickerAction::Select(_) => {
+                            // In multi-select mode, picker's Space-based select
+                            // is handled above. This branch handles the unlikely
+                            // case of a key binding collision — just consume it.
                             Action::Consumed
                         }
-                        PickerAction::Cancel => {
-                            self.mode = Mode::List;
-                            self.message = None;
-                            Action::Consumed
-                        }
+                        PickerAction::Cancel => Action::ApplySelection,
                         PickerAction::NotConsumed => Action::NotConsumed,
                     }
                 } else {
@@ -419,10 +419,14 @@ pub enum Action {
     Consumed,
     /// The event was not consumed (pass to parent handler).
     NotConsumed,
-    /// Add a new source with this path.
+    /// Add a new source with this path (from text input mode).
     AddSource(String),
     /// Remove the source at this index.
     RemoveSource(usize),
+    /// Apply the multi-selection diff (Esc from browser triggers this).
+    ApplySelection,
+    /// Confirm and execute the pending multi-selection diff.
+    ConfirmApply,
 }
 
 /// Information about a validated source path.
@@ -656,12 +660,11 @@ mod tests {
     // --- Browser mode tests ---
 
     #[test]
-    fn browse_esc_returns_to_list() {
+    fn browse_esc_returns_apply_selection() {
         let mut screen = SourcesScreen::new();
         screen.mode = Mode::Browse;
         let action = screen.handle_key(key(KeyCode::Esc), 0);
-        assert_eq!(action, Action::Consumed);
-        assert_eq!(screen.mode, Mode::List);
+        assert_eq!(action, Action::ApplySelection);
     }
 
     #[test]
@@ -675,7 +678,7 @@ mod tests {
     }
 
     #[test]
-    fn browse_space_selects_directory() {
+    fn browse_space_toggles_directory() {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path();
         std::fs::create_dir(home.join(".config")).unwrap();
@@ -683,14 +686,23 @@ mod tests {
         let mut screen = SourcesScreen::new();
         screen.mode = Mode::Browse;
         screen.ensure_browser(home);
+        screen.ensure_selection(&[], home);
 
-        // The browser should be rooted at home; .config should be selectable.
+        // Space toggles (adds to selection) and returns Consumed, not AddSource.
         let action = screen.handle_key(key(KeyCode::Char(' ')), 0);
-        assert_eq!(action, Action::AddSource(".config".to_string()));
+        assert_eq!(action, Action::Consumed);
+        // Browser stays open.
+        assert_eq!(screen.mode, Mode::Browse);
+        // Entry is now selected.
+        let sel = screen.selection.as_ref().unwrap();
+        assert_eq!(
+            sel.is_selected(&home.join(".config")),
+            crate::tui::selection::CheckState::Explicit
+        );
     }
 
     #[test]
-    fn browse_space_selects_file() {
+    fn browse_space_toggles_file() {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path();
         std::fs::write(home.join(".bashrc"), "# bash").unwrap();
@@ -698,13 +710,20 @@ mod tests {
         let mut screen = SourcesScreen::new();
         screen.mode = Mode::Browse;
         screen.ensure_browser(home);
+        screen.ensure_selection(&[], home);
 
         let action = screen.handle_key(key(KeyCode::Char(' ')), 0);
-        assert_eq!(action, Action::AddSource(".bashrc".to_string()));
+        assert_eq!(action, Action::Consumed);
+        assert_eq!(screen.mode, Mode::Browse);
+        let sel = screen.selection.as_ref().unwrap();
+        assert_eq!(
+            sel.is_selected(&home.join(".bashrc")),
+            crate::tui::selection::CheckState::Explicit
+        );
     }
 
     #[test]
-    fn browse_space_selects_symlink() {
+    fn browse_space_toggles_symlink() {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path();
         std::fs::create_dir(home.join("real")).unwrap();
@@ -713,11 +732,11 @@ mod tests {
         let mut screen = SourcesScreen::new();
         screen.mode = Mode::Browse;
         screen.ensure_browser(home);
+        screen.ensure_selection(&[], home);
 
         // Navigate to the symlink entry.
         if let Some(ref mut browser) = screen.browser {
             let _ = browser.current_listing();
-            // Find "link" index.
             use crate::tui::browser::DirListing;
             let listing = browser.current_listing().clone();
             if let DirListing::Entries(entries) = &listing {
@@ -732,7 +751,13 @@ mod tests {
         }
 
         let action = screen.handle_key(key(KeyCode::Char(' ')), 0);
-        assert_eq!(action, Action::AddSource("link".to_string()));
+        assert_eq!(action, Action::Consumed);
+        assert_eq!(screen.mode, Mode::Browse);
+        let sel = screen.selection.as_ref().unwrap();
+        assert_eq!(
+            sel.is_selected(&home.join("link")),
+            crate::tui::selection::CheckState::Explicit
+        );
     }
 
     #[test]
@@ -753,5 +778,93 @@ mod tests {
         screen.mode = Mode::Browse;
         let action = screen.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE), 0);
         assert_eq!(action, Action::NotConsumed);
+    }
+
+    // --- Multi-select session persistence tests ---
+
+    #[test]
+    fn selection_persists_across_browse_reentry() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+        std::fs::create_dir(home.join(".config")).unwrap();
+
+        let sources = vec![SourceConfig {
+            path: ".config".to_string(),
+            ignore: vec![],
+        }];
+
+        let mut screen = SourcesScreen::new();
+        screen.ensure_browser(home);
+        screen.ensure_selection(&sources, home);
+
+        // Selection should reflect existing config.
+        let sel = screen.selection.as_ref().unwrap();
+        assert_eq!(
+            sel.is_selected(&home.join(".config")),
+            crate::tui::selection::CheckState::Explicit
+        );
+
+        // Re-calling ensure_selection doesn't reset it.
+        screen.ensure_selection(&[], home);
+        let sel = screen.selection.as_ref().unwrap();
+        assert_eq!(
+            sel.is_selected(&home.join(".config")),
+            crate::tui::selection::CheckState::Explicit
+        );
+    }
+
+    #[test]
+    fn space_toggle_does_not_close_browser() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+        std::fs::write(home.join("file.txt"), "x").unwrap();
+
+        let mut screen = SourcesScreen::new();
+        screen.mode = Mode::Browse;
+        screen.ensure_browser(home);
+        screen.ensure_selection(&[], home);
+
+        // Toggle on.
+        let action = screen.handle_key(key(KeyCode::Char(' ')), 0);
+        assert_eq!(action, Action::Consumed);
+        assert_eq!(screen.mode, Mode::Browse);
+
+        // Toggle off.
+        let action = screen.handle_key(key(KeyCode::Char(' ')), 0);
+        assert_eq!(action, Action::Consumed);
+        assert_eq!(screen.mode, Mode::Browse);
+
+        // Entry should be unchecked again.
+        let sel = screen.selection.as_ref().unwrap();
+        assert_eq!(
+            sel.is_selected(&home.join("file.txt")),
+            crate::tui::selection::CheckState::Unchecked
+        );
+    }
+
+    #[test]
+    fn confirm_apply_y_returns_confirm_action() {
+        let mut screen = SourcesScreen::new();
+        screen.mode = Mode::ConfirmApply;
+        let action = screen.handle_key(key(KeyCode::Char('y')), 0);
+        assert_eq!(action, Action::ConfirmApply);
+    }
+
+    #[test]
+    fn confirm_apply_n_returns_to_browse() {
+        let mut screen = SourcesScreen::new();
+        screen.mode = Mode::ConfirmApply;
+        let action = screen.handle_key(key(KeyCode::Char('n')), 0);
+        assert_eq!(action, Action::Consumed);
+        assert_eq!(screen.mode, Mode::Browse);
+    }
+
+    #[test]
+    fn confirm_apply_esc_returns_to_browse() {
+        let mut screen = SourcesScreen::new();
+        screen.mode = Mode::ConfirmApply;
+        let action = screen.handle_key(key(KeyCode::Esc), 0);
+        assert_eq!(action, Action::Consumed);
+        assert_eq!(screen.mode, Mode::Browse);
     }
 }

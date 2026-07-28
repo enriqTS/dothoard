@@ -298,6 +298,132 @@ impl App {
         self.sources_screen.mode = screens::sources::Mode::List;
     }
 
+    /// Handle the ApplySelection action from the browser (Esc pressed).
+    ///
+    /// Computes the diff and either applies immediately (no removals) or
+    /// transitions to ConfirmApply mode.
+    fn handle_apply_selection(&mut self) {
+        let sources = self
+            .config
+            .as_ref()
+            .map(|c| c.sources.as_slice())
+            .unwrap_or(&[]);
+
+        if let Some(ref sel) = self.sources_screen.selection {
+            let diff = sel.diff_against_config(sources);
+            if diff.additions.is_empty() && diff.removals.is_empty() && diff.ignore_rules.is_empty()
+            {
+                // No changes — just close the browser.
+                self.sources_screen.mode = screens::sources::Mode::List;
+                self.sources_screen.message = None;
+            } else if diff.removals.is_empty() {
+                // No removals — apply immediately without confirmation.
+                self.sources_screen.pending_diff = Some(diff);
+                self.execute_selection_diff();
+            } else {
+                // Removals present — ask for confirmation.
+                self.sources_screen.pending_diff = Some(diff);
+                self.sources_screen.mode = screens::sources::Mode::ConfirmApply;
+                self.sources_screen.message = None;
+            }
+        } else {
+            // No selection state — just close.
+            self.sources_screen.mode = screens::sources::Mode::List;
+        }
+    }
+
+    /// Handle ConfirmApply action (user pressed 'y' in the confirm dialog).
+    fn handle_confirm_apply(&mut self) {
+        self.execute_selection_diff();
+    }
+
+    /// Execute the pending selection diff: add sources, remove sources, add ignore rules.
+    fn execute_selection_diff(&mut self) {
+        let diff = match self.sources_screen.pending_diff.take() {
+            Some(d) => d,
+            None => {
+                self.sources_screen.mode = screens::sources::Mode::List;
+                return;
+            }
+        };
+
+        let mut added = 0usize;
+        let mut removed = 0usize;
+        let mut ignored = 0usize;
+
+        if let Some(ref mut config) = self.config {
+            // Remove sources.
+            config.sources.retain(|s| !diff.removals.contains(&s.path));
+            removed = diff.removals.len();
+
+            // Add new sources.
+            for path in &diff.additions {
+                config.sources.push(crate::config::SourceConfig {
+                    path: path.clone(),
+                    ignore: Vec::new(),
+                });
+                added += 1;
+            }
+
+            // Add ignore rules.
+            for (source_path, rules) in &diff.ignore_rules {
+                if let Some(source) = config.sources.iter_mut().find(|s| &s.path == source_path) {
+                    for rule in rules {
+                        source.ignore.push(rule.clone());
+                        ignored += 1;
+                    }
+                }
+            }
+
+            // Save config.
+            if let Some(ref paths) = self.paths {
+                let _ = config.save(paths.config_file());
+            }
+
+            // Clamp selections.
+            if self.sources_screen.selected >= config.sources.len() && !config.sources.is_empty() {
+                self.sources_screen.selected = config.sources.len() - 1;
+            }
+            if config.sources.is_empty() {
+                self.ignore_screen.source_idx = 0;
+                self.ignore_screen.pattern_idx = 0;
+            } else if self.ignore_screen.source_idx >= config.sources.len() {
+                self.ignore_screen.source_idx = config.sources.len() - 1;
+                self.ignore_screen.pattern_idx = 0;
+            }
+        }
+
+        // Build feedback message.
+        let mut parts = Vec::new();
+        if added > 0 {
+            parts.push(format!("Added {added}"));
+        }
+        if removed > 0 {
+            parts.push(format!("removed {removed}"));
+        }
+        if ignored > 0 {
+            parts.push(format!("{ignored} ignore rules"));
+        }
+        let msg = if parts.is_empty() {
+            "No changes applied.".to_string()
+        } else {
+            format!("{}.", parts.join(", "))
+        };
+
+        self.sources_screen.mode = screens::sources::Mode::List;
+        self.sources_screen.message = Some(screens::sources::Message {
+            text: msg,
+            kind: screens::sources::MessageKind::Info,
+        });
+
+        // Reset selection so next Browse entry reloads from config.
+        self.sources_screen.selection = None;
+
+        // Mark previews stale.
+        self.preview_screen.stale = true;
+        self.ignore_screen.preview_stale = true;
+    }
+
     /// Add a pattern to the source at the given index.
     fn handle_add_pattern(&mut self, src_idx: usize, pattern: String) {
         if let Some(ref mut config) = self.config
@@ -583,10 +709,16 @@ impl App {
         let action = self.sources_screen.handle_key(key, source_count);
         match action {
             screens::sources::Action::Consumed => {
-                // If we just switched to Browse mode, ensure browser exists.
+                // If we just switched to Browse mode, ensure browser and selection exist.
                 if self.sources_screen.mode == screens::sources::Mode::Browse {
                     if let Some(ref paths) = self.paths {
                         self.sources_screen.ensure_browser(paths.home());
+                        let sources = self
+                            .config
+                            .as_ref()
+                            .map(|c| c.sources.as_slice())
+                            .unwrap_or(&[]);
+                        self.sources_screen.ensure_selection(sources, paths.home());
                     }
                 }
                 true
@@ -597,6 +729,14 @@ impl App {
             }
             screens::sources::Action::RemoveSource(idx) => {
                 self.handle_remove_source(idx);
+                true
+            }
+            screens::sources::Action::ApplySelection => {
+                self.handle_apply_selection();
+                true
+            }
+            screens::sources::Action::ConfirmApply => {
+                self.handle_confirm_apply();
                 true
             }
             screens::sources::Action::NotConsumed => false,

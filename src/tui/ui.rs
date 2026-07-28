@@ -243,11 +243,11 @@ fn help_bar_sources(app: &App) -> Line<'static> {
             Span::styled("Tab", Style::default().fg(Color::Cyan)),
             Span::raw(" tabs  "),
             Span::styled("Space", Style::default().fg(Color::Cyan)),
-            Span::raw(" select  "),
+            Span::raw(" toggle  "),
             Span::styled("↑↓←→", Style::default().fg(Color::Cyan)),
             Span::raw(" navigate  "),
             Span::styled("Esc", Style::default().fg(Color::Cyan)),
-            Span::raw(" cancel  "),
+            Span::raw(" apply  "),
             Span::styled(":/", Style::default().fg(Color::Cyan)),
             Span::raw(" text"),
         ]),
@@ -266,6 +266,12 @@ fn help_bar_sources(app: &App) -> Line<'static> {
             Span::raw(" confirm  "),
             Span::styled("n/Esc", Style::default().fg(Color::Cyan)),
             Span::raw(" cancel"),
+        ]),
+        Mode::ConfirmApply => Line::from(vec![
+            Span::styled("y", Style::default().fg(Color::Cyan)),
+            Span::raw(" apply  "),
+            Span::styled("n/Esc", Style::default().fg(Color::Cyan)),
+            Span::raw(" back to browser"),
         ]),
     }
 }

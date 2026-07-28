@@ -397,7 +397,7 @@ sources, and applies all changes atomically on Escape.
   ignore rules). Add unit tests for toggling, inheritance detection, config
   loading, and diffing.
 
-- [ ] **MS02 - Integrate selection state into the sources screen.** Add
+- [x] **MS02 - Integrate selection state into the sources screen.** Add
   `selection: Option<SourceSelection>` to `SourcesScreen`. Initialize it from
   the current config when entering Browse mode (if not already initialized,
   preserving session persistence). Change Space in Browse mode to call

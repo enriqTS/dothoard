@@ -10,12 +10,13 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - All V1 milestones complete (0 through 9).
 - Post-V1 milestones 10 and 11 complete.
 - Milestone 12 in progress: Multi-Select Source Browser.
-- **MS01 complete**: Added `SourceSelection` model in `src/tui/selection.rs`
-  with `CheckState` enum, `load_from_config`, `is_selected` (ancestor walking),
-  `toggle` (Explicit/Inherited/Unchecked transitions), `diff_against_config`,
-  and 23 unit tests.
-- **Active task**: MS02 — Integrate selection state into the sources screen.
-- 789 unit tests passing.
+- **MS01 complete**: Added `SourceSelection` model in `src/tui/selection.rs`.
+- **MS02 complete**: Integrated selection into sources screen — Space toggles,
+  Esc triggers apply flow with confirmation for removals, browser stays open,
+  selection persists within session. Added `ConfirmApply` mode, app-level
+  `handle_apply_selection`/`execute_selection_diff` methods.
+- **Active task**: MS03 — Render checkboxes in the picker.
+- 794 unit tests passing.
 
 ## Durable Decisions
 
