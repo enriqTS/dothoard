@@ -247,8 +247,10 @@ fn run_check_task(paths: &crate::paths::AppPaths) -> CheckResult {
 fn run_push_task(paths: &crate::paths::AppPaths) -> PushResult {
     use crate::config::Config;
     use crate::git;
+    use crate::state::{AppState, RunOutcome, RunRecord};
     use std::time::Duration;
 
+    let started_at = chrono::Utc::now();
     tracing::info!("starting push task");
 
     // Load config.
@@ -256,6 +258,14 @@ fn run_push_task(paths: &crate::paths::AppPaths) -> PushResult {
         Ok(c) => c,
         Err(e) => {
             tracing::error!(error = %e, "push: failed to load config");
+            let finished_at = chrono::Utc::now();
+            record_push_outcome(
+                paths,
+                started_at,
+                finished_at,
+                RunOutcome::Failed,
+                Some(format!("failed to load config: {e}")),
+            );
             return PushResult {
                 success: false,
                 error: Some(format!("failed to load config: {e}")),
@@ -274,6 +284,14 @@ fn run_push_task(paths: &crate::paths::AppPaths) -> PushResult {
         Ok(info) => info,
         Err(e) => {
             tracing::error!(error = %e, "push: repository validation failed");
+            let finished_at = chrono::Utc::now();
+            record_push_outcome(
+                paths,
+                started_at,
+                finished_at,
+                RunOutcome::Failed,
+                Some(format!("repository error: {e}")),
+            );
             return PushResult {
                 success: false,
                 error: Some(format!("repository error: {e}")),
@@ -297,12 +315,20 @@ fn run_push_task(paths: &crate::paths::AppPaths) -> PushResult {
     ) {
         Ok(sync_result) => {
             tracing::info!(result = ?sync_result, "push: sync succeeded");
-            // Update state to clear pending_push.
-            if let Ok(mut state) = crate::state::AppState::load(paths.state_dir()) {
-                state.pending_push = false;
-                state.last_push = Some(chrono::Utc::now());
-                let _ = state.save(paths.state_dir());
-            }
+            let finished_at = chrono::Utc::now();
+            // Update state to clear pending_push and record success.
+            let mut state = AppState::load(paths.state_dir()).unwrap_or_default();
+            state.pending_push = false;
+            state.last_push = Some(finished_at);
+            state.record_run(RunRecord {
+                started_at,
+                finished_at,
+                outcome: RunOutcome::Success,
+                commit: None,
+                message: Some("push completed".to_string()),
+                log_file: None,
+            });
+            let _ = state.save(paths.state_dir());
             PushResult {
                 success: true,
                 error: None,
@@ -310,12 +336,42 @@ fn run_push_task(paths: &crate::paths::AppPaths) -> PushResult {
         }
         Err(e) => {
             tracing::error!(error = %e, "push: sync failed");
+            let finished_at = chrono::Utc::now();
+            record_push_outcome(
+                paths,
+                started_at,
+                finished_at,
+                RunOutcome::Failed,
+                Some(format!("{e}")),
+            );
             PushResult {
                 success: false,
                 error: Some(format!("{e}")),
             }
         }
     }
+}
+
+/// Record a push outcome in the run history.
+fn record_push_outcome(
+    paths: &crate::paths::AppPaths,
+    started_at: chrono::DateTime<chrono::Utc>,
+    finished_at: chrono::DateTime<chrono::Utc>,
+    outcome: crate::state::RunOutcome,
+    message: Option<String>,
+) {
+    use crate::state::{AppState, RunRecord};
+
+    let mut state = AppState::load(paths.state_dir()).unwrap_or_default();
+    state.record_run(RunRecord {
+        started_at,
+        finished_at,
+        outcome,
+        commit: None,
+        message,
+        log_file: None,
+    });
+    let _ = state.save(paths.state_dir());
 }
 
 #[cfg(test)]
