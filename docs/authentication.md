@@ -230,6 +230,24 @@ your shell session. Common issues:
     ~/.config/environment.d/ssh-agent.conf
   ```
 
+- `DBUS_SESSION_BUS_ADDRESS` not set in the systemd environment. This causes
+  GCM's `secretservice` backend (GNOME Keyring) to fail with:
+  > Cannot use the 'secretservice' credential backing store without a
+  > graphical interface present.
+
+  Fix (import into the user manager once per login):
+  ```bash
+  systemctl --user import-environment DBUS_SESSION_BUS_ADDRESS
+  ```
+  Or use `environment.d` for persistence:
+  ```bash
+  echo 'DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"' > \
+    ~/.config/environment.d/dbus.conf
+  ```
+  Note: most desktop environments already export this. If you log in via
+  a display manager (GDM, SDDM, LightDM), it should already be set. The
+  issue typically appears with console logins or SSH sessions.
+
 - GNOME Keyring / KDE Wallet not unlocked. These typically unlock on login;
   if using auto-login without a display manager, the keyring may remain
   locked.

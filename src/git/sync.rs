@@ -252,6 +252,10 @@ fn is_network_error(stderr: &str) -> bool {
         || stderr.contains("Connection reset by peer")
         || stderr.contains("Permission denied")
         || stderr.contains("Host key verification failed")
+        || stderr.contains("terminal prompts disabled")
+        || stderr.contains("credential backing store")
+        || stderr.contains("could not read Password")
+        || stderr.contains("could not read Username")
 }
 
 /// Check if an error message indicates a push rejection.
@@ -477,6 +481,15 @@ mod tests {
         ));
         assert!(is_network_error(
             "fatal: unable to access 'https://example.com/repo.git'"
+        ));
+        assert!(is_network_error(
+            "fatal: Cannot use the 'secretservice' credential backing store without a graphical interface"
+        ));
+        assert!(is_network_error(
+            "fatal: could not read Password for 'https://example.com': terminal prompts disabled"
+        ));
+        assert!(is_network_error(
+            "fatal: could not read Username for 'https://example.com': terminal prompts disabled"
         ));
         assert!(!is_network_error(
             "error: src refspec main does not match any"

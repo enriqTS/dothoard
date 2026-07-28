@@ -235,6 +235,13 @@ impl GitRunner {
         if let Ok(sock) = std::env::var("SSH_AUTH_SOCK") {
             process.env("SSH_AUTH_SOCK", &sock);
         }
+        // Inherit DBUS_SESSION_BUS_ADDRESS so credential helpers that use
+        // D-Bus (e.g., GCM with secretservice, libsecret, GNOME Keyring)
+        // can reach the session keyring when running under a user systemd
+        // service.
+        if let Ok(dbus) = std::env::var("DBUS_SESSION_BUS_ADDRESS") {
+            process.env("DBUS_SESSION_BUS_ADDRESS", &dbus);
+        }
         // Apply any extra environment variables from the command builder.
         for (key, value) in &cmd.extra_env {
             process.env(key, value);
@@ -340,6 +347,9 @@ impl GitRunner {
         }
         if let Ok(sock) = std::env::var("SSH_AUTH_SOCK") {
             process.env("SSH_AUTH_SOCK", &sock);
+        }
+        if let Ok(dbus) = std::env::var("DBUS_SESSION_BUS_ADDRESS") {
+            process.env("DBUS_SESSION_BUS_ADDRESS", &dbus);
         }
         for (key, value) in &cmd.extra_env {
             process.env(key, value);
