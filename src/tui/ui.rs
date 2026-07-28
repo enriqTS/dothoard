@@ -1170,7 +1170,12 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
             .split(inner);
 
         if let Some(ref mut browser) = app.sources_screen.browser {
-            crate::tui::picker::draw(frame, chunks[0], browser);
+            let check_fn: Option<&dyn Fn(&std::path::Path) -> crate::tui::selection::CheckState> =
+                match app.sources_screen.selection {
+                    Some(ref sel) => Some(&|path: &std::path::Path| sel.is_selected(path)),
+                    None => None,
+                };
+            crate::tui::picker::draw(frame, chunks[0], browser, check_fn);
         } else {
             let msg = Paragraph::new(Line::from(Span::styled(
                 " Loading browser...",
@@ -1340,7 +1345,7 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
 
             // Draw the filesystem browser.
             if let Some(ref mut browser) = app.repo_screen.browser {
-                crate::tui::picker::draw(frame, chunks[0], browser);
+                crate::tui::picker::draw(frame, chunks[0], browser, None);
             } else {
                 let msg = Paragraph::new(Line::from(Span::styled(
                     " Press Enter or ↓ to start browsing",

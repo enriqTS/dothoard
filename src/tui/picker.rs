@@ -4,6 +4,8 @@
 //! keyboard input into browser navigation actions. Designed to be embedded
 //! in repository and source selection screens.
 
+use std::path::Path;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
@@ -14,6 +16,13 @@ use ratatui::{
 };
 
 use super::browser::{Browser, DirListing, EntryKind, Selection, SelectionError};
+use super::selection::CheckState;
+
+/// Type alias for the optional check-state callback.
+///
+/// When provided, the picker renders a checkbox prefix for each entry.
+/// The function receives the absolute path of the entry and returns its state.
+pub type CheckFn<'a> = &'a dyn Fn(&Path) -> CheckState;
 
 /// Actions that the picker can produce in response to key events.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,7 +112,12 @@ pub fn handle_key(browser: &mut Browser, key: KeyEvent, viewport_height: usize) 
 }
 
 /// Render the three-pane browser into the given area.
-pub fn draw(frame: &mut Frame, area: Rect, browser: &mut Browser) {
+///
+/// If `check_fn` is provided, a checkbox indicator is rendered before each
+/// entry in the current pane: `[●]` for Explicit, `[◉]` for Inherited,
+/// `[ ]` for Unchecked. Pass `None` for browsers that don't need checkboxes
+/// (e.g., repository browser).
+pub fn draw(frame: &mut Frame, area: Rect, browser: &mut Browser, check_fn: Option<CheckFn>) {
     // Layout: breadcrumb (1 line) + three panes + status (1 line).
     let outer = Layout::default()
         .direction(Direction::Vertical)
@@ -115,7 +129,7 @@ pub fn draw(frame: &mut Frame, area: Rect, browser: &mut Browser) {
         .split(area);
 
     draw_breadcrumb(frame, outer[0], browser);
-    draw_panes(frame, outer[1], browser);
+    draw_panes(frame, outer[1], browser, check_fn);
     draw_status(frame, outer[2], browser);
 }
 
@@ -135,7 +149,7 @@ fn draw_breadcrumb(frame: &mut Frame, area: Rect, browser: &Browser) {
 }
 
 /// Draw the three panes: parent (left), current (center), preview (right).
-fn draw_panes(frame: &mut Frame, area: Rect, browser: &mut Browser) {
+fn draw_panes(frame: &mut Frame, area: Rect, browser: &mut Browser, check_fn: Option<CheckFn>) {
     // Adaptive layout: if terminal is narrow, collapse parent/preview.
     let constraints = if area.width >= 80 {
         vec![
@@ -170,7 +184,7 @@ fn draw_panes(frame: &mut Frame, area: Rect, browser: &mut Browser) {
     // Current directory pane (center).
     let viewport_height = panes[1].height.saturating_sub(2) as usize; // subtract borders
     browser.adjust_scroll_with_height(viewport_height);
-    draw_current_pane(frame, panes[1], browser);
+    draw_current_pane(frame, panes[1], browser, check_fn);
 
     // Preview pane (right).
     if panes[2].width > 0 {
@@ -214,7 +228,12 @@ fn draw_parent_pane(frame: &mut Frame, area: Rect, browser: &mut Browser) {
 }
 
 /// Draw the current directory pane with selection highlight.
-fn draw_current_pane(frame: &mut Frame, area: Rect, browser: &mut Browser) {
+fn draw_current_pane(
+    frame: &mut Frame,
+    area: Rect,
+    browser: &mut Browser,
+    check_fn: Option<CheckFn>,
+) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
@@ -223,6 +242,7 @@ fn draw_current_pane(frame: &mut Frame, area: Rect, browser: &mut Browser) {
     frame.render_widget(block, area);
 
     let listing = browser.current_listing().clone();
+    let current_dir = browser.current_dir().to_path_buf();
     match listing {
         DirListing::Entries(entries) if entries.is_empty() => {
             let msg = Paragraph::new(Line::from(Span::styled(
@@ -235,6 +255,9 @@ fn draw_current_pane(frame: &mut Frame, area: Rect, browser: &mut Browser) {
             let selected = browser.selected();
             let scroll = browser.scroll_offset();
             let viewport = inner.height as usize;
+
+            // Checkbox prefix width: "[●] " = 4 chars when active.
+            let checkbox_width: u16 = if check_fn.is_some() { 4 } else { 0 };
 
             let items: Vec<ListItem> = entries
                 .iter()
@@ -249,14 +272,34 @@ fn draw_current_pane(frame: &mut Frame, area: Rect, browser: &mut Browser) {
                         entry_style(e.kind, false)
                     };
 
+                    let mut spans: Vec<Span> = Vec::new();
+
+                    // Checkbox prefix.
+                    if let Some(ref check) = check_fn {
+                        let entry_path = current_dir.join(&e.name);
+                        let state = check(&entry_path);
+                        let (indicator, ind_style) = match state {
+                            CheckState::Explicit => ("[●]", Style::default().fg(Color::Cyan)),
+                            CheckState::Inherited => ("[◉]", Style::default().fg(Color::DarkGray)),
+                            CheckState::Unchecked => ("[ ]", Style::default().fg(Color::DarkGray)),
+                        };
+                        spans.push(Span::styled(
+                            format!("{indicator} "),
+                            if is_selected {
+                                ind_style.bg(Color::DarkGray)
+                            } else {
+                                ind_style
+                            },
+                        ));
+                    }
+
                     let icon = entry_icon(e);
-                    let name =
-                        truncate_name(&e.display_name, inner.width.saturating_sub(3) as usize);
-                    let line = Line::from(vec![
-                        Span::styled(format!(" {icon} "), style),
-                        Span::styled(name, style),
-                    ]);
-                    ListItem::new(line)
+                    let name_width = inner.width.saturating_sub(3 + checkbox_width) as usize;
+                    let name = truncate_name(&e.display_name, name_width);
+                    spans.push(Span::styled(format!("{icon} "), style));
+                    spans.push(Span::styled(name, style));
+
+                    ListItem::new(Line::from(spans))
                 })
                 .collect();
 
@@ -721,7 +764,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
             .draw(|frame| {
-                draw(frame, frame.area(), &mut browser);
+                draw(frame, frame.area(), &mut browser, None);
             })
             .unwrap();
     }
@@ -738,7 +781,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
             .draw(|frame| {
-                draw(frame, frame.area(), &mut browser);
+                draw(frame, frame.area(), &mut browser, None);
             })
             .unwrap();
     }
@@ -755,7 +798,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
             .draw(|frame| {
-                draw(frame, frame.area(), &mut browser);
+                draw(frame, frame.area(), &mut browser, None);
             })
             .unwrap();
     }
@@ -775,7 +818,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
             .draw(|frame| {
-                draw(frame, frame.area(), &mut browser);
+                draw(frame, frame.area(), &mut browser, None);
             })
             .unwrap();
     }
@@ -800,7 +843,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
             .draw(|frame| {
-                draw(frame, frame.area(), &mut browser);
+                draw(frame, frame.area(), &mut browser, None);
             })
             .unwrap();
     }
@@ -829,7 +872,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
             .draw(|frame| {
-                draw(frame, frame.area(), &mut browser);
+                draw(frame, frame.area(), &mut browser, None);
             })
             .unwrap();
     }
@@ -858,7 +901,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
             .draw(|frame| {
-                draw(frame, frame.area(), &mut browser);
+                draw(frame, frame.area(), &mut browser, None);
             })
             .unwrap();
     }
@@ -876,7 +919,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         terminal
             .draw(|frame| {
-                draw(frame, frame.area(), &mut browser);
+                draw(frame, frame.area(), &mut browser, None);
             })
             .unwrap();
     }
@@ -911,5 +954,122 @@ mod tests {
     #[test]
     fn format_size_mb() {
         assert_eq!(format_size(5 * 1024 * 1024), "5.0 MB");
+    }
+
+    // --- Checkbox rendering tests ---
+
+    #[test]
+    fn renders_with_checkboxes_without_panic() {
+        let tmp = setup_test_dir();
+        let mut browser = Browser::new(BrowserConfig {
+            root: tmp.path().to_path_buf(),
+            start: tmp.path().to_path_buf(),
+        });
+
+        let check_fn = |_path: &std::path::Path| CheckState::Unchecked;
+
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                draw(frame, frame.area(), &mut browser, Some(&check_fn));
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn renders_with_checkboxes_narrow_terminal() {
+        let tmp = setup_test_dir();
+        let mut browser = Browser::new(BrowserConfig {
+            root: tmp.path().to_path_buf(),
+            start: tmp.path().to_path_buf(),
+        });
+
+        let check_fn = |_path: &std::path::Path| CheckState::Explicit;
+
+        let backend = TestBackend::new(30, 10);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                draw(frame, frame.area(), &mut browser, Some(&check_fn));
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn renders_mixed_check_states() {
+        let tmp = setup_test_dir();
+        let mut browser = Browser::new(BrowserConfig {
+            root: tmp.path().to_path_buf(),
+            start: tmp.path().to_path_buf(),
+        });
+
+        // Alternate between states based on entry index.
+        let root = tmp.path().to_path_buf();
+        let alpha_path = root.join("alpha");
+        let hidden_prefix = root.join(".hidden");
+        let check_fn = move |path: &std::path::Path| {
+            if path == alpha_path {
+                CheckState::Explicit
+            } else if path.starts_with(&hidden_prefix) {
+                CheckState::Inherited
+            } else {
+                CheckState::Unchecked
+            }
+        };
+
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                draw(frame, frame.area(), &mut browser, Some(&check_fn));
+            })
+            .unwrap();
+
+        // Verify that checkbox indicators appear in the buffer.
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol().chars().next().unwrap_or(' '))
+            .collect();
+        assert!(content.contains('['), "should contain checkbox brackets");
+    }
+
+    #[test]
+    fn renders_without_checkboxes_when_none() {
+        let tmp = setup_test_dir();
+        let mut browser = Browser::new(BrowserConfig {
+            root: tmp.path().to_path_buf(),
+            start: tmp.path().to_path_buf(),
+        });
+
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                draw(frame, frame.area(), &mut browser, None);
+            })
+            .unwrap();
+
+        // Without check_fn, no checkbox brackets should appear in the main pane.
+        // (Brackets may appear in the path breadcrumb, so this checks the general pattern.)
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol().chars().next().unwrap_or(' '))
+            .collect();
+        // [●] or [◉] or [ ] should NOT appear.
+        assert!(
+            !content.contains("[●]"),
+            "should not contain explicit checkbox"
+        );
+        assert!(
+            !content.contains("[◉]"),
+            "should not contain inherited checkbox"
+        );
     }
 }

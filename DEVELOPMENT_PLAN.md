@@ -406,7 +406,7 @@ sources, and applies all changes atomically on Escape.
   Space toggles without closing, and that re-entering Browse mode preserves
   selection state.
 
-- [ ] **MS03 - Render checkboxes in the picker.** Add an optional
+- [x] **MS03 - Render checkboxes in the picker.** Add an optional
   `check_state: Option<&dyn Fn(&Path) -> CheckState>` parameter to
   `picker::draw()`. Render a prefix per entry: `[●]` (green/cyan) for
   `Explicit`, `[◉]` (dim) for `Inherited`, `[ ]` (dim) for `Unchecked`. Adjust

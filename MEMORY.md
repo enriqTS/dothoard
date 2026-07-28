@@ -12,11 +12,11 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Milestone 12 in progress: Multi-Select Source Browser.
 - **MS01 complete**: Added `SourceSelection` model in `src/tui/selection.rs`.
 - **MS02 complete**: Integrated selection into sources screen — Space toggles,
-  Esc triggers apply flow with confirmation for removals, browser stays open,
-  selection persists within session. Added `ConfirmApply` mode, app-level
-  `handle_apply_selection`/`execute_selection_diff` methods.
-- **Active task**: MS03 — Render checkboxes in the picker.
-- 794 unit tests passing.
+  Esc triggers apply flow with confirmation for removals.
+- **MS03 complete**: Added optional `check_fn` parameter to `picker::draw()`.
+  Renders `[●]`/`[◉]`/`[ ]` prefix per entry. Repository browser passes None.
+- **Active task**: MS04 — Update key handling for multi-select.
+- 798 unit tests passing.
 
 ## Durable Decisions
 
