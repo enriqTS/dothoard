@@ -10,22 +10,12 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - All V1 milestones complete (0 through 9).
 - Post-V1 milestones 10 and 11 complete.
 - Milestone 12 in progress: Multi-Select Source Browser.
-- **MS01 complete**: Added `SourceSelection` model in `src/tui/selection.rs`.
-- **MS02 complete**: Integrated selection into sources screen — Space toggles,
-  Esc triggers apply flow with confirmation for removals.
-- **MS03 complete**: Added optional `check_fn` parameter to `picker::draw()`.
-  Renders `[●]`/`[◉]`/`[ ]` prefix per entry. Repository browser passes None.
-- **MS04 complete**: Key handling verified — Space toggles, Esc triggers apply.
-- **MS05 complete**: Apply-on-Esc with removal confirmation tested end-to-end.
-  5 new app-level integration tests verify no-change, additions-only,
-  removals-confirmation, confirm-apply execution, and ignore-rule addition.
-- **MS06 complete**: Fixed `is_selected()` to detect deselected directory
-  children (parent-directory deselection blocks inheritance for all descendants).
-  Added 11 new tests covering multi-level inheritance, deselection at various
-  depths, deselected directory blocking children, reselection workflows, and
-  deeply nested ignore-rule generation.
-- **Active task**: MS07 — Update UI rendering and help bar.
-- 816 unit tests passing.
+- **MS01–MS06 complete**.
+- **MS07 complete**: Updated browser status area to show selection summary
+  ("N sources, M excluded"), added ConfirmApply rendering with change summary
+  and removal details, updated help bar text, added 5 rendering tests.
+- **Active task**: MS08 — Integration testing and edge cases.
+- 821 unit tests passing.
 
 ## Durable Decisions
 

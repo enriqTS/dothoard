@@ -204,6 +204,17 @@ impl SourceSelection {
         !diff.additions.is_empty() || !diff.removals.is_empty() || !diff.ignore_rules.is_empty()
     }
 
+    /// Return a summary of the current selection state for display.
+    ///
+    /// Returns (selected_count, excluded_count) where selected_count is the
+    /// number of explicitly selected sources and excluded_count is the total
+    /// number of deselected paths across all sources.
+    pub fn summary(&self) -> (usize, usize) {
+        let selected = self.selected.len();
+        let excluded: usize = self.deselected.values().map(|v| v.len()).sum();
+        (selected, excluded)
+    }
+
     /// Get the home directory.
     pub fn home(&self) -> &Path {
         &self.home

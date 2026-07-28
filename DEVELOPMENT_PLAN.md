@@ -441,7 +441,7 @@ sources, and applies all changes atomically on Escape.
   deselect list. Add tests for nested navigation, multi-level inheritance,
   directory vs file rule format, and re-selection.
 
-- [ ] **MS07 - Update UI rendering and help bar.** Update the browser status
+- [x] **MS07 - Update UI rendering and help bar.** Update the browser status
   area to show selection summary ("N sources, M excluded"). Update help bar
   for Browse mode: `Space: toggle │ Esc: apply │ ↑↓←→ navigate │ :/ text`.
   Add `ConfirmApply` rendering with change summary and y/n prompt. Update

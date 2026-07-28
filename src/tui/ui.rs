@@ -1196,9 +1196,23 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
                 Span::raw(" "),
                 Span::styled(msg.text.clone(), Style::default().fg(color)),
             ]));
+        } else if let Some(ref sel) = app.sources_screen.selection {
+            let (selected, excluded) = sel.summary();
+            let summary = if excluded > 0 {
+                format!(" {selected} sources, {excluded} excluded")
+            } else {
+                format!(" {selected} sources selected")
+            };
+            status_lines.push(Line::from(vec![
+                Span::styled(summary, Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    "  │ Space: toggle │ Esc: apply │ :/ text",
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]));
         } else {
             status_lines.push(Line::from(Span::styled(
-                " Space: select │ :/  text input │ Esc: cancel │ ↑↓←→ navigate",
+                " Space: toggle │ Esc: apply │ :/ text input │ ↑↓←→ navigate",
                 Style::default().fg(Color::DarkGray),
             )));
         }
@@ -1286,6 +1300,59 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
                     .add_modifier(Modifier::BOLD),
             ),
         ]));
+    }
+
+    // Show confirm apply dialog with change summary.
+    if app.sources_screen.mode == Mode::ConfirmApply {
+        lines.push(Line::from(""));
+        if let Some(ref diff) = app.sources_screen.pending_diff {
+            let mut parts: Vec<String> = Vec::new();
+            if !diff.additions.is_empty() {
+                parts.push(format!("add {}", diff.additions.len()));
+            }
+            if !diff.removals.is_empty() {
+                parts.push(format!("remove {}", diff.removals.len()));
+            }
+            let rule_count: usize = diff.ignore_rules.values().map(|v| v.len()).sum();
+            if rule_count > 0 {
+                parts.push(format!("{rule_count} ignore rules"));
+            }
+            let summary = parts.join(", ");
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(
+                    format!("Apply changes ({summary})? (y/n)"),
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]));
+
+            // Show removals detail.
+            if !diff.removals.is_empty() {
+                lines.push(Line::from(""));
+                lines.push(Line::from(Span::styled(
+                    "  Sources to remove:",
+                    Style::default().fg(Color::Red),
+                )));
+                for removal in &diff.removals {
+                    lines.push(Line::from(vec![
+                        Span::raw("    "),
+                        Span::styled(format!("- {removal}"), Style::default().fg(Color::Red)),
+                    ]));
+                }
+            }
+        } else {
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(
+                    "Apply changes? (y/n)",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]));
+        }
     }
 
     // Show feedback message.
@@ -2376,8 +2443,8 @@ mod tests {
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
-        assert!(content.contains("Space"), "should mention Space for select");
-        assert!(content.contains("cancel"), "should mention cancel");
+        assert!(content.contains("Space"), "should mention Space for toggle");
+        assert!(content.contains("apply"), "should mention apply for Esc");
     }
 
     /// Verify help bar shows list hints for sources in list mode.
@@ -2418,5 +2485,147 @@ mod tests {
         let content = buffer_text(terminal.backend());
         assert!(content.contains("confirm"), "should mention confirm");
         assert!(content.contains("cancel"), "should mention cancel");
+    }
+
+    // --- MS07: Multi-select rendering tests ---
+
+    /// Verify sources screen in Browse mode shows selection summary.
+    #[test]
+    fn sources_screen_browse_shows_selection_summary() {
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = app_on(Screen::Sources);
+        app.focus = crate::tui::Focus::Content;
+        app.sources_screen.mode = crate::tui::screens::sources::Mode::Browse;
+
+        // Set up a selection with 2 sources, 1 excluded.
+        let mut sel =
+            crate::tui::selection::SourceSelection::new(std::path::Path::new("/home/user"));
+        sel.toggle(std::path::Path::new("/home/user/.config/fish"), true);
+        sel.toggle(std::path::Path::new("/home/user/.bashrc"), false);
+        app.sources_screen.selection = Some(sel);
+
+        terminal
+            .draw(|frame| draw(frame, &mut app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(
+            content.contains("2 sources"),
+            "should show source count in status"
+        );
+    }
+
+    /// Verify sources screen in ConfirmApply mode shows change summary.
+    #[test]
+    fn sources_screen_confirm_apply_shows_summary() {
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = app_on(Screen::Sources);
+        app.focus = crate::tui::Focus::Content;
+        app.sources_screen.mode = crate::tui::screens::sources::Mode::ConfirmApply;
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![crate::config::SourceConfig {
+                path: ".bashrc".to_string(),
+                ignore: vec![],
+            }],
+        });
+
+        let mut ignore_rules = std::collections::HashMap::new();
+        ignore_rules.insert(".bashrc".to_string(), vec!["/secret".to_string()]);
+        app.sources_screen.pending_diff = Some(crate::tui::selection::SelectionDiff {
+            additions: vec![".config/fish".to_string()],
+            removals: vec![".zshrc".to_string()],
+            ignore_rules,
+        });
+
+        terminal
+            .draw(|frame| draw(frame, &mut app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("Apply"), "should show Apply prompt");
+        assert!(content.contains("y/n"), "should show y/n options");
+        assert!(content.contains(".zshrc"), "should show removal detail");
+    }
+
+    /// Verify sources screen ConfirmApply renders at narrow terminal.
+    #[test]
+    fn sources_screen_confirm_apply_narrow() {
+        let backend = TestBackend::new(40, 15);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = app_on(Screen::Sources);
+        app.focus = crate::tui::Focus::Content;
+        app.sources_screen.mode = crate::tui::screens::sources::Mode::ConfirmApply;
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![],
+        });
+        app.sources_screen.pending_diff = Some(crate::tui::selection::SelectionDiff {
+            additions: vec![".bashrc".to_string()],
+            removals: vec![],
+            ignore_rules: std::collections::HashMap::new(),
+        });
+
+        terminal
+            .draw(|frame| draw(frame, &mut app))
+            .expect("draw should not panic at narrow width");
+    }
+
+    /// Verify help bar shows apply hint for ConfirmApply mode.
+    #[test]
+    fn help_bar_sources_confirm_apply_mode() {
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut app = App::new();
+        app.focus = crate::tui::Focus::Content;
+        app.active_screen = Screen::Sources;
+        app.sources_screen.mode = crate::tui::screens::sources::Mode::ConfirmApply;
+
+        terminal
+            .draw(|frame| draw(frame, &mut app))
+            .expect("draw should not fail");
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("apply"), "should mention apply");
+        assert!(
+            content.contains("back to browser"),
+            "should mention back to browser"
+        );
+    }
+
+    /// Verify sources browse renders at various sizes without panic.
+    #[test]
+    fn sources_browse_renders_at_various_sizes() {
+        let sizes = [(40, 10), (80, 24), (120, 40)];
+
+        for (w, h) in sizes {
+            let backend = TestBackend::new(w, h);
+            let mut terminal = Terminal::new(backend).unwrap();
+
+            let mut app = app_on(Screen::Sources);
+            app.focus = crate::tui::Focus::Content;
+            app.sources_screen.mode = crate::tui::screens::sources::Mode::Browse;
+            app.sources_screen.selection = Some(crate::tui::selection::SourceSelection::new(
+                std::path::Path::new("/home/user"),
+            ));
+
+            terminal
+                .draw(|frame| draw(frame, &mut app))
+                .unwrap_or_else(|_| panic!("failed at {w}x{h}"));
+        }
     }
 }
