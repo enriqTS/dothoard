@@ -1944,7 +1944,7 @@ mod tests {
             .selection
             .as_mut()
             .unwrap()
-            .toggle(std::path::Path::new("/home/user/.zshrc"));
+            .toggle(std::path::Path::new("/home/user/.zshrc"), false);
 
         app.handle_apply_selection();
 
@@ -1989,7 +1989,7 @@ mod tests {
             .selection
             .as_mut()
             .unwrap()
-            .toggle(std::path::Path::new("/home/user/.zshrc"));
+            .toggle(std::path::Path::new("/home/user/.zshrc"), false);
 
         app.handle_apply_selection();
 
@@ -2081,5 +2081,248 @@ mod tests {
         // Source should now have the ignore rule.
         let source = &app.config.as_ref().unwrap().sources[0];
         assert_eq!(source.ignore, vec!["/fish_variables"]);
+    }
+
+    // --- MS08: Integration testing and edge cases ---
+
+    #[test]
+    fn e2e_inherited_deselection_produces_anchored_ignore_rules() {
+        let mut app = test_app();
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![crate::config::SourceConfig {
+                path: ".config/fish".to_string(),
+                ignore: vec![],
+            }],
+        });
+
+        let home = std::path::Path::new("/home/user");
+        app.sources_screen.mode = screens::sources::Mode::Browse;
+        app.sources_screen
+            .ensure_selection(app.config.as_ref().unwrap().sources.as_slice(), home);
+
+        // Deselect a file inside the source (inherited → unchecked).
+        app.sources_screen.selection.as_mut().unwrap().toggle(
+            std::path::Path::new("/home/user/.config/fish/fish_variables"),
+            false,
+        );
+        // Deselect a directory inside the source.
+        app.sources_screen.selection.as_mut().unwrap().toggle(
+            std::path::Path::new("/home/user/.config/fish/completions"),
+            true,
+        );
+
+        // Apply (no removals, should apply immediately).
+        app.handle_apply_selection();
+
+        assert_eq!(app.sources_screen.mode, screens::sources::Mode::List);
+        let source = &app.config.as_ref().unwrap().sources[0];
+        assert_eq!(source.path, ".config/fish");
+        // File gets plain anchored rule, directory gets trailing slash.
+        assert!(source.ignore.contains(&"/fish_variables".to_string()));
+        assert!(source.ignore.contains(&"/completions/".to_string()));
+    }
+
+    #[test]
+    fn e2e_uncheck_existing_source_with_confirmation() {
+        let mut app = test_app();
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![
+                crate::config::SourceConfig {
+                    path: ".bashrc".to_string(),
+                    ignore: vec![],
+                },
+                crate::config::SourceConfig {
+                    path: ".zshrc".to_string(),
+                    ignore: vec![],
+                },
+            ],
+        });
+
+        let home = std::path::Path::new("/home/user");
+        app.sources_screen.mode = screens::sources::Mode::Browse;
+        app.sources_screen
+            .ensure_selection(app.config.as_ref().unwrap().sources.as_slice(), home);
+
+        // Uncheck .zshrc (explicit → unchecked).
+        app.sources_screen
+            .selection
+            .as_mut()
+            .unwrap()
+            .toggle(std::path::Path::new("/home/user/.zshrc"), false);
+
+        // Apply should enter confirm mode because there are removals.
+        app.handle_apply_selection();
+        assert_eq!(
+            app.sources_screen.mode,
+            screens::sources::Mode::ConfirmApply
+        );
+
+        // Confirm.
+        app.handle_confirm_apply();
+        assert_eq!(app.sources_screen.mode, screens::sources::Mode::List);
+
+        // Config should only have .bashrc.
+        let sources = &app.config.as_ref().unwrap().sources;
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0].path, ".bashrc");
+    }
+
+    #[test]
+    fn e2e_re_entering_browser_reflects_applied_config() {
+        let mut app = test_app();
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![crate::config::SourceConfig {
+                path: ".bashrc".to_string(),
+                ignore: vec![],
+            }],
+        });
+
+        let home = std::path::Path::new("/home/user");
+        app.sources_screen.mode = screens::sources::Mode::Browse;
+        app.sources_screen
+            .ensure_selection(app.config.as_ref().unwrap().sources.as_slice(), home);
+
+        // Add .zshrc and apply.
+        app.sources_screen
+            .selection
+            .as_mut()
+            .unwrap()
+            .toggle(std::path::Path::new("/home/user/.zshrc"), false);
+        app.handle_apply_selection();
+
+        // Selection is reset after apply.
+        assert!(app.sources_screen.selection.is_none());
+
+        // Re-enter browse mode: ensure_selection reloads from config.
+        app.sources_screen.mode = screens::sources::Mode::Browse;
+        app.sources_screen
+            .ensure_selection(app.config.as_ref().unwrap().sources.as_slice(), home);
+
+        let sel = app.sources_screen.selection.as_ref().unwrap();
+        // Both .bashrc and .zshrc should now be explicitly selected.
+        assert_eq!(
+            sel.is_selected(std::path::Path::new("/home/user/.bashrc")),
+            crate::tui::selection::CheckState::Explicit
+        );
+        assert_eq!(
+            sel.is_selected(std::path::Path::new("/home/user/.zshrc")),
+            crate::tui::selection::CheckState::Explicit
+        );
+    }
+
+    #[test]
+    fn e2e_empty_selection_esc_is_noop() {
+        let mut app = test_app();
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![crate::config::SourceConfig {
+                path: ".bashrc".to_string(),
+                ignore: vec![],
+            }],
+        });
+
+        let home = std::path::Path::new("/home/user");
+        app.sources_screen.mode = screens::sources::Mode::Browse;
+        app.sources_screen
+            .ensure_selection(app.config.as_ref().unwrap().sources.as_slice(), home);
+
+        // Don't change anything, just press Esc.
+        app.handle_apply_selection();
+
+        // Should silently return to list with no changes.
+        assert_eq!(app.sources_screen.mode, screens::sources::Mode::List);
+        assert_eq!(app.config.as_ref().unwrap().sources.len(), 1);
+        assert_eq!(app.config.as_ref().unwrap().sources[0].path, ".bashrc");
+    }
+
+    #[test]
+    fn e2e_selection_reset_prevents_stale_state() {
+        let mut app = test_app();
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![],
+        });
+
+        let home = std::path::Path::new("/home/user");
+        app.sources_screen.mode = screens::sources::Mode::Browse;
+        app.sources_screen
+            .ensure_selection(app.config.as_ref().unwrap().sources.as_slice(), home);
+
+        // Select a new source.
+        app.sources_screen
+            .selection
+            .as_mut()
+            .unwrap()
+            .toggle(std::path::Path::new("/home/user/.config"), true);
+
+        app.handle_apply_selection();
+
+        // After apply, selection is None (reset for next session entry).
+        assert!(app.sources_screen.selection.is_none());
+        // Config has the new source.
+        assert_eq!(app.config.as_ref().unwrap().sources.len(), 1);
+        assert_eq!(app.config.as_ref().unwrap().sources[0].path, ".config");
+    }
+
+    #[test]
+    fn repository_browser_has_no_checkboxes() {
+        // Repository screen uses picker::draw with None check_fn.
+        // This test verifies that the repository screen renders without panic
+        // and does not show checkbox indicators.
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let tmp = tempfile::tempdir().unwrap();
+        let mut app = test_app();
+        app.active_screen = Screen::Repository;
+        app.focus = Focus::Content;
+        app.repo_screen.ensure_browser(tmp.path());
+
+        terminal
+            .draw(|frame| crate::tui::ui::draw(frame, &mut app))
+            .expect("draw should not fail");
+
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol().chars().next().unwrap_or(' '))
+            .collect();
+        // No multi-select checkbox indicators in repository browser.
+        assert!(
+            !content.contains("[●]"),
+            "repo browser should not have explicit checkbox"
+        );
+        assert!(
+            !content.contains("[◉]"),
+            "repo browser should not have inherited checkbox"
+        );
     }
 }

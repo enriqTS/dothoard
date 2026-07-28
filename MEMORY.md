@@ -9,13 +9,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 - All V1 milestones complete (0 through 9).
 - Post-V1 milestones 10 and 11 complete.
-- Milestone 12 in progress: Multi-Select Source Browser.
-- **MS01–MS06 complete**.
-- **MS07 complete**: Updated browser status area to show selection summary
-  ("N sources, M excluded"), added ConfirmApply rendering with change summary
-  and removal details, updated help bar text, added 5 rendering tests.
-- **Active task**: MS08 — Integration testing and edge cases.
-- 821 unit tests passing.
+- **Milestone 12 complete**: Multi-Select Source Browser.
+  MS01–MS08 all done. 827 unit tests passing.
+- No active task. All planned work complete.
 
 ## Durable Decisions
 
@@ -101,8 +97,8 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 - `cargo fmt --check` — clean
 - `cargo clippy --all-targets --all-features -- -D warnings` — clean
-- `cargo test --all-targets --all-features` — 816 unit tests passed
-  - 816 unit tests (lib) including browser, picker, state-sync, selection, and diagnostics tests
+- `cargo test --all-targets --all-features` — 827 unit tests passed
+  - 827 unit tests (lib) including browser, picker, state-sync, selection, and diagnostics tests
   - 18 acceptance tests
   - 1 bootstrap integration test
   - 12 git_workflow integration tests

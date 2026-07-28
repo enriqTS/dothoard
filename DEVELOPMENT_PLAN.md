@@ -448,7 +448,7 @@ sources, and applies all changes atomically on Escape.
   feedback message after apply ("Added 2 sources, removed 1, added 3 ignore
   rules"). Add rendering tests at various terminal sizes.
 
-- [ ] **MS08 - Integration testing and edge cases.** Add end-to-end tests:
+- [x] **MS08 - Integration testing and edge cases.** Add end-to-end tests:
   enter browser → multi-select → Esc → confirm → verify config. Test:
   uncheck existing source with confirmation, inherited deselection produces
   correct anchored ignore rules, re-entering browser reflects applied config,
