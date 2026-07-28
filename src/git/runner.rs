@@ -242,6 +242,19 @@ impl GitRunner {
         if let Ok(dbus) = std::env::var("DBUS_SESSION_BUS_ADDRESS") {
             process.env("DBUS_SESSION_BUS_ADDRESS", &dbus);
         }
+        // Inherit display variables so credential helpers that check for a
+        // graphical session (GCM secretservice, libsecret) can function.
+        if let Ok(display) = std::env::var("DISPLAY") {
+            process.env("DISPLAY", &display);
+        }
+        if let Ok(wayland) = std::env::var("WAYLAND_DISPLAY") {
+            process.env("WAYLAND_DISPLAY", &wayland);
+        }
+        // Inherit XDG_RUNTIME_DIR for Wayland socket and credential daemon
+        // socket access.
+        if let Ok(xrd) = std::env::var("XDG_RUNTIME_DIR") {
+            process.env("XDG_RUNTIME_DIR", &xrd);
+        }
         // Apply any extra environment variables from the command builder.
         for (key, value) in &cmd.extra_env {
             process.env(key, value);
@@ -350,6 +363,15 @@ impl GitRunner {
         }
         if let Ok(dbus) = std::env::var("DBUS_SESSION_BUS_ADDRESS") {
             process.env("DBUS_SESSION_BUS_ADDRESS", &dbus);
+        }
+        if let Ok(display) = std::env::var("DISPLAY") {
+            process.env("DISPLAY", &display);
+        }
+        if let Ok(wayland) = std::env::var("WAYLAND_DISPLAY") {
+            process.env("WAYLAND_DISPLAY", &wayland);
+        }
+        if let Ok(xrd) = std::env::var("XDG_RUNTIME_DIR") {
+            process.env("XDG_RUNTIME_DIR", &xrd);
         }
         for (key, value) in &cmd.extra_env {
             process.env(key, value);

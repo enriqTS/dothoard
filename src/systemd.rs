@@ -108,7 +108,7 @@ Type=oneshot
 ExecStart={binary} backup
 TimeoutStartSec={service_timeout_sec}
 Environment=RUST_LOG=dothoard=info
-PassEnvironment=SSH_AUTH_SOCK DBUS_SESSION_BUS_ADDRESS
+PassEnvironment=SSH_AUTH_SOCK DBUS_SESSION_BUS_ADDRESS DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR
 
 [Install]
 WantedBy=default.target
@@ -609,7 +609,7 @@ Type=oneshot
 ExecStart=/usr/bin/dothoard backup
 TimeoutStartSec=180
 Environment=RUST_LOG=dothoard=info
-PassEnvironment=SSH_AUTH_SOCK DBUS_SESSION_BUS_ADDRESS
+PassEnvironment=SSH_AUTH_SOCK DBUS_SESSION_BUS_ADDRESS DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR
 
 [Install]
 WantedBy=default.target
