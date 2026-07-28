@@ -387,7 +387,7 @@ browser that shows existing sources as pre-checked, supports toggling
 selections, generates ignore rules for deselected children inside folder
 sources, and applies all changes atomically on Escape.
 
-- [ ] **MS01 - Add a multi-selection state model.** Create a `SourceSelection`
+- [x] **MS01 - Add a multi-selection state model.** Create a `SourceSelection`
   struct with `selected: HashSet<PathBuf>` (explicitly checked sources) and
   `deselected: HashMap<PathBuf, Vec<String>>` (per-source relative paths to
   ignore). Implement `toggle(path)`, `is_selected(path) -> CheckState`
