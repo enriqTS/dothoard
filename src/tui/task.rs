@@ -249,10 +249,13 @@ fn run_push_task(paths: &crate::paths::AppPaths) -> PushResult {
     use crate::git;
     use std::time::Duration;
 
+    tracing::info!("starting push task");
+
     // Load config.
     let config = match Config::load(paths.config_file()) {
         Ok(c) => c,
         Err(e) => {
+            tracing::error!(error = %e, "push: failed to load config");
             return PushResult {
                 success: false,
                 error: Some(format!("failed to load config: {e}")),
@@ -270,12 +273,20 @@ fn run_push_task(paths: &crate::paths::AppPaths) -> PushResult {
     let repo_info = match git::validate_repository(&runner, &repo_path, &config.remote) {
         Ok(info) => info,
         Err(e) => {
+            tracing::error!(error = %e, "push: repository validation failed");
             return PushResult {
                 success: false,
                 error: Some(format!("repository error: {e}")),
             };
         }
     };
+
+    tracing::info!(
+        worktree = %repo_info.worktree.display(),
+        remote = %config.remote,
+        branch = %repo_info.branch,
+        "push: syncing with remote"
+    );
 
     // Run sync (pull with rebase + push).
     match git::sync_with_remote(
@@ -284,7 +295,8 @@ fn run_push_task(paths: &crate::paths::AppPaths) -> PushResult {
         &config.remote,
         &repo_info.branch,
     ) {
-        Ok(_) => {
+        Ok(sync_result) => {
+            tracing::info!(result = ?sync_result, "push: sync succeeded");
             // Update state to clear pending_push.
             if let Ok(mut state) = crate::state::AppState::load(paths.state_dir()) {
                 state.pending_push = false;
@@ -296,10 +308,13 @@ fn run_push_task(paths: &crate::paths::AppPaths) -> PushResult {
                 error: None,
             }
         }
-        Err(e) => PushResult {
-            success: false,
-            error: Some(format!("{e}")),
-        },
+        Err(e) => {
+            tracing::error!(error = %e, "push: sync failed");
+            PushResult {
+                success: false,
+                error: Some(format!("{e}")),
+            }
+        }
     }
 }
 
