@@ -48,11 +48,15 @@ pub enum LockError {
 
 /// An RAII guard that holds the exclusive lock.
 ///
-/// The lock is released when this value is dropped. The lock file itself is
-/// not deleted — advisory locks are released by closing the file descriptor.
+/// The lock is released when this value is dropped. An explicit `flock(LOCK_UN)`
+/// is performed on drop to ensure the lock is released immediately, even if
+/// child processes have inherited a duplicate of the file descriptor via
+/// `fork()`. Without the explicit unlock, the kernel retains the lock until
+/// *all* file descriptors referencing the same open file description are closed
+/// (including those held by forked children between `fork()` and `exec()`).
 #[derive(Debug)]
 pub struct LockGuard {
-    _file: File,
+    file: File,
     path: PathBuf,
 }
 
@@ -60,6 +64,30 @@ impl LockGuard {
     /// Return the path to the lock file.
     pub fn path(&self) -> &Path {
         &self.path
+    }
+}
+
+impl Drop for LockGuard {
+    fn drop(&mut self) {
+        // Explicitly release the flock before the fd is closed.
+        // This ensures the lock is freed even if child processes hold
+        // duplicated file descriptors to the same open file description.
+        #[cfg(unix)]
+        {
+            use std::os::unix::io::AsRawFd;
+            // LOCK_UN releases the advisory lock immediately regardless of
+            // whether other file descriptors to the same open file description
+            // exist (e.g., in forked child processes).
+            unsafe {
+                libc::flock(self.file.as_raw_fd(), libc::LOCK_UN);
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            // On non-Unix, fs2's unlock is the best available option.
+            let _ = self.file.unlock();
+        }
+        tracing::trace!(path = %self.path.display(), "released exclusive lock");
     }
 }
 
@@ -100,7 +128,7 @@ pub fn try_acquire(runtime_dir: &Path) -> Result<LockGuard, LockError> {
     match file.try_lock_exclusive() {
         Ok(()) => {
             tracing::debug!(path = %path.display(), "acquired exclusive lock");
-            Ok(LockGuard { _file: file, path })
+            Ok(LockGuard { file, path })
         }
         Err(ref e) if is_lock_contention(e) => Err(LockError::AlreadyRunning { path }),
         Err(source) => Err(LockError::Acquire { path, source }),
