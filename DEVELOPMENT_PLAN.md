@@ -422,7 +422,7 @@ sources, and applies all changes atomically on Escape.
   tests for Space toggling explicit/inherited/unchecked entries and Esc
   triggering apply.
 
-- [ ] **MS05 - Implement apply-on-Esc with removal confirmation.** Add
+- [x] **MS05 - Implement apply-on-Esc with removal confirmation.** Add
   `Mode::ConfirmApply` to the sources screen. On Esc from Browse mode,
   compute the diff. If removals exist, transition to `ConfirmApply` showing
   a summary ("Add N, remove M, add K ignore rules. Remove sources? y/n").

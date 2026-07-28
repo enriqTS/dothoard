@@ -1888,4 +1888,198 @@ mod tests {
         // Browser should be initialized (Some).
         assert!(app.repo_screen.browser.is_some());
     }
+
+    // --- MS05: Apply-on-Esc integration tests ---
+
+    #[test]
+    fn apply_selection_no_changes_returns_to_list() {
+        let mut app = test_app();
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![crate::config::SourceConfig {
+                path: ".bashrc".to_string(),
+                ignore: vec![],
+            }],
+        });
+
+        // Set up selection matching the config (no diff).
+        let home = std::path::Path::new("/home/user");
+        app.sources_screen.mode = screens::sources::Mode::Browse;
+        app.sources_screen
+            .ensure_selection(app.config.as_ref().unwrap().sources.as_slice(), home);
+
+        app.handle_apply_selection();
+
+        // No changes → returns to list immediately.
+        assert_eq!(app.sources_screen.mode, screens::sources::Mode::List);
+        assert!(app.sources_screen.pending_diff.is_none());
+    }
+
+    #[test]
+    fn apply_selection_additions_only_applies_immediately() {
+        let mut app = test_app();
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![crate::config::SourceConfig {
+                path: ".bashrc".to_string(),
+                ignore: vec![],
+            }],
+        });
+
+        let home = std::path::Path::new("/home/user");
+        app.sources_screen.mode = screens::sources::Mode::Browse;
+        app.sources_screen
+            .ensure_selection(app.config.as_ref().unwrap().sources.as_slice(), home);
+
+        // Add a new selection.
+        app.sources_screen
+            .selection
+            .as_mut()
+            .unwrap()
+            .toggle(std::path::Path::new("/home/user/.zshrc"));
+
+        app.handle_apply_selection();
+
+        // No removals → applied immediately, returns to list.
+        assert_eq!(app.sources_screen.mode, screens::sources::Mode::List);
+        // Config should now have 2 sources.
+        let sources = &app.config.as_ref().unwrap().sources;
+        assert_eq!(sources.len(), 2);
+        assert!(sources.iter().any(|s| s.path == ".zshrc"));
+        // Previews should be stale.
+        assert!(app.preview_screen.stale);
+    }
+
+    #[test]
+    fn apply_selection_with_removals_enters_confirm() {
+        let mut app = test_app();
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![
+                crate::config::SourceConfig {
+                    path: ".bashrc".to_string(),
+                    ignore: vec![],
+                },
+                crate::config::SourceConfig {
+                    path: ".zshrc".to_string(),
+                    ignore: vec![],
+                },
+            ],
+        });
+
+        let home = std::path::Path::new("/home/user");
+        app.sources_screen.mode = screens::sources::Mode::Browse;
+        app.sources_screen
+            .ensure_selection(app.config.as_ref().unwrap().sources.as_slice(), home);
+
+        // Remove .zshrc from selection.
+        app.sources_screen
+            .selection
+            .as_mut()
+            .unwrap()
+            .toggle(std::path::Path::new("/home/user/.zshrc"));
+
+        app.handle_apply_selection();
+
+        // Removals present → enters ConfirmApply mode.
+        assert_eq!(
+            app.sources_screen.mode,
+            screens::sources::Mode::ConfirmApply
+        );
+        assert!(app.sources_screen.pending_diff.is_some());
+        let diff = app.sources_screen.pending_diff.as_ref().unwrap();
+        assert_eq!(diff.removals, vec![".zshrc"]);
+    }
+
+    #[test]
+    fn confirm_apply_executes_diff() {
+        let mut app = test_app();
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![
+                crate::config::SourceConfig {
+                    path: ".bashrc".to_string(),
+                    ignore: vec![],
+                },
+                crate::config::SourceConfig {
+                    path: ".zshrc".to_string(),
+                    ignore: vec![],
+                },
+            ],
+        });
+
+        // Simulate: pending diff with removal of .zshrc.
+        app.sources_screen.pending_diff = Some(crate::tui::selection::SelectionDiff {
+            additions: vec![".config/fish".to_string()],
+            removals: vec![".zshrc".to_string()],
+            ignore_rules: std::collections::HashMap::new(),
+        });
+        app.sources_screen.mode = screens::sources::Mode::ConfirmApply;
+
+        app.handle_confirm_apply();
+
+        // Should return to list mode.
+        assert_eq!(app.sources_screen.mode, screens::sources::Mode::List);
+        // Config should have .bashrc and .config/fish (not .zshrc).
+        let sources = &app.config.as_ref().unwrap().sources;
+        assert_eq!(sources.len(), 2);
+        assert!(sources.iter().any(|s| s.path == ".bashrc"));
+        assert!(sources.iter().any(|s| s.path == ".config/fish"));
+        assert!(!sources.iter().any(|s| s.path == ".zshrc"));
+        // Selection reset.
+        assert!(app.sources_screen.selection.is_none());
+        // Previews stale.
+        assert!(app.preview_screen.stale);
+    }
+
+    #[test]
+    fn confirm_apply_adds_ignore_rules() {
+        let mut app = test_app();
+        app.config = Some(crate::config::Config {
+            version: 1,
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![crate::config::SourceConfig {
+                path: ".config/fish".to_string(),
+                ignore: vec![],
+            }],
+        });
+
+        let mut ignore_rules = std::collections::HashMap::new();
+        ignore_rules.insert(
+            ".config/fish".to_string(),
+            vec!["/fish_variables".to_string()],
+        );
+
+        app.sources_screen.pending_diff = Some(crate::tui::selection::SelectionDiff {
+            additions: vec![],
+            removals: vec![],
+            ignore_rules,
+        });
+        app.sources_screen.mode = screens::sources::Mode::ConfirmApply;
+
+        app.handle_confirm_apply();
+
+        // Source should now have the ignore rule.
+        let source = &app.config.as_ref().unwrap().sources[0];
+        assert_eq!(source.ignore, vec!["/fish_variables"]);
+    }
 }

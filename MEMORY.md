@@ -15,8 +15,12 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   Esc triggers apply flow with confirmation for removals.
 - **MS03 complete**: Added optional `check_fn` parameter to `picker::draw()`.
   Renders `[●]`/`[◉]`/`[ ]` prefix per entry. Repository browser passes None.
-- **Active task**: MS04 — Update key handling for multi-select.
-- 798 unit tests passing.
+- **MS04 complete**: Key handling verified — Space toggles, Esc triggers apply.
+- **MS05 complete**: Apply-on-Esc with removal confirmation tested end-to-end.
+  5 new app-level integration tests verify no-change, additions-only,
+  removals-confirmation, confirm-apply execution, and ignore-rule addition.
+- **Active task**: MS06 — Handle inherited selection and ignore-rule generation.
+- 804 unit tests passing.
 
 ## Durable Decisions
 
