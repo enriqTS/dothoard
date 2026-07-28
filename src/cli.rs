@@ -129,7 +129,12 @@ fn execute_tui() -> Result<ExitCode, CliError> {
 fn execute_backup() -> Result<ExitCode, CliError> {
     let paths = AppPaths::from_environment()?;
 
-    let outcome = coordinator::run_backup(&paths)?;
+    // Initialize per-run logging for CLI mode.
+    let started_at = chrono::Utc::now();
+    let _log_guard = crate::diagnostics::init_for_run(paths.state_dir(), &started_at)
+        .map_err(|e| CliError::Tui(format!("failed to initialize logging: {e}")))?;
+
+    let outcome = coordinator::run_backup_at(&paths, started_at)?;
     report_outcome(&outcome);
 
     if outcome.success {

@@ -7,13 +7,14 @@ fn main() -> ExitCode {
     // Parse CLI first to determine if we're in TUI mode
     let cli = cli::Cli::parse();
 
-    // Initialize diagnostics based on mode
-    let init_result = if cli.command.is_none() {
-        // TUI mode: don't initialize here - the TUI will handle it
-        Ok(())
-    } else {
-        // CLI mode: initialize with stderr
-        diagnostics::init()
+    // Initialize diagnostics based on mode.
+    // - TUI mode: the TUI handles its own log initialization.
+    // - Backup command: uses per-run log file (initialized in execute_backup).
+    // - Other CLI commands: use stderr.
+    let init_result = match &cli.command {
+        None => Ok(()),                       // TUI handles it
+        Some(cli::Command::Backup) => Ok(()), // Per-run log handles it
+        Some(_) => diagnostics::init(),       // stderr for check/service
     };
 
     if let Err(error) = init_result {

@@ -158,7 +158,9 @@ impl TaskManager {
 fn run_backup_task(paths: &crate::paths::AppPaths) -> BackupResult {
     use crate::backup::coordinator;
 
-    match coordinator::run_backup(paths) {
+    let started_at = chrono::Utc::now();
+
+    let result = match coordinator::run_backup(paths) {
         Ok(outcome) => BackupResult {
             success: outcome.success,
             commit: outcome.commit,
@@ -177,7 +179,19 @@ fn run_backup_task(paths: &crate::paths::AppPaths) -> BackupResult {
             warnings: Vec::new(),
             error: Some(format!("{e:#}")),
         },
-    }
+    };
+
+    // Extract the run's log lines from the TUI session log into a per-run file.
+    let finished_at = chrono::Utc::now();
+    let session_log_path = paths.state_dir().join("dothoard.log");
+    crate::diagnostics::extract_run_log(
+        &session_log_path,
+        paths.state_dir(),
+        &started_at,
+        &finished_at,
+    );
+
+    result
 }
 
 /// Execute the check workflow on the background thread.

@@ -104,7 +104,18 @@ pub enum CoordinatorError {
 /// Always returns a `BackupOutcome` describing what happened. The caller
 /// should use the outcome to determine the exit code and produce diagnostics.
 pub fn run_backup(paths: &AppPaths) -> Result<BackupOutcome, CoordinatorError> {
-    let started_at = Utc::now();
+    run_backup_at(paths, Utc::now())
+}
+
+/// Execute a backup run with a specific start timestamp.
+///
+/// This allows the caller to provide the same timestamp used for log file
+/// naming, ensuring the RunRecord's log_file matches the actual log file.
+pub fn run_backup_at(
+    paths: &AppPaths,
+    started_at: chrono::DateTime<Utc>,
+) -> Result<BackupOutcome, CoordinatorError> {
+    let log_filename = crate::diagnostics::run_log_filename(&started_at);
 
     // Step 1: Acquire exclusive lock.
     let _lock = crate::locking::try_acquire(paths.runtime_dir())?;
@@ -135,7 +146,7 @@ pub fn run_backup(paths: &AppPaths) -> Result<BackupOutcome, CoordinatorError> {
     let outcome = execute_workflow(paths, &config, &repository, &runner, started_at);
 
     // Step 15: Persist the result.
-    if let Err(e) = persist_outcome(paths, &outcome, started_at) {
+    if let Err(e) = persist_outcome(paths, &outcome, started_at, Some(log_filename)) {
         tracing::error!(error = %e, "failed to persist run state");
         // Non-fatal: we still return the outcome to the caller.
     }
@@ -431,6 +442,7 @@ fn persist_outcome(
     paths: &AppPaths,
     outcome: &BackupOutcome,
     started_at: chrono::DateTime<Utc>,
+    log_file: Option<String>,
 ) -> Result<(), crate::state::StateError> {
     let mut state = AppState::load(paths.state_dir()).unwrap_or_default();
     let finished_at = Utc::now();
@@ -464,6 +476,7 @@ fn persist_outcome(
         outcome: run_outcome,
         commit: outcome.commit.clone(),
         message,
+        log_file,
     };
 
     state.record_run(record);
@@ -590,7 +603,7 @@ mod tests {
         };
 
         let started_at = Utc::now();
-        persist_outcome(&paths, &outcome, started_at).unwrap();
+        persist_outcome(&paths, &outcome, started_at, Some("test.log".to_string())).unwrap();
 
         let loaded = AppState::load(&state_dir).unwrap();
         assert_eq!(loaded.last_commit, Some("deadbeef".to_string()));
@@ -627,7 +640,7 @@ mod tests {
         };
 
         let started_at = Utc::now();
-        persist_outcome(&paths, &outcome, started_at).unwrap();
+        persist_outcome(&paths, &outcome, started_at, Some("test.log".to_string())).unwrap();
 
         let loaded = AppState::load(&state_dir).unwrap();
         assert!(loaded.pending_push);
@@ -654,7 +667,7 @@ mod tests {
         let outcome = BackupOutcome::failed("source not found".to_string(), vec![]);
 
         let started_at = Utc::now();
-        persist_outcome(&paths, &outcome, started_at).unwrap();
+        persist_outcome(&paths, &outcome, started_at, Some("test.log".to_string())).unwrap();
 
         let loaded = AppState::load(&state_dir).unwrap();
         assert_eq!(loaded.latest_error, Some("source not found".to_string()));

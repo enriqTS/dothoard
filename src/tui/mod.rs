@@ -701,8 +701,8 @@ impl App {
                     && let Some(ref paths) = self.paths
                     && let Some(record) = state.history.get(self.history_screen.selected)
                 {
-                    let log_path = paths.state_dir().join("dothoard.log");
-                    self.history_screen.enter_log_view(record, &log_path);
+                    self.history_screen
+                        .enter_log_view(record, paths.state_dir());
                 }
                 true
             }
@@ -1102,6 +1102,7 @@ mod tests {
                     outcome: crate::state::RunOutcome::Success,
                     commit: None,
                     message: None,
+                    log_file: None,
                 },
                 crate::state::RunRecord {
                     started_at: chrono::Utc::now(),
@@ -1109,6 +1110,7 @@ mod tests {
                     outcome: crate::state::RunOutcome::Success,
                     commit: None,
                     message: None,
+                    log_file: None,
                 },
             ],
         });
@@ -1140,6 +1142,7 @@ mod tests {
                 outcome: crate::state::RunOutcome::Success,
                 commit: None,
                 message: None,
+                log_file: None,
             }],
         });
         app.history_screen.selected = 0;

@@ -2100,6 +2100,7 @@ mod tests {
                     outcome: crate::state::RunOutcome::Success,
                     commit: Some("abc123".to_string()),
                     message: None,
+                    log_file: None,
                 },
                 crate::state::RunRecord {
                     started_at: Utc.with_ymd_and_hms(2026, 7, 21, 13, 0, 0).unwrap(),
@@ -2107,6 +2108,7 @@ mod tests {
                     outcome: crate::state::RunOutcome::Failed,
                     commit: None,
                     message: Some("network timeout".to_string()),
+                    log_file: None,
                 },
             ],
         });

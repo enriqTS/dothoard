@@ -46,10 +46,17 @@ impl HistoryScreen {
         }
     }
 
-    /// Enter log view mode with filtered log lines for the given record.
-    pub fn enter_log_view(&mut self, record: &RunRecord, log_path: &Path) {
-        self.log_lines =
-            Self::filter_logs_by_timestamp(log_path, record.started_at, record.finished_at);
+    /// Enter log view mode with the per-run log file for the given record.
+    pub fn enter_log_view(&mut self, record: &RunRecord, state_dir: &Path) {
+        self.log_lines = if let Some(ref log_file) = record.log_file {
+            // Per-run log file exists: read it directly.
+            let log_path = crate::diagnostics::log_dir(state_dir).join(log_file);
+            Self::read_log_file(&log_path)
+        } else {
+            // Legacy fallback: filter by timestamp from the session log.
+            let log_path = state_dir.join("dothoard.log");
+            Self::filter_logs_by_timestamp(&log_path, record.started_at, record.finished_at)
+        };
         self.mode = Mode::LogView;
         self.scroll = 0;
     }
@@ -61,7 +68,19 @@ impl HistoryScreen {
         self.scroll = 0;
     }
 
-    /// Filter log lines by timestamp range.
+    /// Read all lines from a log file.
+    pub fn read_log_file(log_path: &Path) -> Vec<String> {
+        use std::io::{BufRead, BufReader};
+
+        let file = match std::fs::File::open(log_path) {
+            Ok(f) => f,
+            Err(_) => return Vec::new(),
+        };
+
+        BufReader::new(file).lines().map_while(Result::ok).collect()
+    }
+
+    /// Filter log lines by timestamp range (legacy fallback for runs without per-run log files).
     ///
     /// Reads the log file and returns lines that fall within the given
     /// timestamp range (inclusive of start, exclusive of end).
@@ -267,6 +286,7 @@ mod tests {
             outcome,
             commit: Some("abc123".to_string()),
             message: None,
+            log_file: None,
         }
     }
 
@@ -381,12 +401,12 @@ mod tests {
 
         let record = sample_record(RunOutcome::Success);
         let tmp = tempfile::tempdir().unwrap();
-        let log_path = tmp.path().join("test.log");
+        let state_dir = tmp.path();
 
-        screen.enter_log_view(&record, &log_path);
+        screen.enter_log_view(&record, state_dir);
 
         assert!(matches!(screen.mode, Mode::LogView));
-        assert!(screen.log_lines.is_empty()); // File doesn't exist, so empty
+        assert!(screen.log_lines.is_empty()); // No log file exists, so empty
         assert_eq!(screen.scroll, 0);
     }
 
@@ -478,5 +498,63 @@ mod tests {
         record.finished_at = record.started_at + chrono::Duration::milliseconds(450);
         let display = HistoryScreen::format_entry(&record);
         assert_eq!(display.duration, "450ms");
+    }
+
+    #[test]
+    fn enter_log_view_reads_per_run_log_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state_dir = tmp.path();
+
+        // Create the logs directory and a per-run log file.
+        let logs_dir = state_dir.join("logs");
+        std::fs::create_dir_all(&logs_dir).unwrap();
+        let log_filename = "run-2026-07-21T14-30-00-000.log";
+        let log_path = logs_dir.join(log_filename);
+        std::fs::write(&log_path, "INFO backup started\nINFO mirror completed\n").unwrap();
+
+        // Create a record with the log_file field set.
+        let mut record = sample_record(RunOutcome::Success);
+        record.log_file = Some(log_filename.to_string());
+
+        let mut screen = HistoryScreen::new();
+        screen.enter_log_view(&record, state_dir);
+
+        assert!(matches!(screen.mode, Mode::LogView));
+        assert_eq!(screen.log_lines.len(), 2);
+        assert!(screen.log_lines[0].contains("backup started"));
+        assert!(screen.log_lines[1].contains("mirror completed"));
+    }
+
+    #[test]
+    fn enter_log_view_falls_back_to_timestamp_filter_when_no_log_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state_dir = tmp.path();
+
+        // Create the session log in the state directory.
+        let session_log = state_dir.join("dothoard.log");
+        let mut f = std::fs::File::create(&session_log).unwrap();
+        writeln!(f, "2026-07-21T14:30:01.000000000Z INFO during run").unwrap();
+        writeln!(f, "2026-07-21T14:31:00.000000000Z INFO after run").unwrap();
+
+        // Record has no log_file — should use legacy timestamp filtering.
+        let record = sample_record(RunOutcome::Success);
+        assert!(record.log_file.is_none());
+
+        let mut screen = HistoryScreen::new();
+        screen.enter_log_view(&record, state_dir);
+
+        assert!(matches!(screen.mode, Mode::LogView));
+        // The first line (14:30:01) is within [14:30:00, 14:30:03].
+        assert_eq!(screen.log_lines.len(), 1);
+        assert!(screen.log_lines[0].contains("during run"));
+    }
+
+    #[test]
+    fn read_log_file_returns_empty_for_missing_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let missing = tmp.path().join("nonexistent.log");
+
+        let lines = HistoryScreen::read_log_file(&missing);
+        assert!(lines.is_empty());
     }
 }

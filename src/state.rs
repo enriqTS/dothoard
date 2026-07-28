@@ -77,6 +77,10 @@ pub struct RunRecord {
 
     /// Optional error or warning message.
     pub message: Option<String>,
+
+    /// Log filename for this run (relative to the logs directory).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub log_file: Option<String>,
 }
 
 /// Errors from state I/O operations.
@@ -292,6 +296,7 @@ mod tests {
                 outcome: RunOutcome::Success,
                 commit: Some("abc123".to_string()),
                 message: None,
+                log_file: None,
             }],
         };
 
@@ -313,6 +318,7 @@ mod tests {
             outcome: RunOutcome::Success,
             commit: Some("def456".to_string()),
             message: None,
+            log_file: None,
         });
 
         state.save(&state_dir).unwrap();
@@ -340,6 +346,7 @@ mod tests {
             outcome: RunOutcome::Success,
             commit: Some("aaa111".to_string()),
             message: None,
+            log_file: None,
         });
 
         assert_eq!(state.last_attempt, Some(sample_time(10)));
@@ -362,6 +369,7 @@ mod tests {
             outcome: RunOutcome::NoChanges,
             commit: None,
             message: None,
+            log_file: None,
         });
 
         assert_eq!(state.last_success, Some(sample_time(11)));
@@ -380,6 +388,7 @@ mod tests {
             outcome: RunOutcome::CommittedOffline,
             commit: Some("bbb222".to_string()),
             message: Some("push failed: network unreachable".to_string()),
+            log_file: None,
         });
 
         assert!(state.pending_push);
@@ -402,6 +411,7 @@ mod tests {
             outcome: RunOutcome::Failed,
             commit: None,
             message: Some("source .config/fish not found".to_string()),
+            log_file: None,
         });
 
         assert_eq!(state.last_attempt, Some(sample_time(13)));
@@ -423,6 +433,7 @@ mod tests {
                 outcome: RunOutcome::NoChanges,
                 commit: None,
                 message: None,
+                log_file: None,
             });
         }
 
@@ -439,6 +450,7 @@ mod tests {
             outcome: RunOutcome::NoChanges,
             commit: None,
             message: None,
+            log_file: None,
         });
         state.record_run(RunRecord {
             started_at: sample_time(9),
@@ -446,6 +458,7 @@ mod tests {
             outcome: RunOutcome::Success,
             commit: Some("ccc".to_string()),
             message: None,
+            log_file: None,
         });
 
         assert_eq!(state.history[0].started_at, sample_time(9));
@@ -463,6 +476,7 @@ mod tests {
             outcome: RunOutcome::Success,
             commit: Some("ddd".to_string()),
             message: None,
+            log_file: None,
         });
 
         assert!(!state.pending_push);
@@ -488,5 +502,67 @@ mod tests {
             AppState::path_in(dir),
             PathBuf::from("/home/user/.local/state/dothoard/status.json")
         );
+    }
+
+    #[test]
+    fn log_file_round_trips_through_json() {
+        let state = AppState {
+            last_attempt: Some(sample_time(10)),
+            last_success: Some(sample_time(10)),
+            last_commit: Some("abc123".to_string()),
+            last_push: Some(sample_time(10)),
+            pending_push: false,
+            latest_warning: None,
+            latest_error: None,
+            history: vec![RunRecord {
+                started_at: sample_time(10),
+                finished_at: sample_time(10),
+                outcome: RunOutcome::Success,
+                commit: Some("abc123".to_string()),
+                message: None,
+                log_file: Some("run-2026-07-21T10-00-00-000.log".to_string()),
+            }],
+        };
+
+        let json = serde_json::to_string_pretty(&state).unwrap();
+        let restored: AppState = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(state, restored);
+        assert_eq!(
+            restored.history[0].log_file.as_deref(),
+            Some("run-2026-07-21T10-00-00-000.log")
+        );
+    }
+
+    #[test]
+    fn log_file_none_is_omitted_from_json() {
+        let record = RunRecord {
+            started_at: sample_time(10),
+            finished_at: sample_time(10),
+            outcome: RunOutcome::Success,
+            commit: None,
+            message: None,
+            log_file: None,
+        };
+
+        let json = serde_json::to_string(&record).unwrap();
+        // The log_file field should not appear when None.
+        assert!(!json.contains("log_file"));
+    }
+
+    #[test]
+    fn deserializes_legacy_record_without_log_file() {
+        // Simulates loading a state file from before the log_file field existed.
+        let json = r#"{
+            "started_at": "2026-07-21T10:00:00Z",
+            "finished_at": "2026-07-21T10:00:03Z",
+            "outcome": "Success",
+            "commit": "abc123",
+            "message": null
+        }"#;
+
+        let record: RunRecord = serde_json::from_str(json).unwrap();
+        assert_eq!(record.log_file, None);
+        assert_eq!(record.commit, Some("abc123".to_string()));
     }
 }
