@@ -299,7 +299,8 @@ impl SourcesScreen {
                                 EntryKind::File | EntryKind::Directory | EntryKind::Symlink => {
                                     // Toggle the selection state.
                                     if let Some(ref mut sel) = self.selection {
-                                        sel.toggle(&selection.path);
+                                        let is_dir = selection.kind == EntryKind::Directory;
+                                        sel.toggle(&selection.path, is_dir);
                                     }
                                     self.message = None;
                                 }
