@@ -478,7 +478,7 @@ repository content; this milestone provides no in-application migration.
   Keep the namespace independent from the detected hostname. Add serialization
   and validation tests.
 
-- [ ] **MN02 - Define safe namespace ownership states.** Extend ownership
+- [x] **MN02 - Define safe namespace ownership states.** Extend ownership
   classification to inspect only the selected namespace and its manifest. Add
   explicit states for new, owned, invalid, and ambiguous namespaces. Treat
   root-level V1 paths and sibling namespaces as unmanaged content: never

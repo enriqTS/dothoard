@@ -11,9 +11,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Post-V1 milestones 10 and 11 complete.
 - **Milestone 12 complete**: Multi-Select Source Browser.
   MS01–MS08 all done. 827 unit tests passing.
-- **Milestone 13 active — MN02**: MN01 is complete. Namespace-aware
-  configuration schema and validation are implemented and verified. Next:
-  define safe namespace ownership states.
+- **Milestone 13 active — MN03**: MN02 is complete. Ownership classification
+  and initialization inspect only the selected namespace; next, make mapping
+  and mirror boundaries namespace-aware.
 
 ## Durable Decisions
 
@@ -25,9 +25,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   configurable interval that defaults to five minutes.
 - V1 validates and uses an existing dedicated Git clone; cloning and repository
   creation are deferred.
-- The current implementation owns only repository `home/` and
-  `.dothoard-manifest.toml`. MN01 introduces configuration-only support for a
-  future user-named namespace; namespace-aware ownership begins in MN02.
+- Ownership classification and initialization are scoped only to the selected
+  `<namespace>/home/` and `<namespace>/.dothoard-manifest.toml`. Root-level V1
+  paths and sibling namespaces are unmanaged and ignored by ownership checks.
   A valid manifest establishes ownership.
 - Existing `home/` content without a valid manifest is refused rather than
   adopted silently.
@@ -117,9 +117,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Orchestration/acceptance lock-contention races in parallel mode are pre-existing
   and pass with `--test-threads=1`.
 - All tests passing after fixing incorrect test assertions in TUI rendering tests.
-- MN01 verification: `cargo fmt --check`,
+- MN02 verification: `cargo fmt --check`,
   `cargo clippy --all-targets --all-features -- -D warnings`, and
-  `cargo test --all-targets --all-features -- --test-threads=1` all pass.
+  `cargo test --all-targets --all-features -- --test-threads=1` all pass
+  (838 lib tests plus integration suites).
 - Release binary: `target/release/dothoard` (3.3MB, x86_64)
 - Platform: CachyOS (Arch Linux), Rust 1.97.1
 
