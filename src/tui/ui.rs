@@ -213,6 +213,14 @@ fn help_bar_repository(app: &App) -> Line<'static> {
             Span::styled(":/", Style::default().fg(Color::Cyan)),
             Span::raw(" text input"),
         ]),
+        RepoMode::NamespaceInput => Line::from(vec![
+            Span::styled("Enter", Style::default().fg(Color::Cyan)),
+            Span::raw(" submit  "),
+            Span::styled("y/n", Style::default().fg(Color::Cyan)),
+            Span::raw(" confirm/cancel  "),
+            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::raw(" back"),
+        ]),
         RepoMode::TextInput => Line::from(vec![
             Span::styled("Tab", Style::default().fg(Color::Cyan)),
             Span::raw(" tabs  "),
@@ -351,6 +359,7 @@ fn draw_dashboard_status(frame: &mut Frame, area: Rect, app: &App) {
     lines.push(section_header("Repository"));
     if let Some(ref config) = app.config {
         lines.push(field_line("  Path", config.repository.clone()));
+        lines.push(field_line("  Namespace", config.namespace.clone()));
         lines.push(field_line("  Remote", config.remote.clone()));
     } else {
         lines.push(dim_line("  Not configured"));
@@ -1426,6 +1435,24 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
 
             // Status/validation area.
             let mut lines: Vec<Line> = Vec::new();
+            if let Some(ref config) = app.config {
+                lines.push(Line::from(vec![
+                    Span::raw(" "),
+                    Span::styled("Namespace: ", Style::default().fg(Color::Cyan)),
+                    Span::styled(config.namespace.clone(), Style::default().fg(Color::White)),
+                    Span::raw("  (n select/create, r rename, d delete)"),
+                ]));
+            } else {
+                lines.push(Line::from(vec![
+                    Span::raw(" "),
+                    Span::styled("Namespace: ", Style::default().fg(Color::Cyan)),
+                    Span::styled(
+                        app.repo_screen.namespace_input.clone(),
+                        Style::default().fg(Color::White),
+                    ),
+                    Span::raw("  (n edit)"),
+                ]));
+            }
 
             if let Some(ref err) = app.repo_screen.selection_error {
                 lines.push(Line::from(vec![
@@ -1463,6 +1490,47 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
 
             let paragraph = Paragraph::new(lines);
             frame.render_widget(paragraph, chunks[1]);
+        }
+        RepoMode::NamespaceInput => {
+            let mut lines: Vec<Line> = Vec::new();
+            lines.push(Line::from(Span::styled(
+                format!("  Namespace ({}):", app.repo_screen.namespace_action_name()),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )));
+            lines.push(Line::from(format!(
+                "  > {}",
+                app.repo_screen.namespace_input
+            )));
+            if let Some(ref config) = app.config {
+                let home = app
+                    .paths
+                    .as_ref()
+                    .map(|p| p.home())
+                    .unwrap_or(std::path::Path::new("."));
+                let namespace_path = if app.repo_screen.namespace_action
+                    == crate::tui::screens::repository::NamespaceAction::Delete
+                {
+                    &app.repo_screen.namespace_origin
+                } else {
+                    &app.repo_screen.namespace_input
+                };
+                let root = config.repository_path(home).join(namespace_path);
+                lines.push(dim_line(format!(
+                    "  Affected: {}/home and {}/.dothoard-manifest.toml",
+                    root.display(),
+                    root.display()
+                )));
+            }
+            if let Some(ref confirmation) = app.repo_screen.namespace_confirmation {
+                lines.push(Line::from(Span::styled(
+                    format!("  {confirmation}"),
+                    Style::default().fg(Color::Yellow),
+                )));
+            }
+            let paragraph = Paragraph::new(lines);
+            frame.render_widget(paragraph, inner);
         }
         RepoMode::TextInput => {
             let mut lines: Vec<Line> = Vec::new();

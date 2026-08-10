@@ -134,11 +134,14 @@ impl App {
             .as_ref()
             .and_then(|p| crate::config::Config::load(p.config_file()).ok());
 
-        let repo_screen = if let Some(ref c) = config {
+        let mut repo_screen = if let Some(ref c) = config {
             screens::repository::RepoScreen::with_path(&c.repository)
         } else {
             screens::repository::RepoScreen::new()
         };
+        if let Some(ref c) = config {
+            repo_screen.set_namespace(&c.namespace);
+        }
 
         Self {
             focus: Focus::TabBar,
@@ -645,8 +648,107 @@ impl App {
         }
     }
 
+    fn handle_namespace_action(&mut self) {
+        let action = self.repo_screen.namespace_action;
+        let requested = self.repo_screen.namespace_input.clone();
+        let Some(paths) = self.paths.clone() else {
+            self.status_message = Some("Cannot manage namespace: paths not resolved.".into());
+            return;
+        };
+        let Some(mut config) = self.config.clone() else {
+            self.status_message =
+                Some("Select a repository first, then choose its namespace.".into());
+            self.repo_screen.mode = screens::repository::RepoMode::Browser;
+            return;
+        };
+        let repository = config.repository_path(paths.home());
+        let result = match action {
+            screens::repository::NamespaceAction::SelectOrCreate => {
+                let state = crate::git::classify_ownership(&repository, &requested);
+                match state {
+                    Ok(crate::git::OwnershipState::New) => {
+                        crate::namespace::create(&repository, &requested, true).and_then(|_| {
+                            crate::namespace::select(
+                                paths.config_file(),
+                                &mut config,
+                                &repository,
+                                &requested,
+                            )
+                            .map(|_| ())
+                        })
+                    }
+                    Ok(_) => crate::namespace::select(
+                        paths.config_file(),
+                        &mut config,
+                        &repository,
+                        &requested,
+                    )
+                    .map(|_| ()),
+                    Err(e) => Err(crate::namespace::NamespaceError::OwnershipInspect(e)),
+                }
+            }
+            screens::repository::NamespaceAction::Rename => crate::namespace::rename(
+                paths.config_file(),
+                &mut config,
+                &repository,
+                &requested,
+                true,
+            )
+            .map(|_| ()),
+            screens::repository::NamespaceAction::Delete => crate::namespace::delete(
+                paths.config_file(),
+                &mut config,
+                &repository,
+                &requested,
+                true,
+            ),
+            screens::repository::NamespaceAction::None => return,
+        };
+        match result {
+            Ok(_) => {
+                self.config = Some(config);
+                self.repo_screen.set_namespace(&requested);
+                self.repo_screen.namespace_action = screens::repository::NamespaceAction::None;
+                self.repo_screen.mode = screens::repository::RepoMode::Browser;
+                self.preview_screen.stale = true;
+                self.ignore_screen.preview_stale = true;
+                self.status_message = Some(format!("Active namespace: {requested}"));
+            }
+            Err(e) => self.status_message = Some(format!("Namespace operation failed: {e}")),
+        }
+    }
+
     /// Repository content key handling.
     fn handle_repository_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
+        use crossterm::event::{KeyCode, KeyModifiers};
+        use screens::repository::NamespaceAction;
+        if self.repo_screen.mode == screens::repository::RepoMode::Browser
+            && key.modifiers == KeyModifiers::NONE
+        {
+            let current = self
+                .config
+                .as_ref()
+                .map(|c| c.namespace.as_str())
+                .unwrap_or("desktop");
+            match key.code {
+                KeyCode::Char('n') => {
+                    self.repo_screen
+                        .begin_namespace(NamespaceAction::SelectOrCreate, current);
+                    return true;
+                }
+                KeyCode::Char('r') if self.config.is_some() => {
+                    self.repo_screen
+                        .begin_namespace(NamespaceAction::Rename, current);
+                    return true;
+                }
+                KeyCode::Char('d') if self.config.is_some() => {
+                    self.repo_screen
+                        .begin_namespace(NamespaceAction::Delete, current);
+                    return true;
+                }
+                _ => {}
+            }
+        }
         // Ensure the browser is initialized when entering this screen.
         if let Some(ref paths) = self.paths {
             self.repo_screen.ensure_browser(paths.home());
@@ -655,13 +757,18 @@ impl App {
         let result = self.repo_screen.handle_key(key);
         match result {
             screens::repository::KeyResult::Consumed => true,
+            screens::repository::KeyResult::Namespace => {
+                self.handle_namespace_action();
+                true
+            }
             screens::repository::KeyResult::Validate => {
                 if let Some(ref paths) = self.paths {
                     let namespace = self
                         .config
                         .as_ref()
-                        .map_or("default", |config| config.namespace.as_str());
-                    self.repo_screen.validate(paths.home(), namespace);
+                        .map(|config| config.namespace.clone())
+                        .unwrap_or_else(|| self.repo_screen.namespace_input.clone());
+                    self.repo_screen.validate(paths.home(), &namespace);
                     if let Some(screens::repository::ValidationResult::Valid(ref info)) =
                         self.repo_screen.validation
                         && info.ownership.needs_confirmation()
@@ -686,14 +793,15 @@ impl App {
                     let namespace = self
                         .config
                         .as_ref()
-                        .map_or("default", |config| config.namespace.as_str());
-                    match self.repo_screen.confirm(paths.home(), namespace) {
+                        .map(|config| config.namespace.clone())
+                        .unwrap_or_else(|| self.repo_screen.namespace_input.clone());
+                    match self.repo_screen.confirm(paths.home(), &namespace) {
                         Ok(repo_path) => {
                             let repo_str = repo_path.to_str().unwrap_or_default().to_string();
                             if let Some(ref mut config) = self.config {
                                 config.repository = repo_str;
                             } else {
-                                self.config = Some(crate::config::Config::new(repo_str, "default"));
+                                self.config = Some(crate::config::Config::new(repo_str, namespace));
                             }
                             if let Some(ref paths) = self.paths
                                 && let Some(ref config) = self.config

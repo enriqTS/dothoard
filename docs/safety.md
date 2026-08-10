@@ -88,21 +88,30 @@ added — that responsibility lies with the ignore rules you configure.
 
 ## Single-writer expectation
 
-dothoard expects to be the **sole writer** to the managed namespace
-(`home/` and `.dothoard-manifest.toml`). Concurrent or external modifications
+dothoard expects to be the **sole writer** to the active managed namespace
+(`<namespace>/home/` and `<namespace>/.dothoard-manifest.toml`). Each machine
+selects its namespace explicitly; sibling namespaces and legacy root-level
+`home/` data are unmanaged and are never normalized, staged, moved, or deleted. Concurrent or external modifications
 cause predictable failures:
 
 | Scenario | Behavior |
 |----------|----------|
 | Two dothoard instances on the same machine | Exclusive lock prevents overlap; second instance reports "already running" and exits |
-| Manual edits inside `repository/home/` | Detected as dirty managed paths; dothoard normalizes them on next run (overwrites with source content) |
+| Manual edits inside the active namespace | Detected as dirty managed paths; dothoard normalizes them on next run (overwrites with source content) |
 | External commits touching `home/` | If they conflict with dothoard's next commit, rebase fails and dothoard preserves its local commit |
 | Different machine pushing to the same remote | Works if commits don't conflict; conflicts require manual resolution |
 
 ### Multi-machine usage
 
-dothoard supports multiple machines pushing to the same remote repository.
-Each machine's backup is committed independently. This works well when:
+Each machine should use a distinct namespace and configure the same clone and
+remote. The TUI Repository screen can create, select, rename, and delete
+namespaces. Creation and destructive operations show the affected namespace
+path and require confirmation; deletion requires selecting another usable
+namespace first. A rename or delete failure is reported without adopting a
+sibling. The active namespace is recorded in the configuration and manifest.
+
+Machines synchronize independently by committing different directory trees.
+This works well when:
 
 - Each machine backs up different files (no overlap in `home/` paths).
 - Conflicts are rare because files change on only one machine at a time.

@@ -15,6 +15,8 @@ pub enum RepoMode {
     Browser,
     /// Text input for direct path entry.
     TextInput,
+    /// Namespace management input.
+    NamespaceInput,
 }
 
 /// The state of the repository selection screen.
@@ -34,6 +36,12 @@ pub struct RepoScreen {
     pub confirm_state: ConfirmState,
     /// Error message from a failed selection attempt.
     pub selection_error: Option<String>,
+    /// User-selected namespace used by repository setup and management.
+    pub namespace_input: String,
+    pub namespace_cursor: usize,
+    pub namespace_action: NamespaceAction,
+    pub namespace_origin: String,
+    pub namespace_confirmation: Option<String>,
 }
 
 /// Result of validating the repository path.
@@ -94,6 +102,14 @@ pub enum ConfirmState {
     Done,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NamespaceAction {
+    None,
+    SelectOrCreate,
+    Rename,
+    Delete,
+}
+
 impl Default for RepoScreen {
     fn default() -> Self {
         Self::new()
@@ -111,6 +127,11 @@ impl RepoScreen {
             validation: None,
             confirm_state: ConfirmState::None,
             selection_error: None,
+            namespace_input: "desktop".to_string(),
+            namespace_cursor: 7,
+            namespace_action: NamespaceAction::None,
+            namespace_origin: "desktop".to_string(),
+            namespace_confirmation: None,
         }
     }
 
@@ -125,6 +146,33 @@ impl RepoScreen {
             validation: None,
             confirm_state: ConfirmState::None,
             selection_error: None,
+            namespace_input: "desktop".to_string(),
+            namespace_cursor: 7,
+            namespace_action: NamespaceAction::None,
+            namespace_origin: "desktop".to_string(),
+            namespace_confirmation: None,
+        }
+    }
+
+    pub fn set_namespace(&mut self, namespace: &str) {
+        self.namespace_input = namespace.to_string();
+        self.namespace_cursor = self.namespace_input.len();
+    }
+
+    pub fn begin_namespace(&mut self, action: NamespaceAction, current: &str) {
+        self.set_namespace(current);
+        self.namespace_action = action;
+        self.namespace_origin = current.to_string();
+        self.namespace_confirmation = None;
+        self.mode = RepoMode::NamespaceInput;
+    }
+
+    pub fn namespace_action_name(&self) -> &'static str {
+        match self.namespace_action {
+            NamespaceAction::SelectOrCreate => "select or create",
+            NamespaceAction::Rename => "rename",
+            NamespaceAction::Delete => "delete (type replacement)",
+            NamespaceAction::None => "manage",
         }
     }
 
@@ -158,6 +206,23 @@ impl RepoScreen {
     pub fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> KeyResult {
         use crossterm::event::{KeyCode, KeyModifiers};
 
+        if self.namespace_confirmation.is_some() {
+            return match (key.modifiers, key.code) {
+                (KeyModifiers::NONE, KeyCode::Tab) | (KeyModifiers::SHIFT, KeyCode::BackTab) => {
+                    KeyResult::NotConsumed
+                }
+                (_, KeyCode::Char('y')) | (_, KeyCode::Char('Y')) => {
+                    self.namespace_confirmation = None;
+                    KeyResult::Namespace
+                }
+                (_, KeyCode::Char('n')) | (_, KeyCode::Char('N')) | (_, KeyCode::Esc) => {
+                    self.namespace_confirmation = None;
+                    KeyResult::Consumed
+                }
+                _ => KeyResult::Consumed,
+            };
+        }
+
         // If a confirmation dialog is active, handle it.
         if self.confirm_state == ConfirmState::AskInitialize
             || self.confirm_state == ConfirmState::AskAttach
@@ -179,6 +244,70 @@ impl RepoScreen {
         match self.mode {
             RepoMode::Browser => self.handle_key_browser(key),
             RepoMode::TextInput => self.handle_key_text(key),
+            RepoMode::NamespaceInput => self.handle_key_namespace(key),
+        }
+    }
+
+    fn handle_key_namespace(&mut self, key: crossterm::event::KeyEvent) -> KeyResult {
+        use crossterm::event::{KeyCode, KeyModifiers};
+        match (key.modifiers, key.code) {
+            (KeyModifiers::NONE, KeyCode::Tab) | (KeyModifiers::SHIFT, KeyCode::BackTab) => {
+                KeyResult::NotConsumed
+            }
+            (_, KeyCode::Esc) => {
+                self.mode = RepoMode::Browser;
+                self.namespace_action = NamespaceAction::None;
+                KeyResult::Consumed
+            }
+            (_, KeyCode::Enter) => {
+                self.namespace_confirmation = Some(match self.namespace_action {
+                    NamespaceAction::Rename => {
+                        format!("Rename namespace to '{}' ? y/n", self.namespace_input)
+                    }
+                    NamespaceAction::Delete => {
+                        format!(
+                            "Delete '{}' home/manifest (replacement required)? y/n",
+                            self.namespace_origin
+                        )
+                    }
+                    _ => format!(
+                        "Use namespace '{}' (create if needed)? y/n",
+                        self.namespace_input
+                    ),
+                });
+                KeyResult::Consumed
+            }
+            (_, KeyCode::Backspace) if self.namespace_cursor > 0 => {
+                self.namespace_cursor -= 1;
+                self.namespace_input.remove(self.namespace_cursor);
+                KeyResult::Consumed
+            }
+            (_, KeyCode::Delete) if self.namespace_cursor < self.namespace_input.len() => {
+                self.namespace_input.remove(self.namespace_cursor);
+                KeyResult::Consumed
+            }
+            (_, KeyCode::Left) if self.namespace_cursor > 0 => {
+                self.namespace_cursor -= 1;
+                KeyResult::Consumed
+            }
+            (_, KeyCode::Right) if self.namespace_cursor < self.namespace_input.len() => {
+                self.namespace_cursor += 1;
+                KeyResult::Consumed
+            }
+            (_, KeyCode::Home) => {
+                self.namespace_cursor = 0;
+                KeyResult::Consumed
+            }
+            (_, KeyCode::End) => {
+                self.namespace_cursor = self.namespace_input.len();
+                KeyResult::Consumed
+            }
+            (_, KeyCode::Char(c)) => {
+                self.namespace_input.insert(self.namespace_cursor, c);
+                self.namespace_cursor += c.len_utf8();
+                KeyResult::Consumed
+            }
+            _ => KeyResult::Consumed,
         }
     }
 
@@ -438,6 +567,8 @@ pub enum KeyResult {
     Consumed,
     /// The user wants to validate the current path.
     Validate,
+    /// The user submitted a namespace operation.
+    Namespace,
     /// The user confirmed in the dialog.
     Confirm,
     /// The key was not consumed (pass to parent handler).
@@ -669,6 +800,30 @@ mod tests {
     }
 
     // --- Browser mode tests ---
+
+    #[test]
+    fn namespace_input_submits_only_after_confirmation() {
+        let mut screen = RepoScreen::new();
+        screen.begin_namespace(NamespaceAction::Rename, "desktop");
+        assert_eq!(screen.handle_key(key(KeyCode::Enter)), KeyResult::Consumed);
+        assert!(screen.namespace_confirmation.is_some());
+        assert_eq!(
+            screen.handle_key(key(KeyCode::Char('n'))),
+            KeyResult::Consumed
+        );
+        assert!(screen.namespace_confirmation.is_none());
+    }
+
+    #[test]
+    fn namespace_input_yields_namespace_action() {
+        let mut screen = RepoScreen::new();
+        screen.begin_namespace(NamespaceAction::SelectOrCreate, "desktop");
+        assert_eq!(screen.handle_key(key(KeyCode::Enter)), KeyResult::Consumed);
+        assert_eq!(
+            screen.handle_key(key(KeyCode::Char('y'))),
+            KeyResult::Namespace
+        );
+    }
 
     #[test]
     fn new_screen_defaults_to_browser_mode() {

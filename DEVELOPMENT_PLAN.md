@@ -525,7 +525,7 @@ repository content; this milestone provides no in-application migration.
   namespaces. Add filesystem and Git tests for collisions, cancellation,
   partial failures, and staged-boundary protection.
 
-- [ ] **MN08 - Build TUI namespace management.** Let users create, select,
+- [x] **MN08 - Build TUI namespace management.** Let users create, select,
   rename, and delete valid namespaces both during initial repository setup and
   at any later time. Display the active namespace in Repository and Dashboard
   views. Renaming and deletion must show the affected path, require explicit
@@ -535,7 +535,7 @@ repository content; this milestone provides no in-application migration.
   editing scoped to the active namespace; changing it invalidates dependent
   previews safely. Add interaction and rendering tests.
 
-- [ ] **MN09 - Document and accept multiple-machine operation.** Update the
+- [x] **MN09 - Document and accept multiple-machine operation.** Update the
   README and safety documentation with repository layout, independent machine
   setup, namespace lifecycle, synchronization expectations, and limitations. Run the
   complete formatting, Clippy, unit, filesystem, Git, orchestration, and TUI

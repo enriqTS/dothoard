@@ -11,10 +11,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Post-V1 milestones 10 and 11 complete.
 - **Milestone 12 complete**: Multi-Select Source Browser.
   MS01–MS08 all done. 827 unit tests passing.
-- **Milestone 13 active — MN08**: MN07 adds backend namespace create, select,
-  rename, and delete operations with ownership, no-follow, clean-worktree,
-  confirmation, and atomic configuration safeguards; next, build TUI namespace
-  management.
+- **Milestone 13 complete**: MN01–MN09 implement namespace schemas, ownership,
+  namespace-scoped backup/Git behavior, lifecycle operations, TUI namespace
+  selection/create/rename/delete controls, and multi-machine documentation.
 
 ## Durable Decisions
 
@@ -123,6 +122,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   `cargo test --all-targets --all-features -- --test-threads=1` pass.
   Lifecycle tests cover confirmation, collisions, ownership refusal, rename
   manifest/config updates, protected deletion, and dirty sibling worktree refusal.
+- MN08/MN09 verification: formatting, Clippy, and the complete serialized test
+  baseline pass (843 library tests plus acceptance, bootstrap, Git, hardening,
+  mirror, and orchestration integration suites). TUI namespace input supports
+  explicit confirmation and safely invalidates source/ignore/backup previews.
 - Release binary: `target/release/dothoard` (3.3MB, x86_64)
 - Platform: CachyOS (Arch Linux), Rust 1.97.1
 
@@ -141,7 +144,7 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 See PLAN.md "Deferred Work" section. Key items:
 - Restore support
 - Repository creation and cloning
-- Multiple-machine conflict management in the TUI
+- Advanced multiple-machine conflict management beyond Git's normal rebase recovery
 - AUR packaging
 - Encryption before committing
 

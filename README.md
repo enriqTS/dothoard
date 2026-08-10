@@ -327,19 +327,22 @@ automatically.
 
 ```
 repository/
-|-- home/
-|   |-- .config/
-|   |   |-- fish/
-|   |   |   |-- config.fish
-|   |   |   `-- functions/
-|   |   `-- hypr/
-|   |       `-- hyprland.conf
-|   `-- .bashrc
-`-- .dothoard-manifest.toml
+|-- desktop/
+|   |-- home/
+|   |   `-- .config/...
+|   `-- .dothoard-manifest.toml
+|-- notebook/
+|   |-- home/
+|   `-- .dothoard-manifest.toml
+`-- other repository content (untouched)
 ```
 
-The application owns the `home/` namespace and `.dothoard-manifest.toml`.
-Everything else in the repository is untouched.
+Each machine chooses a portable namespace (for example `desktop` or
+`notebook`). It owns only that namespace's `home/` directory and manifest;
+root-level V1 `home/` data and sibling namespaces remain unmanaged. The TUI
+Repository screen supports selecting/creating a namespace and, with explicit
+confirmation, renaming or deleting it. Deletion requires entering a different
+usable namespace first. Namespaces do not depend on the hostname.
 
 ## Backup Workflow
 
@@ -348,10 +351,10 @@ Each `dothoard backup` run:
 1. Acquires an exclusive lock (prevents concurrent runs).
 2. Loads and validates the configuration.
 3. Validates the Git repository (branch, remote, no rebase/merge in progress).
-4. Rejects dirty unmanaged paths (staged/unstaged/untracked outside `home/`).
-5. Mirrors each configured source into `repository/home/...`.
+4. Rejects dirty unmanaged paths (staged/unstaged/untracked outside the active namespace).
+5. Mirrors each configured source into `repository/<namespace>/home/...`.
 6. Updates the manifest.
-7. Stages only managed paths using literal Git pathspecs.
+7. Stages only the active namespace and its manifest using literal Git pathspecs.
 8. Commits if anything changed (message: `backup(<hostname>): <timestamp>`).
 9. Pulls with rebase from the remote.
 10. Pushes local commits.
