@@ -11,10 +11,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Post-V1 milestones 10 and 11 complete.
 - **Milestone 12 complete**: Multi-Select Source Browser.
   MS01–MS08 all done. 827 unit tests passing.
-- **Milestone 13 active — MN05**: MN04 is complete. Version-2 manifests are
-  atomically stored at the selected namespace, declare a validated namespace,
-  and reject cross-namespace substitution; next, restrict Git worktree
-  handling and publication to that namespace.
+- **Milestone 13 active — MN06**: MN05 restricts worktree classification,
+  staging, and staged-boundary verification to the active namespace, including
+  both endpoints of cross-namespace renames; next, integrate namespace
+  selection and reporting into orchestration and headless commands.
 
 ## Durable Decisions
 
@@ -107,8 +107,8 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 - `cargo fmt --check` — clean
 - `cargo clippy --all-targets --all-features -- -D warnings` — clean
-- `cargo test --all-targets --all-features -- --test-threads=1` — 835 unit tests passed
-  - 835 unit tests (lib) including browser, picker, state-sync, selection, diagnostics, and namespace-validation tests
+- `cargo test --all-targets --all-features -- --test-threads=1` — 833 unit tests passed
+  - 833 unit tests (lib) including browser, picker, state-sync, selection, diagnostics, and namespace-validation tests
   - 18 acceptance tests
   - 1 bootstrap integration test
   - 12 git_workflow integration tests
@@ -118,9 +118,11 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Orchestration/acceptance lock-contention races in parallel mode are pre-existing
   and pass with `--test-threads=1`.
 - All tests passing after fixing incorrect test assertions in TUI rendering tests.
-- MN04 verification: `cargo fmt --check`,
+- MN05 verification: `cargo fmt --check`,
   `cargo clippy --all-targets --all-features -- -D warnings`, and
   `cargo test --all-targets --all-features -- --test-threads=1` pass.
+  Namespace Git tests cover clean siblings, dirty/staged sibling blocking,
+  cross-namespace rename protection, and independent publication to one bare remote.
 - Release binary: `target/release/dothoard` (3.3MB, x86_64)
 - Platform: CachyOS (Arch Linux), Rust 1.97.1
 

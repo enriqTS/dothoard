@@ -499,7 +499,7 @@ repository content; this milestone provides no in-application migration.
   whose declared namespace does not match its directory. Test cross-namespace
   manifest substitution and malformed namespace inputs.
 
-- [ ] **MN05 - Restrict Git worktree handling and publication to one namespace.**
+- [x] **MN05 - Restrict Git worktree handling and publication to one namespace.**
   Stage only the active namespace directory with literal pathspecs and verify
   that every staged path is within it. Classify a clean, committed sibling
   namespace as untouched repository content; staged or dirty paths outside the
