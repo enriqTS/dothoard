@@ -184,10 +184,13 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
 
         // Create a valid manifest so the state is Owned.
-        let manifest = Manifest::from_sources(&[SourceConfig {
-            path: ".config/fish".to_string(),
-            ignore: vec!["*.log".to_string()],
-        }]);
+        let manifest = Manifest::from_sources(
+            "desktop",
+            &[SourceConfig {
+                path: ".config/fish".to_string(),
+                ignore: vec!["*.log".to_string()],
+            }],
+        );
         fs::create_dir(tmp.path().join(NAMESPACE)).unwrap();
         manifest.save(&tmp.path().join(NAMESPACE)).unwrap();
 

@@ -152,6 +152,23 @@ fn classify_with_manifest(namespace_dir: &Path) -> Result<OwnershipState, Owners
                 ),
             })
         }
+        Err(
+            ManifestError::InvalidNamespace { namespace, reason }
+            | ManifestError::NamespaceMismatch {
+                declared: namespace,
+                expected: reason,
+            },
+        ) => Ok(OwnershipState::InvalidManifest {
+            reason: format!("manifest namespace is invalid: {namespace}: {reason}"),
+        }),
+        Err(ManifestError::InvalidNamespaceDirectory { path }) => {
+            Ok(OwnershipState::InvalidManifest {
+                reason: format!(
+                    "manifest is in an invalid namespace directory: {}",
+                    path.display()
+                ),
+            })
+        }
         Err(ManifestError::Read { path, source }) => Err(OwnershipError::Inspect { path, source }),
         // These variants are for write operations and shouldn't occur during load.
         Err(
@@ -229,16 +246,19 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
 
         fs::create_dir(namespace_dir(tmp.path())).unwrap();
-        let manifest = Manifest::from_sources(&[
-            SourceConfig {
-                path: ".config/fish".to_string(),
-                ignore: vec!["*.log".to_string()],
-            },
-            SourceConfig {
-                path: ".bashrc".to_string(),
-                ignore: vec![],
-            },
-        ]);
+        let manifest = Manifest::from_sources(
+            NAMESPACE,
+            &[
+                SourceConfig {
+                    path: ".config/fish".to_string(),
+                    ignore: vec!["*.log".to_string()],
+                },
+                SourceConfig {
+                    path: ".bashrc".to_string(),
+                    ignore: vec![],
+                },
+            ],
+        );
         manifest.save(&namespace_dir(tmp.path())).unwrap();
 
         let state = classify_ownership(tmp.path(), NAMESPACE).unwrap();
@@ -262,10 +282,13 @@ mod tests {
         fs::create_dir_all(home.join(".config/fish")).unwrap();
         fs::write(home.join(".config/fish/config.fish"), "# fish").unwrap();
 
-        let manifest = Manifest::from_sources(&[SourceConfig {
-            path: ".config/fish".to_string(),
-            ignore: vec![],
-        }]);
+        let manifest = Manifest::from_sources(
+            NAMESPACE,
+            &[SourceConfig {
+                path: ".config/fish".to_string(),
+                ignore: vec![],
+            }],
+        );
         manifest.save(&namespace_dir(tmp.path())).unwrap();
 
         let state = classify_ownership(tmp.path(), NAMESPACE).unwrap();
@@ -291,13 +314,26 @@ mod tests {
     }
 
     #[test]
+    fn manifest_from_sibling_namespace_is_invalid() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir(namespace_dir(tmp.path())).unwrap();
+        Manifest::from_sources("notebook", &[])
+            .save(&namespace_dir(tmp.path()))
+            .unwrap();
+
+        let state = classify_ownership(tmp.path(), NAMESPACE).unwrap();
+
+        assert!(matches!(state, OwnershipState::InvalidManifest { .. }));
+    }
+
+    #[test]
     fn invalid_manifest_format_detected() {
         let tmp = tempfile::tempdir().unwrap();
         fs::create_dir(namespace_dir(tmp.path())).unwrap();
         let manifest_path = namespace_dir(tmp.path()).join(app::MANIFEST_FILE_NAME);
         fs::write(
             &manifest_path,
-            "format = \"wrong-format\"\nversion = 1\nsources = []\n",
+            "format = \"wrong-format\"\nversion = 2\nnamespace = \"desktop\"\nsources = []\n",
         )
         .unwrap();
 
@@ -316,7 +352,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         fs::create_dir(namespace_dir(tmp.path())).unwrap();
         let manifest_path = namespace_dir(tmp.path()).join(app::MANIFEST_FILE_NAME);
-        let content = format!("format = \"{FORMAT_IDENTIFIER}\"\nversion = 99\nsources = []\n");
+        let content = format!(
+            "format = \"{FORMAT_IDENTIFIER}\"\nversion = 99\nnamespace = \"desktop\"\nsources = []\n"
+        );
         fs::write(&manifest_path, content).unwrap();
 
         let state = classify_ownership(tmp.path(), NAMESPACE).unwrap();

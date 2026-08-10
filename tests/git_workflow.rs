@@ -92,16 +92,19 @@ fn initial_backup_creates_commit_and_pushes() {
     fs::write(home.join(".bashrc"), "# bashrc").unwrap();
 
     // Create manifest.
-    let manifest = Manifest::from_sources(&[
-        SourceConfig {
-            path: ".config/fish".to_string(),
-            ignore: vec![],
-        },
-        SourceConfig {
-            path: ".bashrc".to_string(),
-            ignore: vec![],
-        },
-    ]);
+    let manifest = Manifest::from_sources(
+        "desktop",
+        &[
+            SourceConfig {
+                path: ".config/fish".to_string(),
+                ignore: vec![],
+            },
+            SourceConfig {
+                path: ".bashrc".to_string(),
+                ignore: vec![],
+            },
+        ],
+    );
     manifest.save(env.worktree()).unwrap();
 
     // Stage, verify, commit, push.
@@ -338,10 +341,13 @@ fn new_repository_classifies_as_new() {
 fn repository_with_manifest_classifies_as_owned() {
     let env = TestGitEnv::new();
 
-    let manifest = Manifest::from_sources(&[SourceConfig {
-        path: ".bashrc".to_string(),
-        ignore: vec![],
-    }]);
+    let manifest = Manifest::from_sources(
+        "desktop",
+        &[SourceConfig {
+            path: ".bashrc".to_string(),
+            ignore: vec![],
+        }],
+    );
     let namespace = env.worktree().join("desktop");
     fs::create_dir(&namespace).unwrap();
     manifest.save(&namespace).unwrap();
@@ -389,16 +395,19 @@ fn full_backup_workflow_end_to_end() {
     fs::write(home.join(".bashrc"), "alias ls='ls --color'").unwrap();
 
     // 5. Write manifest.
-    let manifest = Manifest::from_sources(&[
-        SourceConfig {
-            path: ".config/fish".to_string(),
-            ignore: vec!["fish_variables".to_string()],
-        },
-        SourceConfig {
-            path: ".bashrc".to_string(),
-            ignore: vec![],
-        },
-    ]);
+    let manifest = Manifest::from_sources(
+        "desktop",
+        &[
+            SourceConfig {
+                path: ".config/fish".to_string(),
+                ignore: vec!["fish_variables".to_string()],
+            },
+            SourceConfig {
+                path: ".bashrc".to_string(),
+                ignore: vec![],
+            },
+        ],
+    );
     manifest.save(env.worktree()).unwrap();
 
     // 6. Stage managed namespace.

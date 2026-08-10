@@ -267,7 +267,9 @@ impl Config {
             errors.push(ValidationError::EmptyRemote);
         }
 
-        validate_namespace(&self.namespace, &mut errors);
+        if let Err(error) = validate_namespace(&self.namespace) {
+            errors.push(error);
+        }
 
         // Interval must be positive.
         if self.interval_minutes == 0 {
@@ -387,41 +389,42 @@ impl Config {
 }
 
 /// Validate a user-selected machine namespace as a portable path component.
-fn validate_namespace(namespace: &str, errors: &mut Vec<ValidationError>) {
+///
+/// This is shared with manifest validation so a repository ownership marker
+/// cannot declare a namespace that local configuration would refuse to use.
+pub fn validate_namespace(namespace: &str) -> Result<(), ValidationError> {
     if namespace.is_empty() {
-        errors.push(ValidationError::EmptyNamespace);
-        return;
+        return Err(ValidationError::EmptyNamespace);
     }
 
     if Path::new(namespace).is_absolute() {
-        errors.push(ValidationError::AbsoluteNamespace {
+        return Err(ValidationError::AbsoluteNamespace {
             namespace: namespace.to_string(),
         });
-        return;
     }
 
     if namespace.contains(['/', '\\']) {
-        errors.push(ValidationError::NamespaceContainsSeparator {
+        return Err(ValidationError::NamespaceContainsSeparator {
             namespace: namespace.to_string(),
         });
-        return;
     }
 
     if matches!(namespace, "." | "..") {
-        errors.push(ValidationError::ReservedNamespace {
+        return Err(ValidationError::ReservedNamespace {
             namespace: namespace.to_string(),
         });
-        return;
     }
 
     if !namespace
         .bytes()
         .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
     {
-        errors.push(ValidationError::InvalidNamespaceCharacter {
+        return Err(ValidationError::InvalidNamespaceCharacter {
             namespace: namespace.to_string(),
         });
     }
+
+    Ok(())
 }
 
 fn contains_parent_traversal(path: &str) -> bool {

@@ -534,7 +534,7 @@ pub fn update_manifest(
 ) -> ExecutorResult<()> {
     use super::manifest::Manifest;
 
-    let manifest = Manifest::from_sources(sources);
+    let manifest = Manifest::from_sources(namespace, sources);
     let namespace_root = super::mapping::namespace_dir(repository, namespace);
     fs::create_dir_all(&namespace_root).map_err(|source_err| ExecutorError::CreateDir {
         path: namespace_root.clone(),
@@ -1576,6 +1576,7 @@ mod tests {
 
         // Should be loadable and valid.
         let loaded = super::super::manifest::Manifest::load(&repo.join("desktop")).unwrap();
+        assert_eq!(loaded.namespace, "desktop");
         assert!(loaded.sources.is_empty());
     }
 
@@ -1599,6 +1600,7 @@ mod tests {
         update_manifest(&repo, "desktop", &sources).unwrap();
 
         let loaded = super::super::manifest::Manifest::load(&repo.join("desktop")).unwrap();
+        assert_eq!(loaded.namespace, "desktop");
         assert_eq!(loaded.sources.len(), 2);
         assert_eq!(loaded.sources[0].path, ".ssh/config");
         assert_eq!(loaded.sources[0].ignore, vec!["id_*"]);

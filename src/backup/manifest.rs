@@ -1,6 +1,6 @@
 //! Repository manifest definition and serialization.
 //!
-//! The manifest (`.dothoard-manifest.toml`) lives in the repository root
+//! Each manifest (`.dothoard-manifest.toml`) lives in its machine namespace
 //! and serves as:
 //! - An ownership marker identifying the repository as managed by this application.
 //! - A portable description of the backed-up sources and their ignore rules.
@@ -28,6 +28,9 @@ pub struct Manifest {
 
     /// Schema version for forward-compatible evolution.
     pub version: u32,
+
+    /// The portable machine namespace this manifest authorizes.
+    pub namespace: String,
 
     /// The sources that are backed up into this repository, recorded at
     /// the time of the last successful backup.
@@ -72,6 +75,15 @@ pub enum ManifestError {
     #[error("unsupported manifest version {found} (supported: {supported})")]
     UnsupportedVersion { found: u32, supported: u32 },
 
+    #[error("manifest declares invalid namespace {namespace:?}: {reason}")]
+    InvalidNamespace { namespace: String, reason: String },
+
+    #[error("manifest namespace {declared:?} does not match directory namespace {expected:?}")]
+    NamespaceMismatch { declared: String, expected: String },
+
+    #[error("manifest directory {path} does not have a valid UTF-8 namespace name")]
+    InvalidNamespaceDirectory { path: PathBuf },
+
     #[error("failed to serialize manifest")]
     Serialize(#[from] toml::ser::Error),
 
@@ -92,13 +104,17 @@ pub enum ManifestError {
 
 impl Manifest {
     /// Current manifest schema version.
-    pub const CURRENT_VERSION: u32 = 1;
+    pub const CURRENT_VERSION: u32 = 2;
 
-    /// Create a new manifest from the given source configuration.
-    pub fn from_sources(sources: &[crate::config::SourceConfig]) -> Self {
+    /// Create a new manifest for `namespace` from the given source configuration.
+    pub fn from_sources(
+        namespace: impl Into<String>,
+        sources: &[crate::config::SourceConfig],
+    ) -> Self {
         Self {
             format: FORMAT_IDENTIFIER.to_string(),
             version: Self::CURRENT_VERSION,
+            namespace: namespace.into(),
             sources: sources
                 .iter()
                 .map(|s| ManifestSource {
@@ -135,12 +151,29 @@ impl Manifest {
             });
         }
 
+        crate::config::validate_namespace(&self.namespace).map_err(|error| {
+            ManifestError::InvalidNamespace {
+                namespace: self.namespace.clone(),
+                reason: error.to_string(),
+            }
+        })
+    }
+
+    /// Validate that this manifest authorizes exactly `namespace`.
+    pub fn validate_for_namespace(&self, namespace: &str) -> Result<(), ManifestError> {
+        self.validate()?;
+        if self.namespace != namespace {
+            return Err(ManifestError::NamespaceMismatch {
+                declared: self.namespace.clone(),
+                expected: namespace.to_string(),
+            });
+        }
         Ok(())
     }
 
-    /// Load and validate a manifest from the given repository root.
-    pub fn load(repository: &Path) -> Result<Self, ManifestError> {
-        Self::load_from_directory(repository)
+    /// Load and validate a manifest from its namespace directory.
+    pub fn load(namespace_directory: &Path) -> Result<Self, ManifestError> {
+        Self::load_from_directory(namespace_directory)
     }
 
     /// Load and validate a manifest from a directory containing a namespace.
@@ -164,14 +197,20 @@ impl Manifest {
             source,
         })?;
 
-        manifest.validate()?;
+        let expected_namespace = directory
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| ManifestError::InvalidNamespaceDirectory {
+                path: directory.to_path_buf(),
+            })?;
+        manifest.validate_for_namespace(expected_namespace)?;
 
         Ok(manifest)
     }
 
-    /// Save the manifest atomically to the given repository root.
-    pub fn save(&self, repository: &Path) -> Result<(), ManifestError> {
-        let path = repository.join(app::MANIFEST_FILE_NAME);
+    /// Save the manifest atomically to its namespace directory.
+    pub fn save(&self, namespace_directory: &Path) -> Result<(), ManifestError> {
+        let path = namespace_directory.join(app::MANIFEST_FILE_NAME);
         let text = self.to_toml()?;
 
         let parent = path.parent().unwrap_or(Path::new("."));
@@ -201,9 +240,9 @@ impl Manifest {
         Ok(())
     }
 
-    /// Return the manifest file path for a given repository root.
-    pub fn path_in(repository: &Path) -> PathBuf {
-        repository.join(app::MANIFEST_FILE_NAME)
+    /// Return the manifest file path for a namespace directory.
+    pub fn path_in(namespace_directory: &Path) -> PathBuf {
+        namespace_directory.join(app::MANIFEST_FILE_NAME)
     }
 }
 
@@ -225,10 +264,11 @@ mod tests {
             },
         ];
 
-        let manifest = Manifest::from_sources(&sources);
+        let manifest = Manifest::from_sources("desktop", &sources);
 
         assert_eq!(manifest.format, FORMAT_IDENTIFIER);
         assert_eq!(manifest.version, Manifest::CURRENT_VERSION);
+        assert_eq!(manifest.namespace, "desktop");
         assert_eq!(manifest.sources.len(), 2);
         assert_eq!(manifest.sources[0].path, ".config/fish");
         assert_eq!(manifest.sources[0].ignore, vec!["*.log", "fish_variables"]);
@@ -240,7 +280,8 @@ mod tests {
     fn round_trips_through_toml() {
         let manifest = Manifest {
             format: FORMAT_IDENTIFIER.to_string(),
-            version: 1,
+            version: Manifest::CURRENT_VERSION,
+            namespace: "desktop".to_string(),
             sources: vec![
                 ManifestSource {
                     path: ".config/waybar".to_string(),
@@ -261,7 +302,7 @@ mod tests {
 
     #[test]
     fn validates_correct_manifest() {
-        let manifest = Manifest::from_sources(&[]);
+        let manifest = Manifest::from_sources("desktop", &[]);
 
         assert!(manifest.validate().is_ok());
     }
@@ -270,7 +311,8 @@ mod tests {
     fn rejects_wrong_format_identifier() {
         let manifest = Manifest {
             format: "something-else".to_string(),
-            version: 1,
+            version: Manifest::CURRENT_VERSION,
+            namespace: "desktop".to_string(),
             sources: vec![],
         };
 
@@ -283,6 +325,7 @@ mod tests {
         let manifest = Manifest {
             format: FORMAT_IDENTIFIER.to_string(),
             version: 99,
+            namespace: "desktop".to_string(),
             sources: vec![],
         };
 
@@ -296,16 +339,20 @@ mod tests {
     #[test]
     fn save_and_load_round_trip() {
         let tmp = tempfile::tempdir().unwrap();
-        let repo = tmp.path();
+        let repo = tmp.path().join("desktop");
+        std::fs::create_dir(&repo).unwrap();
 
-        let manifest = Manifest::from_sources(&[SourceConfig {
-            path: ".config/fish".to_string(),
-            ignore: vec!["*.log".to_string()],
-        }]);
+        let manifest = Manifest::from_sources(
+            "desktop",
+            &[SourceConfig {
+                path: ".config/fish".to_string(),
+                ignore: vec!["*.log".to_string()],
+            }],
+        );
 
-        manifest.save(repo).unwrap();
+        manifest.save(&repo).unwrap();
 
-        let loaded = Manifest::load(repo).unwrap();
+        let loaded = Manifest::load_from_directory(&repo).unwrap();
         assert_eq!(loaded, manifest);
     }
 
@@ -322,7 +369,11 @@ mod tests {
     fn load_rejects_invalid_format_in_file() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join(app::MANIFEST_FILE_NAME);
-        std::fs::write(&path, "format = \"wrong\"\nversion = 1\nsources = []\n").unwrap();
+        std::fs::write(
+            &path,
+            "format = \"wrong\"\nversion = 2\nnamespace = \"desktop\"\nsources = []\n",
+        )
+        .unwrap();
 
         let result = Manifest::load(tmp.path());
 
@@ -333,7 +384,9 @@ mod tests {
     fn load_rejects_unsupported_version_in_file() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join(app::MANIFEST_FILE_NAME);
-        let content = format!("format = \"{FORMAT_IDENTIFIER}\"\nversion = 99\nsources = []\n");
+        let content = format!(
+            "format = \"{FORMAT_IDENTIFIER}\"\nversion = 99\nnamespace = \"desktop\"\nsources = []\n"
+        );
         std::fs::write(&path, content).unwrap();
 
         let result = Manifest::load(tmp.path());
@@ -341,6 +394,33 @@ mod tests {
         assert!(matches!(
             result,
             Err(ManifestError::UnsupportedVersion { .. })
+        ));
+    }
+
+    #[test]
+    fn load_rejects_manifest_substituted_from_another_namespace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let desktop = tmp.path().join("desktop");
+        std::fs::create_dir(&desktop).unwrap();
+        Manifest::from_sources("notebook", &[])
+            .save(&desktop)
+            .unwrap();
+
+        let result = Manifest::load_from_directory(&desktop);
+
+        assert!(matches!(
+            result,
+            Err(ManifestError::NamespaceMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn rejects_malformed_manifest_namespace() {
+        let manifest = Manifest::from_sources("desktop/../../notebook", &[]);
+
+        assert!(matches!(
+            manifest.validate(),
+            Err(ManifestError::InvalidNamespace { .. })
         ));
     }
 
@@ -353,7 +433,7 @@ mod tests {
 
     #[test]
     fn serialized_manifest_contains_format_identifier() {
-        let manifest = Manifest::from_sources(&[]);
+        let manifest = Manifest::from_sources("desktop", &[]);
         let text = manifest.to_toml().unwrap();
 
         assert!(text.contains(FORMAT_IDENTIFIER));

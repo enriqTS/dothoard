@@ -208,7 +208,9 @@ fn ac01_clone_with_valid_manifest_is_recognized() {
     // Place a valid manifest in the selected namespace and reclassify.
     let namespace = env.repository.join("test-machine");
     fs::create_dir_all(&namespace).unwrap();
-    Manifest::from_sources(&[]).save(&namespace).unwrap();
+    Manifest::from_sources("test-machine", &[])
+        .save(&namespace)
+        .unwrap();
     let state = classify_ownership(&env.repository, "test-machine").unwrap();
     assert!(matches!(state, OwnershipState::Owned { .. }));
 }
