@@ -7,6 +7,7 @@ pub mod config;
 pub mod diagnostics;
 pub mod git;
 pub mod locking;
+pub mod namespace;
 pub mod notification;
 pub mod paths;
 pub mod state;
