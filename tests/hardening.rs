@@ -783,14 +783,14 @@ fn h04_notification_tolerates_missing_notify_send() {
     // notification::send should return false gracefully if notify-send is missing.
     // Since we can't guarantee notify-send doesn't exist, test the decision logic.
     let state = AppState::new();
-    let decision = notification::decide_notification(true, None, &state);
+    let decision = notification::decide_notification("desktop", true, None, &state);
     assert_eq!(
         decision, None,
         "successful run with clean state should be quiet"
     );
 
     // Failure notification should be decided (actual send may fail gracefully).
-    let decision = notification::decide_notification(false, Some("test error"), &state);
+    let decision = notification::decide_notification("desktop", false, Some("test error"), &state);
     assert!(decision.is_some());
 }
 
@@ -981,7 +981,7 @@ fn h05_notification_uses_direct_args() {
     let mut state = AppState::new();
     state.latest_error = Some("prev error".to_string());
 
-    let decision = notification::decide_notification(true, None, &state);
+    let decision = notification::decide_notification("desktop", true, None, &state);
     let (summary, body, urgency) = decision.unwrap();
 
     // Verify the notification content doesn't need shell escaping to be correct.

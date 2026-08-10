@@ -230,6 +230,7 @@ fn report_outcome(outcome: &BackupOutcome) {
                 "pending push"
             };
             tracing::info!(
+                namespace = %outcome.namespace,
                 commit = %sha,
                 copies = outcome.copies,
                 deletions = outcome.deletions,
@@ -237,10 +238,10 @@ fn report_outcome(outcome: &BackupOutcome) {
                 "backup complete"
             );
         } else {
-            tracing::info!("backup complete: no changes");
+            tracing::info!(namespace = %outcome.namespace, "backup complete: no changes");
         }
     } else if let Some(ref error) = outcome.error {
-        tracing::error!(error = %error, "backup failed");
+        tracing::error!(namespace = %outcome.namespace, error = %error, "backup failed");
     }
 
     for warning in &outcome.warnings {

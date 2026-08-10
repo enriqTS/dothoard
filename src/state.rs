@@ -63,6 +63,10 @@ pub enum RunOutcome {
 /// A record of a single backup run for the history log.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunRecord {
+    /// Namespace used for this run.
+    #[serde(default)]
+    pub namespace: String,
+
     /// When the run started.
     pub started_at: DateTime<Utc>,
 
@@ -291,6 +295,7 @@ mod tests {
             latest_warning: None,
             latest_error: None,
             history: vec![RunRecord {
+                namespace: String::new(),
                 started_at: sample_time(10),
                 finished_at: sample_time(10),
                 outcome: RunOutcome::Success,
@@ -313,6 +318,7 @@ mod tests {
 
         let mut state = AppState::new();
         state.record_run(RunRecord {
+            namespace: String::new(),
             started_at: sample_time(14),
             finished_at: sample_time(14),
             outcome: RunOutcome::Success,
@@ -341,6 +347,7 @@ mod tests {
         let mut state = AppState::new();
 
         state.record_run(RunRecord {
+            namespace: String::new(),
             started_at: sample_time(10),
             finished_at: sample_time(10),
             outcome: RunOutcome::Success,
@@ -364,6 +371,7 @@ mod tests {
         state.latest_error = Some("previous error".to_string());
 
         state.record_run(RunRecord {
+            namespace: String::new(),
             started_at: sample_time(11),
             finished_at: sample_time(11),
             outcome: RunOutcome::NoChanges,
@@ -383,6 +391,7 @@ mod tests {
         let mut state = AppState::new();
 
         state.record_run(RunRecord {
+            namespace: String::new(),
             started_at: sample_time(12),
             finished_at: sample_time(12),
             outcome: RunOutcome::CommittedOffline,
@@ -406,6 +415,7 @@ mod tests {
         let mut state = AppState::new();
 
         state.record_run(RunRecord {
+            namespace: String::new(),
             started_at: sample_time(13),
             finished_at: sample_time(13),
             outcome: RunOutcome::Failed,
@@ -428,6 +438,7 @@ mod tests {
 
         for hour in 0..(MAX_HISTORY_ENTRIES + 10) {
             state.record_run(RunRecord {
+                namespace: String::new(),
                 started_at: sample_time(hour as u32 % 24),
                 finished_at: sample_time(hour as u32 % 24),
                 outcome: RunOutcome::NoChanges,
@@ -445,6 +456,7 @@ mod tests {
         let mut state = AppState::new();
 
         state.record_run(RunRecord {
+            namespace: String::new(),
             started_at: sample_time(8),
             finished_at: sample_time(8),
             outcome: RunOutcome::NoChanges,
@@ -453,6 +465,7 @@ mod tests {
             log_file: None,
         });
         state.record_run(RunRecord {
+            namespace: String::new(),
             started_at: sample_time(9),
             finished_at: sample_time(9),
             outcome: RunOutcome::Success,
@@ -471,6 +484,7 @@ mod tests {
         state.pending_push = true;
 
         state.record_run(RunRecord {
+            namespace: String::new(),
             started_at: sample_time(15),
             finished_at: sample_time(15),
             outcome: RunOutcome::Success,
@@ -515,6 +529,7 @@ mod tests {
             latest_warning: None,
             latest_error: None,
             history: vec![RunRecord {
+                namespace: String::new(),
                 started_at: sample_time(10),
                 finished_at: sample_time(10),
                 outcome: RunOutcome::Success,
@@ -537,6 +552,7 @@ mod tests {
     #[test]
     fn log_file_none_is_omitted_from_json() {
         let record = RunRecord {
+            namespace: String::new(),
             started_at: sample_time(10),
             finished_at: sample_time(10),
             outcome: RunOutcome::Success,
@@ -563,6 +579,7 @@ mod tests {
 
         let record: RunRecord = serde_json::from_str(json).unwrap();
         assert_eq!(record.log_file, None);
+        assert_eq!(record.namespace, "");
         assert_eq!(record.commit, Some("abc123".to_string()));
     }
 }

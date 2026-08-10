@@ -321,6 +321,7 @@ fn run_push_task(paths: &crate::paths::AppPaths) -> PushResult {
             state.pending_push = false;
             state.last_push = Some(finished_at);
             state.record_run(RunRecord {
+                namespace: config.namespace.clone(),
                 started_at,
                 finished_at,
                 outcome: RunOutcome::Success,
@@ -364,6 +365,7 @@ fn record_push_outcome(
 
     let mut state = AppState::load(paths.state_dir()).unwrap_or_default();
     state.record_run(RunRecord {
+        namespace: String::new(),
         started_at,
         finished_at,
         outcome,

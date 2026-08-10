@@ -2182,6 +2182,7 @@ mod tests {
             latest_error: None,
             history: vec![
                 crate::state::RunRecord {
+                    namespace: String::new(),
                     started_at: Utc.with_ymd_and_hms(2026, 7, 21, 14, 0, 0).unwrap(),
                     finished_at: Utc.with_ymd_and_hms(2026, 7, 21, 14, 0, 2).unwrap(),
                     outcome: crate::state::RunOutcome::Success,
@@ -2190,6 +2191,7 @@ mod tests {
                     log_file: None,
                 },
                 crate::state::RunRecord {
+                    namespace: String::new(),
                     started_at: Utc.with_ymd_and_hms(2026, 7, 21, 13, 0, 0).unwrap(),
                     finished_at: Utc.with_ymd_and_hms(2026, 7, 21, 13, 0, 5).unwrap(),
                     outcome: crate::state::RunOutcome::Failed,

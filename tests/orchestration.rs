@@ -107,9 +107,13 @@ impl OrcEnv {
 
     /// Write a config that points to this environment's repository.
     fn write_config(&self, sources: &[SourceConfig]) {
+        self.write_config_for_namespace("test-machine", sources);
+    }
+
+    fn write_config_for_namespace(&self, namespace: &str, sources: &[SourceConfig]) {
         let config = Config {
             version: Config::CURRENT_VERSION,
-            namespace: "test-machine".to_string(),
+            namespace: namespace.to_string(),
             repository: self.repository.to_str().unwrap().to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -249,6 +253,96 @@ fn noop_backup_creates_no_commit() {
 
     // No new commit.
     assert_eq!(env.commit_count(), count_after_first);
+}
+
+// === Multiple namespace headless workflow ===
+
+#[test]
+fn namespaces_are_independent_across_headless_runs() {
+    let env = OrcEnv::new();
+    env.create_file_source(".desktoprc", "desktop-v1");
+    env.create_file_source(".notebookrc", "notebook-v1");
+
+    env.write_config_for_namespace(
+        "desktop",
+        &[SourceConfig {
+            path: ".desktoprc".to_string(),
+            ignore: vec![],
+        }],
+    );
+    let desktop = env.run_backup();
+    assert!(desktop.success);
+    assert_eq!(desktop.namespace, "desktop");
+    assert!(env.repository.join("desktop/home/.desktoprc").exists());
+
+    // A no-op remains scoped to the selected namespace and is recorded as such.
+    let desktop_noop = env.run_backup();
+    assert!(desktop_noop.success);
+    assert_eq!(desktop_noop.namespace, "desktop");
+    assert!(desktop_noop.commit.is_none());
+
+    env.write_config_for_namespace(
+        "notebook",
+        &[SourceConfig {
+            path: ".notebookrc".to_string(),
+            ignore: vec![],
+        }],
+    );
+    let notebook = env.run_backup();
+    assert!(notebook.success);
+    assert_eq!(notebook.namespace, "notebook");
+    assert!(env.repository.join("notebook/home/.notebookrc").exists());
+    assert_eq!(
+        fs::read_to_string(env.repository.join("desktop/home/.desktoprc")).unwrap(),
+        "desktop-v1"
+    );
+
+    // An offline desktop commit is retained and retried without touching notebook.
+    fs::write(env.home.join(".desktoprc"), "desktop-v2").unwrap();
+    env.write_config_for_namespace(
+        "desktop",
+        &[SourceConfig {
+            path: ".desktoprc".to_string(),
+            ignore: vec![],
+        }],
+    );
+    let cmd = GitCommand::new(&env.repository).args([
+        "remote",
+        "set-url",
+        "origin",
+        "ssh://127.0.0.1:1/offline.git",
+    ]);
+    env.runner.run(&cmd).unwrap();
+    let offline = env.run_backup();
+    assert!(offline.success, "{:?}", offline.error);
+    assert!(offline.pending_push);
+    assert_eq!(offline.namespace, "desktop");
+    let cmd = GitCommand::new(&env.repository).args([
+        "remote",
+        "set-url",
+        "origin",
+        env.remote.to_str().unwrap(),
+    ]);
+    env.runner.run(&cmd).unwrap();
+    let retry = env.run_backup();
+    assert!(retry.success);
+    assert!(retry.pushed);
+    assert_eq!(retry.namespace, "desktop");
+
+    // A sibling worktree change blocks rather than being normalized or published.
+    fs::write(
+        env.repository.join("notebook/unmanaged-change"),
+        "do not publish",
+    )
+    .unwrap();
+    let blocked = env.run_backup();
+    assert!(!blocked.success);
+    assert_eq!(blocked.namespace, "desktop");
+    assert!(blocked.error.unwrap().contains("notebook/unmanaged-change"));
+
+    let state = env.load_state();
+    assert_eq!(state.history[0].namespace, "desktop");
+    assert!(state.history.iter().any(|run| run.namespace == "notebook"));
 }
 
 // === Modification detected ===

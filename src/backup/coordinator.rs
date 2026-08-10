@@ -40,6 +40,9 @@ use super::planner::{PlanInputs, plan_backup};
 /// The outcome of a complete backup run.
 #[derive(Debug)]
 pub struct BackupOutcome {
+    /// Validated machine namespace selected for this run.
+    pub namespace: String,
+
     /// Whether the backup completed successfully.
     pub success: bool,
 
@@ -165,12 +168,14 @@ pub fn run_backup_at(
         return Err(CoordinatorError::Validation(msg));
     }
     tracing::info!(
+        namespace = %config.namespace,
         sources = config.sources.len(),
         repository = %config.repository,
         "configuration loaded"
     );
     run_log.write(&format!(
-        "configuration loaded: {} sources, repository={}",
+        "configuration loaded: namespace={}, {} sources, repository={}",
+        config.namespace,
         config.sources.len(),
         config.repository
     ));
@@ -184,7 +189,8 @@ pub fn run_backup_at(
     let previous_state = AppState::load(paths.state_dir()).unwrap_or_default();
 
     // Execute the backup workflow (steps 3-14).
-    let outcome = execute_workflow(paths, &config, &repository, &runner, started_at);
+    let mut outcome = execute_workflow(paths, &config, &repository, &runner, started_at);
+    outcome.namespace = config.namespace.clone();
 
     // Write outcome to per-run log.
     if outcome.success {
@@ -214,6 +220,7 @@ pub fn run_backup_at(
 
     // Step 16: Send notification on failure or recovery.
     crate::notification::notify_if_needed(
+        &outcome.namespace,
         outcome.success,
         outcome.error.as_deref(),
         &previous_state,
@@ -420,6 +427,7 @@ fn execute_workflow(
             Ok(_sync_result) => {
                 tracing::info!("synchronized with remote");
                 BackupOutcome {
+                    namespace: config.namespace.clone(),
                     success: true,
                     commit: commit_sha,
                     pushed: true,
@@ -435,6 +443,7 @@ fn execute_workflow(
                 tracing::warn!(reason = %reason, "remote unreachable, commit preserved");
                 warnings.push(format!("push deferred: {reason}"));
                 BackupOutcome {
+                    namespace: config.namespace.clone(),
                     success: true,
                     commit: commit_sha,
                     pushed: false,
@@ -461,6 +470,7 @@ fn execute_workflow(
                 tracing::warn!(reason = %reason, "push rejected, will retry");
                 warnings.push(format!("push rejected: {reason}"));
                 BackupOutcome {
+                    namespace: config.namespace.clone(),
                     success: true,
                     commit: commit_sha,
                     pushed: false,
@@ -485,6 +495,7 @@ fn execute_workflow(
     } else {
         // Nothing to sync: no new commit and no pending push.
         BackupOutcome {
+            namespace: config.namespace.clone(),
             success: true,
             commit: None,
             pushed: false,
@@ -538,6 +549,7 @@ fn persist_outcome(
     };
 
     let record = RunRecord {
+        namespace: outcome.namespace.clone(),
         started_at,
         finished_at,
         outcome: run_outcome,
@@ -563,6 +575,7 @@ fn format_commit_message(timestamp: &chrono::DateTime<Utc>) -> String {
 impl BackupOutcome {
     fn failed(error: String, warnings: Vec<String>) -> Self {
         Self {
+            namespace: String::new(),
             success: false,
             commit: None,
             pushed: false,
@@ -583,6 +596,7 @@ impl BackupOutcome {
     ) -> Self {
         let pending = commit.is_some();
         Self {
+            namespace: String::new(),
             success: false,
             commit,
             pushed: false,
@@ -659,6 +673,7 @@ mod tests {
         .unwrap();
 
         let outcome = BackupOutcome {
+            namespace: "desktop".to_string(),
             success: true,
             commit: Some("deadbeef".to_string()),
             pushed: true,
@@ -696,6 +711,7 @@ mod tests {
         .unwrap();
 
         let outcome = BackupOutcome {
+            namespace: "desktop".to_string(),
             success: true,
             commit: Some("abc123".to_string()),
             pushed: false,

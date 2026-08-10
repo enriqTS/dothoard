@@ -32,6 +32,7 @@ pub enum Urgency {
 /// Returns `Some((summary, body, urgency))` if a notification should be sent,
 /// or `None` if the run should remain quiet.
 pub fn decide_notification(
+    namespace: &str,
     success: bool,
     error_message: Option<&str>,
     previous_state: &AppState,
@@ -39,7 +40,7 @@ pub fn decide_notification(
     if success {
         // Only notify on recovery: previous state had an error, now it's fine.
         if previous_state.latest_error.is_some() {
-            let summary = format!("{}: backup recovered", app::APP_NAME);
+            let summary = format!("{} [{namespace}]: backup recovered", app::APP_NAME);
             let body = "Backup is working again after a previous failure.".to_string();
             Some((summary, body, Urgency::Normal))
         } else {
@@ -48,7 +49,7 @@ pub fn decide_notification(
         }
     } else {
         // Failure: always notify.
-        let summary = format!("{}: backup failed", app::APP_NAME);
+        let summary = format!("{} [{namespace}]: backup failed", app::APP_NAME);
         let body = error_message
             .unwrap_or("An unknown error occurred during backup.")
             .to_string();
@@ -110,12 +111,13 @@ pub fn send(summary: &str, body: &str, urgency: Urgency) -> bool {
 /// Call this after persisting state. The `previous_state` should be the state
 /// as it was *before* recording the current run.
 pub fn notify_if_needed(
+    namespace: &str,
     success: bool,
     error_message: Option<&str>,
     previous_state: &AppState,
 ) -> bool {
     if let Some((summary, body, urgency)) =
-        decide_notification(success, error_message, previous_state)
+        decide_notification(namespace, success, error_message, previous_state)
     {
         send(&summary, &body, urgency)
     } else {
@@ -132,7 +134,7 @@ mod tests {
     fn success_after_clean_state_is_quiet() {
         let state = AppState::new();
 
-        let result = decide_notification(true, None, &state);
+        let result = decide_notification("desktop", true, None, &state);
 
         assert_eq!(result, None);
     }
@@ -142,10 +144,11 @@ mod tests {
         let mut state = AppState::new();
         state.latest_error = Some("previous failure".to_string());
 
-        let result = decide_notification(true, None, &state);
+        let result = decide_notification("desktop", true, None, &state);
 
         assert!(result.is_some());
         let (summary, body, urgency) = result.unwrap();
+        assert!(summary.contains("desktop"));
         assert!(summary.contains("recovered"));
         assert!(body.contains("working again"));
         assert_eq!(urgency, Urgency::Normal);
@@ -155,10 +158,11 @@ mod tests {
     fn failure_always_notifies() {
         let state = AppState::new();
 
-        let result = decide_notification(false, Some("source not found"), &state);
+        let result = decide_notification("desktop", false, Some("source not found"), &state);
 
         assert!(result.is_some());
         let (summary, body, urgency) = result.unwrap();
+        assert!(summary.contains("desktop"));
         assert!(summary.contains("failed"));
         assert!(body.contains("source not found"));
         assert_eq!(urgency, Urgency::Critical);
@@ -168,7 +172,7 @@ mod tests {
     fn failure_with_no_message_uses_generic_text() {
         let state = AppState::new();
 
-        let result = decide_notification(false, None, &state);
+        let result = decide_notification("desktop", false, None, &state);
 
         assert!(result.is_some());
         let (_summary, body, _urgency) = result.unwrap();
@@ -180,7 +184,7 @@ mod tests {
         let mut state = AppState::new();
         state.latest_error = Some("old error".to_string());
 
-        let result = decide_notification(false, Some("new error"), &state);
+        let result = decide_notification("desktop", false, Some("new error"), &state);
 
         assert!(result.is_some());
         let (_summary, body, urgency) = result.unwrap();
@@ -194,7 +198,7 @@ mod tests {
         // No latest_error means last run succeeded.
         state.latest_error = None;
 
-        let result = decide_notification(true, None, &state);
+        let result = decide_notification("desktop", true, None, &state);
 
         assert_eq!(result, None);
     }

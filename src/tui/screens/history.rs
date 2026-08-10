@@ -281,6 +281,7 @@ mod tests {
 
     fn sample_record(outcome: RunOutcome) -> RunRecord {
         RunRecord {
+            namespace: String::new(),
             started_at: Utc.with_ymd_and_hms(2026, 7, 21, 14, 30, 0).unwrap(),
             finished_at: Utc.with_ymd_and_hms(2026, 7, 21, 14, 30, 3).unwrap(),
             outcome,

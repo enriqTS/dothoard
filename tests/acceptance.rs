@@ -636,7 +636,8 @@ fn ac09_failure_is_persisted_to_state() {
 fn ac09_notification_decision_reflects_failure_and_recovery() {
     // Failure notification.
     let empty_state = AppState::default();
-    let result = notification::decide_notification(false, Some("network timeout"), &empty_state);
+    let result =
+        notification::decide_notification("desktop", false, Some("network timeout"), &empty_state);
     assert!(result.is_some());
     let (summary, _body, urgency) = result.unwrap();
     assert!(summary.contains("failed"));
@@ -647,14 +648,14 @@ fn ac09_notification_decision_reflects_failure_and_recovery() {
         latest_error: Some("previous failure".to_string()),
         ..Default::default()
     };
-    let result = notification::decide_notification(true, None, &failed_state);
+    let result = notification::decide_notification("desktop", true, None, &failed_state);
     assert!(result.is_some());
     let (summary, _body, urgency) = result.unwrap();
     assert!(summary.contains("recovered"));
     assert_eq!(urgency, notification::Urgency::Normal);
 
     // Quiet success: no previous error, no notification.
-    let result = notification::decide_notification(true, None, &empty_state);
+    let result = notification::decide_notification("desktop", true, None, &empty_state);
     assert!(result.is_none());
 }
 

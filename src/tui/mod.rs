@@ -1270,6 +1270,7 @@ mod tests {
             latest_error: None,
             history: vec![
                 crate::state::RunRecord {
+                    namespace: String::new(),
                     started_at: chrono::Utc::now(),
                     finished_at: chrono::Utc::now(),
                     outcome: crate::state::RunOutcome::Success,
@@ -1278,6 +1279,7 @@ mod tests {
                     log_file: None,
                 },
                 crate::state::RunRecord {
+                    namespace: String::new(),
                     started_at: chrono::Utc::now(),
                     finished_at: chrono::Utc::now(),
                     outcome: crate::state::RunOutcome::Success,
@@ -1310,6 +1312,7 @@ mod tests {
             latest_warning: None,
             latest_error: None,
             history: vec![crate::state::RunRecord {
+                namespace: String::new(),
                 started_at: chrono::Utc::now(),
                 finished_at: chrono::Utc::now(),
                 outcome: crate::state::RunOutcome::Success,

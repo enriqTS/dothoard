@@ -140,6 +140,12 @@ pub fn run_check(paths: &AppPaths) -> CheckReport {
         return CheckReport { results };
     }
 
+    results.push(CheckResult {
+        category: "config",
+        label: format!("active namespace \"{}\"", config.namespace),
+        status: CheckStatus::Ok,
+    });
+
     // 3. Source path filesystem validation.
     let mut source_paths: Vec<PathBuf> = Vec::new();
     for source in &config.sources {
@@ -217,18 +223,19 @@ pub fn run_check(paths: &AppPaths) -> CheckReport {
     };
 
     // 7. Repository ownership.
+    let ownership_label = format!("namespace \"{}\" ownership", config.namespace);
     match git::classify_ownership(&repository, &config.namespace) {
         Ok(OwnershipState::Owned { .. }) => {
             results.push(CheckResult {
                 category: "repository",
-                label: "ownership".to_string(),
+                label: ownership_label.clone(),
                 status: CheckStatus::Ok,
             });
         }
         Ok(OwnershipState::New) => {
             results.push(CheckResult {
                 category: "repository",
-                label: "ownership".to_string(),
+                label: ownership_label.clone(),
                 status: CheckStatus::Warning(
                     "namespace not yet initialized (will initialize on first backup)".to_string(),
                 ),
@@ -237,21 +244,21 @@ pub fn run_check(paths: &AppPaths) -> CheckReport {
         Ok(OwnershipState::InvalidManifest { reason }) => {
             results.push(CheckResult {
                 category: "repository",
-                label: "ownership".to_string(),
+                label: ownership_label.clone(),
                 status: CheckStatus::Error(format!("invalid manifest: {reason}")),
             });
         }
         Ok(OwnershipState::Ambiguous { reason }) => {
             results.push(CheckResult {
                 category: "repository",
-                label: "ownership".to_string(),
+                label: ownership_label.clone(),
                 status: CheckStatus::Error(format!("ambiguous content: {reason}")),
             });
         }
         Err(e) => {
             results.push(CheckResult {
                 category: "repository",
-                label: "ownership".to_string(),
+                label: ownership_label,
                 status: CheckStatus::Error(e.to_string()),
             });
         }
@@ -548,8 +555,11 @@ mod tests {
 
         let report = run_check(&paths);
 
-        // Should have config ok, validation ok, repo error.
+        // Should have config ok, active namespace, validation ok, and repo error.
         assert!(!report.is_healthy());
+        assert!(report.results.iter().any(|result| {
+            result.label == "active namespace \"test-machine\"" && result.status.is_ok()
+        }));
         assert!(
             report
                 .results
