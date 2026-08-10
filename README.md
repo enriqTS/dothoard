@@ -81,6 +81,37 @@ dothoard --version
 dothoard --help
 ```
 
+## Development Setup
+
+On CachyOS or Arch Linux, install the development prerequisites:
+
+```bash
+sudo pacman -Syu --needed base-devel git rustup
+rustup default stable
+```
+
+Clone the repository and build it without installing a system-wide binary:
+
+```bash
+git clone https://github.com/henrique/dothoard.git
+cd dothoard
+cargo build
+cargo run -- --help
+```
+
+Run the same checks required before submitting a change:
+
+```bash
+cargo fmt --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-targets --all-features -- --test-threads=1
+```
+
+`make check` runs formatting and Clippy, and `make test` runs the serialized
+full test suite. Tests use temporary homes, repositories, remotes, runtime
+directories, and user-unit locations; they must not use your real dotfiles or
+install user services.
+
 ## Quick Start
 
 ### 1. Prepare a dedicated Git repository
@@ -105,9 +136,10 @@ git clone git@github.com:you/dotfiles.git ~/dotfiles
 Create `~/.config/dothoard/config.toml`:
 
 ```toml
-version = 1
+version = 2
 repository = "~/dotfiles"
 remote = "origin"
+namespace = "desktop"
 interval_minutes = 5
 network_timeout_seconds = 120
 
@@ -183,8 +215,8 @@ dothoard service status  Show automation status
 The configuration file lives at `~/.config/dothoard/config.toml`.
 
 ```toml
-# Schema version (required, must be 1)
-version = 1
+# Schema version (required, must be 2)
+version = 2
 
 # Path to the dedicated Git repository (required)
 # Supports ~ expansion
@@ -192,6 +224,9 @@ repository = "~/dotfiles"
 
 # Git remote name for push/pull (default: "origin")
 remote = "origin"
+
+# User-selected portable name for this machine's namespace (required)
+namespace = "desktop"
 
 # Minutes between scheduled backups (default: 5, minimum: 1)
 interval_minutes = 5

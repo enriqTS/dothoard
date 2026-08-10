@@ -134,6 +134,72 @@ that is applied without review.
 Sources may not overlap each other. A source and the repository may not
 contain one another, preventing recursive backups.
 
+## Planned Multiple-Machine Namespaces
+
+A future multiple-machine feature will let several computers that use the
+same Git repository keep fully independent backups. Each local configuration
+will name one machine namespace chosen by the user (for example `desktop`,
+`notebook`, or `home-server`); the name is an identifier, not an automatically
+inferred hostname.
+
+The repository layout for that feature will be:
+
+```text
+repository/
+|-- desktop/
+|   |-- home/
+|   |   `-- .config/...
+|   `-- .dothoard-manifest.toml
+|-- notebook/
+|   |-- home/
+|   `-- .dothoard-manifest.toml
+`-- home-server/
+    |-- home/
+    `-- .dothoard-manifest.toml
+```
+
+A machine configuration will store its selected namespace alongside the
+repository, remote, schedule, and source configuration. Namespace names must
+be valid, nonempty, portable single path components: they may not be absolute,
+contain separators, `.`/`..`, or otherwise escape the repository. The TUI will
+allow the user to choose or create the name explicitly and will show the
+active namespace prominently.
+
+All source mapping, mirroring, deletion, manifest generation, staging, and
+staged-path verification for a run will be confined to that machine directory
+and its manifest. For example, `.config/fish` on the `desktop` machine maps to
+`desktop/home/.config/fish`; it can never write, delete, stage, or normalize
+`notebook/` or `home-server/`. Sources remain non-overlapping within a machine,
+and the separate namespace roots make mappings from different machines
+non-overlapping by construction.
+
+Each namespace has its own manifest so that its source and ignore-rule history
+is independent. A valid manifest authorizes only the namespace containing it.
+Committed namespaces belonging to other machines are repository content that
+the current machine leaves untouched. As today, dirty or staged paths outside
+the active namespace must block publication rather than being modified,
+discarded, or accidentally committed.
+
+This design reduces ordinary cross-machine synchronization conflicts because
+machines commit different paths, but it does not provide configuration merging,
+restore, or automatic conflict resolution. Git pull/rebase/push safety rules
+continue to apply.
+
+The TUI must provide namespace management both while initially configuring a
+repository and afterward: users can create a namespace, select the active
+namespace, rename it, or delete it. Creation initializes only the chosen empty
+namespace. Renaming and deletion are ownership-sensitive operations that must
+show the affected path and require explicit confirmation; they must reject
+collisions, invalid or ambiguous namespace content, and any operation that
+would affect a sibling namespace. Deleting the active namespace requires
+selecting or creating another active namespace first.
+
+There will be no in-application migration from the existing root-level `home/`
+and root manifest layout. Users who want to reorganize early development data
+will do so manually outside dothoard before configuring a namespace. The old
+root-level paths are never adopted, moved, or deleted by this feature and are
+treated as unmanaged repository content.
+
 ## Ignore Rules and Secret Safety
 
 Per-source rules use `.gitignore` matching semantics and are rooted at the
@@ -706,7 +772,8 @@ detection. They must not install or enable real user units.
 - Per-login startup integration beyond user-manager startup.
 - Repository creation and cloning.
 - Paths outside `$HOME` and privileged files.
-- Multiple-machine conflict management in the TUI.
+- Multiple-machine namespace implementation and namespace management in the
+  TUI.
 - Git history rewriting for leaked secrets.
 - A continuously running filesystem watcher.
 - Multiple backup profiles.
