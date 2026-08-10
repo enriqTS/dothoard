@@ -485,7 +485,7 @@ repository content; this milestone provides no in-application migration.
   silently adopt, move, or delete them. Test every state with temporary
   repositories.
 
-- [ ] **MN03 - Make source mapping and mirror boundaries namespace-aware.** Map
+- [x] **MN03 - Make source mapping and mirror boundaries namespace-aware.** Map
   home-relative sources beneath `<repository>/<namespace>/home/`, and update
   reverse mapping, managed-path checks, destination preflight, symlink checks,
   copying, deletion, dry-run paths, and change-set presentation accordingly.

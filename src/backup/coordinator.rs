@@ -305,12 +305,13 @@ fn execute_workflow(
     // Step 5: Already handled by validate_repository (blocking operations).
 
     // Step 6: Inspect worktree changes.
-    let worktree_status = match git::classify_worktree(runner, &repo_info.worktree) {
-        Ok(status) => status,
-        Err(e) => {
-            return BackupOutcome::failed(format!("worktree inspection failed: {e}"), warnings);
-        }
-    };
+    let worktree_status =
+        match git::classify_namespace_worktree(runner, &repo_info.worktree, &config.namespace) {
+            Ok(status) => status,
+            Err(e) => {
+                return BackupOutcome::failed(format!("worktree inspection failed: {e}"), warnings);
+            }
+        };
 
     if worktree_status.has_blocking_changes() {
         return BackupOutcome::failed(
@@ -333,6 +334,7 @@ fn execute_workflow(
     let plan_inputs = PlanInputs {
         home: paths.home(),
         repository,
+        namespace: &config.namespace,
         sources: &config.sources,
     };
 
@@ -351,6 +353,7 @@ fn execute_workflow(
     let mirror_result = match super::executor::execute_mirror(
         paths.home(),
         repository,
+        &config.namespace,
         &config.sources,
         &changeset,
     ) {
@@ -378,11 +381,12 @@ fn execute_workflow(
     tracing::info!(copies = copies, deletions = deletions, "mirror completed");
 
     // Steps 10-11: Stage the managed namespace and verify boundaries.
-    if let Err(e) = git::stage_managed_namespace(runner, &repo_info.worktree) {
+    if let Err(e) = git::stage_namespace(runner, &repo_info.worktree, &config.namespace) {
         return BackupOutcome::failed(format!("staging failed: {e}"), warnings);
     }
 
-    if let Err(e) = git::verify_staged_boundaries(runner, &repo_info.worktree) {
+    if let Err(e) = git::verify_namespace_boundaries(runner, &repo_info.worktree, &config.namespace)
+    {
         return BackupOutcome::failed(format!("staged boundary check failed: {e}"), warnings);
     }
 

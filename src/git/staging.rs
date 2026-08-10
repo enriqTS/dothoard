@@ -55,8 +55,32 @@ pub enum StagingError {
 /// * `runner` - The Git command runner.
 /// * `worktree` - Absolute path to the repository worktree root.
 pub fn stage_managed_namespace(runner: &GitRunner, worktree: &Path) -> Result<(), StagingError> {
-    let home_dir = worktree.join(mapping::HOME_DIR_NAME);
-    let manifest_file = worktree.join(app::MANIFEST_FILE_NAME);
+    stage_namespace(runner, worktree, "")
+}
+
+/// Stage only the selected namespace's home directory and manifest.
+pub fn stage_namespace(
+    runner: &GitRunner,
+    worktree: &Path,
+    namespace: &str,
+) -> Result<(), StagingError> {
+    let prefix = if namespace.is_empty() {
+        String::new()
+    } else {
+        format!("{namespace}/")
+    };
+    let home_relative = format!("{}{}/", prefix, mapping::HOME_DIR_NAME);
+    let home_relative = home_relative.trim_end_matches('/');
+    let manifest_relative = format!(
+        "{}{}/{}",
+        "",
+        prefix.trim_end_matches('/'),
+        app::MANIFEST_FILE_NAME
+    )
+    .trim_start_matches('/')
+    .to_string();
+    let home_dir = worktree.join(home_relative);
+    let manifest_file = worktree.join(&manifest_relative);
 
     let mut args: Vec<String> = vec!["add".to_string(), "--all".to_string(), "--".to_string()];
 
@@ -65,14 +89,14 @@ pub fn stage_managed_namespace(runner: &GitRunner, worktree: &Path) -> Result<()
     let manifest_exists = manifest_file.exists();
 
     // Check if home/ or manifest are tracked (for deletion staging).
-    let home_tracked = is_path_tracked(runner, worktree, mapping::HOME_DIR_NAME)?;
-    let manifest_tracked = is_path_tracked(runner, worktree, app::MANIFEST_FILE_NAME)?;
+    let home_tracked = is_path_tracked(runner, worktree, home_relative)?;
+    let manifest_tracked = is_path_tracked(runner, worktree, &manifest_relative)?;
 
     if home_exists || home_tracked {
-        args.push(format!(":(literal){}", mapping::HOME_DIR_NAME));
+        args.push(format!(":(literal){home_relative}"));
     }
     if manifest_exists || manifest_tracked {
-        args.push(format!(":(literal){}", app::MANIFEST_FILE_NAME));
+        args.push(format!(":(literal){manifest_relative}"));
     }
 
     // If nothing to stage, return early.
@@ -109,6 +133,15 @@ pub fn verify_staged_boundaries(
     runner: &GitRunner,
     worktree: &Path,
 ) -> Result<Vec<String>, StagingError> {
+    verify_namespace_boundaries(runner, worktree, "")
+}
+
+/// Verify that every staged path belongs to the selected namespace.
+pub fn verify_namespace_boundaries(
+    runner: &GitRunner,
+    worktree: &Path,
+    namespace: &str,
+) -> Result<Vec<String>, StagingError> {
     let cmd = GitCommand::new(worktree).args(["diff", "--cached", "--name-only", "-z"]);
     let output = runner.run(&cmd)?;
 
@@ -121,7 +154,7 @@ pub fn verify_staged_boundaries(
 
     let unmanaged: Vec<String> = staged_paths
         .iter()
-        .filter(|path| !is_managed_relative_path(path))
+        .filter(|path| !is_namespace_managed_relative_path(path, namespace))
         .cloned()
         .collect();
 
@@ -150,11 +183,22 @@ pub fn has_staged_changes(runner: &GitRunner, worktree: &Path) -> Result<bool, S
 }
 
 /// Check if a path (relative to the worktree) is within the managed namespace.
+#[cfg(test)]
 fn is_managed_relative_path(path: &str) -> bool {
-    let home_prefix = format!("{}/", mapping::HOME_DIR_NAME);
-    path.starts_with(&home_prefix)
-        || path == mapping::HOME_DIR_NAME
-        || path == app::MANIFEST_FILE_NAME
+    is_namespace_managed_relative_path(path, "")
+}
+
+fn is_namespace_managed_relative_path(path: &str, namespace: &str) -> bool {
+    let prefix = if namespace.is_empty() {
+        String::new()
+    } else {
+        format!("{namespace}/")
+    };
+    let home = format!("{}{}", prefix, mapping::HOME_DIR_NAME);
+    path == home
+        || path.starts_with(&format!("{home}/"))
+        || (!namespace.is_empty() && path == format!("{namespace}/{}", app::MANIFEST_FILE_NAME))
+        || (namespace.is_empty() && path == app::MANIFEST_FILE_NAME)
 }
 
 #[cfg(test)]

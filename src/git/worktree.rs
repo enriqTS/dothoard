@@ -69,6 +69,15 @@ pub fn classify_worktree(
     runner: &GitRunner,
     worktree: &Path,
 ) -> Result<WorktreeStatus, WorktreeError> {
+    classify_namespace_worktree(runner, worktree, "")
+}
+
+/// Classify dirty paths for one namespace only.
+pub fn classify_namespace_worktree(
+    runner: &GitRunner,
+    worktree: &Path,
+    namespace: &str,
+) -> Result<WorktreeStatus, WorktreeError> {
     let cmd =
         GitCommand::new(worktree).args(["status", "--porcelain=v2", "-z", "--untracked-files=all"]);
     let output = runner.run(&cmd)?;
@@ -79,7 +88,7 @@ pub fn classify_worktree(
     let paths = parse_status_paths(&output.stdout);
 
     for path in paths {
-        if is_managed_relative_path(&path) {
+        if is_namespace_managed_relative_path(&path, namespace) {
             managed_dirty.push(path);
         } else {
             unmanaged_dirty.push(path);
@@ -100,11 +109,23 @@ pub fn classify_worktree(
 /// Managed paths are:
 /// - Anything under `home/` (the backed-up content directory).
 /// - The manifest file `.dothoard-manifest.toml`.
+#[cfg(test)]
 fn is_managed_relative_path(path: &str) -> bool {
-    let home_prefix = format!("{}/", mapping::HOME_DIR_NAME);
-    path.starts_with(&home_prefix)
-        || path == mapping::HOME_DIR_NAME
-        || path == app::MANIFEST_FILE_NAME
+    is_namespace_managed_relative_path(path, "")
+}
+
+/// Check whether a relative path belongs to the selected namespace.
+fn is_namespace_managed_relative_path(path: &str, namespace: &str) -> bool {
+    let prefix = if namespace.is_empty() {
+        String::new()
+    } else {
+        format!("{namespace}/")
+    };
+    let home = format!("{}{}", prefix, mapping::HOME_DIR_NAME);
+    path == home
+        || path.starts_with(&format!("{home}/"))
+        || (!namespace.is_empty() && path == format!("{namespace}/{}", app::MANIFEST_FILE_NAME))
+        || (namespace.is_empty() && path == app::MANIFEST_FILE_NAME)
 }
 
 /// Parse file paths from `git status --porcelain=v2 -z` output.

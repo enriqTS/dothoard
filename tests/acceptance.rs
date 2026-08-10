@@ -271,12 +271,12 @@ fn ac03_directory_source_is_backed_up() {
     assert_eq!(outcome.copies, 2);
     assert!(
         env.repository
-            .join("home/.config/hypr/hyprland.conf")
+            .join("test-machine/home/.config/hypr/hyprland.conf")
             .exists()
     );
     assert!(
         env.repository
-            .join("home/.config/hypr/keybinds.conf")
+            .join("test-machine/home/.config/hypr/keybinds.conf")
             .exists()
     );
 }
@@ -293,7 +293,7 @@ fn ac03_single_file_source_is_backed_up() {
     let outcome = env.run_backup();
     assert!(outcome.success);
     assert_eq!(outcome.copies, 1);
-    assert!(env.repository.join("home/.bashrc").exists());
+    assert!(env.repository.join("test-machine/home/.bashrc").exists());
 }
 
 #[test]
@@ -317,7 +317,7 @@ fn ac03_symlink_source_root_is_preserved_as_link() {
     assert!(outcome.success);
 
     // The symlink itself should be stored as a link in the repo.
-    let dest = env.repository.join("home/.config/fish-link");
+    let dest = env.repository.join("test-machine/home/.config/fish-link");
     assert!(dest.symlink_metadata().unwrap().file_type().is_symlink());
 }
 
@@ -350,6 +350,7 @@ fn ac04_ignore_rules_exclude_matched_files_in_preview() {
     let inputs = PlanInputs {
         home: &env.home,
         repository: &env.repository,
+        namespace: "test-machine",
         sources: &sources,
     };
     let changeset = plan_backup(&inputs).unwrap();
@@ -400,6 +401,7 @@ fn ac05_preview_reports_all_change_types() {
     let inputs = PlanInputs {
         home: &env.home,
         repository: &env.repository,
+        namespace: "test-machine",
         sources: &sources,
     };
     let changeset = plan_backup(&inputs).unwrap();

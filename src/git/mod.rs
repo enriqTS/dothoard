@@ -35,8 +35,9 @@ pub use ownership::{
 pub use repository::{BlockingOperation, RepositoryError, RepositoryInfo, validate_repository};
 pub use runner::{GitCommand, GitError, GitOutput, GitRunner};
 pub use staging::{
-    StagingError, has_staged_changes, stage_managed_namespace, verify_staged_boundaries,
+    StagingError, has_staged_changes, stage_managed_namespace, stage_namespace,
+    verify_namespace_boundaries, verify_staged_boundaries,
 };
 pub use sync::{SyncError, SyncResult, sync_with_remote};
 pub use tracked::{TrackedIgnoredError, find_tracked_ignored};
-pub use worktree::{WorktreeError, WorktreeStatus, classify_worktree};
+pub use worktree::{WorktreeError, WorktreeStatus, classify_namespace_worktree, classify_worktree};

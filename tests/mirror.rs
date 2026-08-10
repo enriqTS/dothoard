@@ -19,10 +19,11 @@ fn mirror(home: &Path, repo: &Path, sources: &[SourceConfig]) -> MirrorResult {
     let inputs = PlanInputs {
         home,
         repository: repo,
+        namespace: "desktop",
         sources,
     };
     let changeset = plan_backup(&inputs).expect("planner should succeed");
-    execute_mirror(home, repo, sources, &changeset)
+    execute_mirror(home, repo, "desktop", sources, &changeset)
         .expect("executor should not fail with preflight error")
 }
 
@@ -31,6 +32,7 @@ fn plan(home: &Path, repo: &Path, sources: &[SourceConfig]) -> ChangeSet {
     let inputs = PlanInputs {
         home,
         repository: repo,
+        namespace: "desktop",
         sources,
     };
     plan_backup(&inputs).expect("planner should succeed")
@@ -68,11 +70,11 @@ fn initial_backup_copies_all_source_files() {
     assert!(result.may_publish);
     assert_eq!(result.copies_completed, 2);
     assert_eq!(
-        fs::read_to_string(repo.join("home/.config/fish/config.fish")).unwrap(),
+        fs::read_to_string(repo.join("desktop/home/.config/fish/config.fish")).unwrap(),
         "set PATH"
     );
     assert_eq!(
-        fs::read_to_string(repo.join("home/.config/fish/functions/hello.fish")).unwrap(),
+        fs::read_to_string(repo.join("desktop/home/.config/fish/functions/hello.fish")).unwrap(),
         "function hello"
     );
 }
@@ -93,7 +95,7 @@ fn initial_backup_single_file_source() {
     assert!(result.may_publish);
     assert_eq!(result.copies_completed, 1);
     assert_eq!(
-        fs::read_to_string(repo.join("home/.bashrc")).unwrap(),
+        fs::read_to_string(repo.join("desktop/home/.bashrc")).unwrap(),
         "# bash config"
     );
 }
@@ -120,9 +122,9 @@ fn initial_backup_multiple_sources() {
 
     assert!(result.may_publish);
     assert_eq!(result.copies_completed, 3);
-    assert!(repo.join("home/.config/fish/config.fish").exists());
-    assert!(repo.join("home/.config/waybar/config").exists());
-    assert!(repo.join("home/.bashrc").exists());
+    assert!(repo.join("desktop/home/.config/fish/config.fish").exists());
+    assert!(repo.join("desktop/home/.config/waybar/config").exists());
+    assert!(repo.join("desktop/home/.bashrc").exists());
 }
 
 // =============================================================================
@@ -179,7 +181,7 @@ fn modified_file_is_updated() {
     assert!(result.may_publish);
     assert_eq!(result.copies_completed, 1);
     assert_eq!(
-        fs::read_to_string(repo.join("home/.config/fish/config.fish")).unwrap(),
+        fs::read_to_string(repo.join("desktop/home/.config/fish/config.fish")).unwrap(),
         "version 2"
     );
 }
@@ -198,7 +200,7 @@ fn executable_bit_change_is_applied() {
 
     // Initial — non-executable.
     mirror(&home, &repo, &sources);
-    let mode = fs::metadata(repo.join("home/bin/script.sh"))
+    let mode = fs::metadata(repo.join("desktop/home/bin/script.sh"))
         .unwrap()
         .permissions()
         .mode();
@@ -215,7 +217,7 @@ fn executable_bit_change_is_applied() {
 
     assert!(result.may_publish);
     assert_eq!(result.copies_completed, 1);
-    let mode = fs::metadata(repo.join("home/bin/script.sh"))
+    let mode = fs::metadata(repo.join("desktop/home/bin/script.sh"))
         .unwrap()
         .permissions()
         .mode();
@@ -241,7 +243,7 @@ fn removed_source_file_is_deleted_from_destination() {
 
     // Initial backup copies both files.
     mirror(&home, &repo, &sources);
-    assert!(repo.join("home/.config/fish/old.fish").exists());
+    assert!(repo.join("desktop/home/.config/fish/old.fish").exists());
 
     // Remove source file.
     fs::remove_file(home.join(".config/fish/old.fish")).unwrap();
@@ -251,9 +253,9 @@ fn removed_source_file_is_deleted_from_destination() {
 
     assert!(result.may_publish);
     assert_eq!(result.deletions_completed, 1);
-    assert!(!repo.join("home/.config/fish/old.fish").exists());
+    assert!(!repo.join("desktop/home/.config/fish/old.fish").exists());
     // Other file still there.
-    assert!(repo.join("home/.config/fish/config.fish").exists());
+    assert!(repo.join("desktop/home/.config/fish/config.fish").exists());
 }
 
 #[test]
@@ -276,7 +278,7 @@ fn empty_directories_cleaned_up_after_all_files_removed() {
 
     assert!(result.may_publish);
     // The functions/ directory should be cleaned up.
-    assert!(!repo.join("home/.config/fish/functions").exists());
+    assert!(!repo.join("desktop/home/.config/fish/functions").exists());
 }
 
 // =============================================================================
@@ -300,9 +302,13 @@ fn ignored_files_never_enter_destination() {
 
     assert!(result.may_publish);
     assert_eq!(result.copies_completed, 1); // Only config.fish
-    assert!(repo.join("home/.config/fish/config.fish").exists());
-    assert!(!repo.join("home/.config/fish/debug.log").exists());
-    assert!(!repo.join("home/.config/fish/fish_variables").exists());
+    assert!(repo.join("desktop/home/.config/fish/config.fish").exists());
+    assert!(!repo.join("desktop/home/.config/fish/debug.log").exists());
+    assert!(
+        !repo
+            .join("desktop/home/.config/fish/fish_variables")
+            .exists()
+    );
 }
 
 #[test]
@@ -319,7 +325,7 @@ fn newly_ignored_tracked_file_is_deleted() {
     // First backup: no ignore rules.
     let sources_v1 = vec![source(".config/app", &[])];
     mirror(&home, &repo, &sources_v1);
-    assert!(repo.join("home/.config/app/secret.key").exists());
+    assert!(repo.join("desktop/home/.config/app/secret.key").exists());
 
     // Second backup: now ignoring *.key.
     let sources_v2 = vec![source(".config/app", &["*.key"])];
@@ -327,8 +333,8 @@ fn newly_ignored_tracked_file_is_deleted() {
 
     assert!(result.may_publish);
     assert_eq!(result.deletions_completed, 1);
-    assert!(!repo.join("home/.config/app/secret.key").exists());
-    assert!(repo.join("home/.config/app/config.toml").exists());
+    assert!(!repo.join("desktop/home/.config/app/secret.key").exists());
+    assert!(repo.join("desktop/home/.config/app/config.toml").exists());
 }
 
 // =============================================================================
@@ -357,7 +363,7 @@ fn missing_source_root_preserves_existing_backup() {
     assert!(result.may_publish);
     assert_eq!(result.deletions_completed, 0);
     // Backup is still there.
-    assert!(repo.join("home/.config/fish/config.fish").exists());
+    assert!(repo.join("desktop/home/.config/fish/config.fish").exists());
 }
 
 #[test]
@@ -382,8 +388,8 @@ fn mixed_present_and_missing_sources() {
     assert!(result.may_publish);
     // Only two sources have content.
     assert_eq!(result.copies_completed, 2);
-    assert!(repo.join("home/.config/fish/config.fish").exists());
-    assert!(repo.join("home/.bashrc").exists());
+    assert!(repo.join("desktop/home/.config/fish/config.fish").exists());
+    assert!(repo.join("desktop/home/.bashrc").exists());
 }
 
 // =============================================================================
@@ -406,7 +412,7 @@ fn symlink_is_copied_as_link() {
     assert!(result.may_publish);
     assert_eq!(result.copies_completed, 1);
 
-    let dest = repo.join("home/.config/links/thing");
+    let dest = repo.join("desktop/home/.config/links/thing");
     let meta = fs::symlink_metadata(&dest).unwrap();
     assert!(meta.file_type().is_symlink());
     assert_eq!(
@@ -438,7 +444,7 @@ fn symlink_target_change_is_updated() {
     assert!(result.may_publish);
     assert_eq!(result.copies_completed, 1);
     assert_eq!(
-        fs::read_link(repo.join("home/.config/links/link")).unwrap(),
+        fs::read_link(repo.join("desktop/home/.config/links/link")).unwrap(),
         PathBuf::from("/new/target")
     );
 }
@@ -457,7 +463,7 @@ fn dangling_symlink_is_preserved() {
     let result = mirror(&home, &repo, &sources);
 
     assert!(result.may_publish);
-    let dest = repo.join("home/.config/dangling");
+    let dest = repo.join("desktop/home/.config/dangling");
     assert!(
         fs::symlink_metadata(&dest)
             .unwrap()
@@ -481,22 +487,23 @@ fn symlinked_destination_parent_blocks_mirror() {
     let repo = tmp.path().join("repo");
     let escape = tmp.path().join("escape");
     fs::create_dir_all(home.join(".config/fish")).unwrap();
-    fs::create_dir_all(repo.join("home")).unwrap();
+    fs::create_dir_all(repo.join("desktop/home")).unwrap();
     fs::create_dir_all(&escape).unwrap();
 
     fs::write(home.join(".config/fish/config.fish"), "data").unwrap();
 
     // Symlink inside the managed namespace.
-    std::os::unix::fs::symlink(&escape, repo.join("home").join(".config")).unwrap();
+    std::os::unix::fs::symlink(&escape, repo.join("desktop/home").join(".config")).unwrap();
 
     let sources = vec![source(".config/fish", &[])];
     let inputs = PlanInputs {
         home: &home,
         repository: &repo,
+        namespace: "desktop",
         sources: &sources,
     };
     let changeset = plan_backup(&inputs).unwrap();
-    let result = execute_mirror(&home, &repo, &sources, &changeset);
+    let result = execute_mirror(&home, &repo, "desktop", &sources, &changeset);
 
     // Should fail at preflight.
     assert!(result.is_err());
@@ -512,12 +519,12 @@ fn recovery_after_partial_copy() {
     let home = tmp.path().join("home");
     let repo = tmp.path().join("repo");
     fs::create_dir_all(home.join(".config/fish")).unwrap();
-    fs::create_dir_all(repo.join("home/.config/fish")).unwrap();
+    fs::create_dir_all(repo.join("desktop/home/.config/fish")).unwrap();
 
     fs::write(home.join(".config/fish/config.fish"), "correct").unwrap();
     // Simulate a stale file from an interrupted previous run.
     fs::write(
-        repo.join("home/.config/fish/config.fish"),
+        repo.join("desktop/home/.config/fish/config.fish"),
         "stale from crash",
     )
     .unwrap();
@@ -529,7 +536,7 @@ fn recovery_after_partial_copy() {
     // The planner detects the content difference and the executor corrects it.
     assert_eq!(result.copies_completed, 1);
     assert_eq!(
-        fs::read_to_string(repo.join("home/.config/fish/config.fish")).unwrap(),
+        fs::read_to_string(repo.join("desktop/home/.config/fish/config.fish")).unwrap(),
         "correct"
     );
 }
@@ -540,13 +547,13 @@ fn recovery_after_failed_deletion() {
     let home = tmp.path().join("home");
     let repo = tmp.path().join("repo");
     fs::create_dir_all(home.join(".config/fish")).unwrap();
-    fs::create_dir_all(repo.join("home/.config/fish")).unwrap();
+    fs::create_dir_all(repo.join("desktop/home/.config/fish")).unwrap();
 
     // Source has one file, destination has an extra leftover.
     fs::write(home.join(".config/fish/config.fish"), "keep").unwrap();
-    fs::write(repo.join("home/.config/fish/config.fish"), "keep").unwrap();
+    fs::write(repo.join("desktop/home/.config/fish/config.fish"), "keep").unwrap();
     fs::write(
-        repo.join("home/.config/fish/leftover.fish"),
+        repo.join("desktop/home/.config/fish/leftover.fish"),
         "should be gone",
     )
     .unwrap();
@@ -556,7 +563,11 @@ fn recovery_after_failed_deletion() {
 
     assert!(result.may_publish);
     assert_eq!(result.deletions_completed, 1);
-    assert!(!repo.join("home/.config/fish/leftover.fish").exists());
+    assert!(
+        !repo
+            .join("desktop/home/.config/fish/leftover.fish")
+            .exists()
+    );
 }
 
 // =============================================================================
@@ -578,7 +589,7 @@ fn manifest_is_created_on_successful_mirror() {
 
     assert!(result.may_publish);
 
-    let manifest_path = repo.join(".dothoard-manifest.toml");
+    let manifest_path = repo.join("desktop/.dothoard-manifest.toml");
     assert!(manifest_path.exists());
 
     let content = fs::read_to_string(&manifest_path).unwrap();
@@ -621,19 +632,40 @@ fn full_lifecycle_add_modify_delete() {
     assert!(r3.may_publish);
     assert_eq!(r3.copies_completed, 2); // a.txt modified + c.txt added
     assert_eq!(
-        fs::read_to_string(repo.join("home/.config/app/a.txt")).unwrap(),
+        fs::read_to_string(repo.join("desktop/home/.config/app/a.txt")).unwrap(),
         "aaa modified"
     );
-    assert!(repo.join("home/.config/app/c.txt").exists());
+    assert!(repo.join("desktop/home/.config/app/c.txt").exists());
 
     // --- Run 4: Delete b.txt from source ---
     fs::remove_file(home.join(".config/app/b.txt")).unwrap();
     let r4 = mirror(&home, &repo, &sources);
     assert!(r4.may_publish);
     assert_eq!(r4.deletions_completed, 1);
-    assert!(!repo.join("home/.config/app/b.txt").exists());
+    assert!(!repo.join("desktop/home/.config/app/b.txt").exists());
 
     // --- Run 5: Verify final state ---
     let changeset = plan(&home, &repo, &sources);
     assert!(changeset.is_empty());
+}
+
+#[test]
+fn mirror_never_modifies_a_sibling_namespace() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    let repo = tmp.path().join("repo");
+    fs::create_dir_all(home.join(".config/app")).unwrap();
+    fs::create_dir_all(repo.join("notebook/home/.config/app")).unwrap();
+    fs::write(home.join(".config/app/config.toml"), "active").unwrap();
+    let sibling = repo.join("notebook/home/.config/app/config.toml");
+    fs::write(&sibling, "sibling").unwrap();
+
+    let result = mirror(&home, &repo, &[source(".config/app", &[])]);
+
+    assert!(result.may_publish);
+    assert_eq!(fs::read_to_string(&sibling).unwrap(), "sibling");
+    assert_eq!(
+        fs::read_to_string(repo.join("desktop/home/.config/app/config.toml")).unwrap(),
+        "active"
+    );
 }

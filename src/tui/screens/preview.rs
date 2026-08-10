@@ -133,18 +133,23 @@ impl PreviewScreen {
         let inputs = PlanInputs {
             home,
             repository,
+            namespace: &config.namespace,
             sources: &config.sources,
         };
 
         let changeset = plan_backup(&inputs).map_err(|e| format!("Planning failed: {e}"))?;
 
-        Ok(Self::changeset_to_preview(&changeset, repository))
+        Ok(Self::changeset_to_preview(
+            &changeset,
+            repository,
+            &config.namespace,
+        ))
     }
 
     /// Convert a ChangeSet into display-ready PreviewData.
-    fn changeset_to_preview(cs: &ChangeSet, repository: &Path) -> PreviewData {
+    fn changeset_to_preview(cs: &ChangeSet, repository: &Path, namespace: &str) -> PreviewData {
         let mut entries = Vec::new();
-        let home_prefix = repository.join("home");
+        let home_prefix = crate::backup::mapping::managed_home_dir(repository, namespace);
 
         // Additions.
         for a in &cs.additions {
@@ -284,7 +289,7 @@ mod tests {
     #[test]
     fn changeset_to_preview_maps_all_categories() {
         let repo = PathBuf::from("/repo");
-        let home_prefix = repo.join("home");
+        let home_prefix = repo.join("desktop/home");
 
         let mut cs = ChangeSet::new();
         cs.additions.push(Addition {
@@ -315,7 +320,7 @@ mod tests {
             },
         });
 
-        let preview = PreviewScreen::changeset_to_preview(&cs, &repo);
+        let preview = PreviewScreen::changeset_to_preview(&cs, &repo, "desktop");
 
         assert_eq!(preview.additions, 1);
         assert_eq!(preview.modifications, 1);
@@ -339,7 +344,7 @@ mod tests {
     fn empty_changeset_produces_empty_preview() {
         let repo = PathBuf::from("/repo");
         let cs = ChangeSet::new();
-        let preview = PreviewScreen::changeset_to_preview(&cs, &repo);
+        let preview = PreviewScreen::changeset_to_preview(&cs, &repo, "desktop");
         assert_eq!(preview.entries.len(), 0);
         assert_eq!(preview.additions, 0);
     }

@@ -49,6 +49,9 @@ pub struct PlanInputs<'a> {
     /// Absolute path to the repository root.
     pub repository: &'a Path,
 
+    /// Selected machine namespace inside the repository.
+    pub namespace: &'a str,
+
     /// Configured sources to back up.
     pub sources: &'a [SourceConfig],
 }
@@ -84,7 +87,8 @@ fn plan_source(
     changeset: &mut ChangeSet,
 ) -> Result<(), PlanError> {
     let source_root = mapping::source_absolute(inputs.home, &source_config.path);
-    let destination_root = mapping::destination_root(inputs.repository, &source_config.path);
+    let destination_root =
+        mapping::destination_root(inputs.repository, inputs.namespace, &source_config.path);
 
     // Check for missing source root — preserve backup, emit warning.
     if let Some(warning) = check_missing_source_root(&source_root, &source_config.path) {
@@ -198,7 +202,7 @@ mod tests {
             let home = tmp.path().join("home");
             let repository = tmp.path().join("repo");
             std::fs::create_dir_all(&home).unwrap();
-            std::fs::create_dir_all(repository.join("home")).unwrap();
+            std::fs::create_dir_all(repository.join("desktop/home")).unwrap();
             Self {
                 _tmp: tmp,
                 home,
@@ -210,6 +214,7 @@ mod tests {
             let inputs = PlanInputs {
                 home: &self.home,
                 repository: &self.repository,
+                namespace: "desktop",
                 sources,
             };
             plan_backup(&inputs).unwrap()
@@ -255,7 +260,7 @@ mod tests {
     fn identical_files_produce_no_changes() {
         let env = TestEnv::new();
         let src = env.home.join(".config/fish");
-        let dst = env.repository.join("home/.config/fish");
+        let dst = env.repository.join("desktop/home/.config/fish");
         std::fs::create_dir_all(&src).unwrap();
         std::fs::create_dir_all(&dst).unwrap();
 
@@ -271,7 +276,7 @@ mod tests {
     fn modified_files_appear_as_modifications() {
         let env = TestEnv::new();
         let src = env.home.join(".config/fish");
-        let dst = env.repository.join("home/.config/fish");
+        let dst = env.repository.join("desktop/home/.config/fish");
         std::fs::create_dir_all(&src).unwrap();
         std::fs::create_dir_all(&dst).unwrap();
 
@@ -289,7 +294,7 @@ mod tests {
     fn removed_source_files_appear_as_deletions() {
         let env = TestEnv::new();
         let src = env.home.join(".config/fish");
-        let dst = env.repository.join("home/.config/fish");
+        let dst = env.repository.join("desktop/home/.config/fish");
         std::fs::create_dir_all(&src).unwrap();
         std::fs::create_dir_all(&dst).unwrap();
 
@@ -325,7 +330,7 @@ mod tests {
     fn newly_ignored_tracked_files_become_deletions_with_warning() {
         let env = TestEnv::new();
         let src = env.home.join(".config/fish");
-        let dst = env.repository.join("home/.config/fish");
+        let dst = env.repository.join("desktop/home/.config/fish");
         std::fs::create_dir_all(&src).unwrap();
         std::fs::create_dir_all(&dst).unwrap();
 
@@ -350,7 +355,7 @@ mod tests {
     #[test]
     fn missing_source_root_emits_warning_without_deletions() {
         let env = TestEnv::new();
-        let dst = env.repository.join("home/.config/gone");
+        let dst = env.repository.join("desktop/home/.config/gone");
         std::fs::create_dir_all(&dst).unwrap();
         std::fs::write(dst.join("preserved.txt"), "data").unwrap();
 
@@ -447,7 +452,7 @@ mod tests {
     fn full_scenario_with_additions_modifications_deletions() {
         let env = TestEnv::new();
         let src = env.home.join(".config/app");
-        let dst = env.repository.join("home/.config/app");
+        let dst = env.repository.join("desktop/home/.config/app");
         std::fs::create_dir_all(&src).unwrap();
         std::fs::create_dir_all(&dst).unwrap();
 
@@ -491,7 +496,7 @@ mod tests {
     fn executable_bit_change_detected() {
         let env = TestEnv::new();
         let src = env.home.join(".config/scripts");
-        let dst = env.repository.join("home/.config/scripts");
+        let dst = env.repository.join("desktop/home/.config/scripts");
         std::fs::create_dir_all(&src).unwrap();
         std::fs::create_dir_all(&dst).unwrap();
 

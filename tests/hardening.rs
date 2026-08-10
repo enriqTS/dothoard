@@ -39,10 +39,11 @@ fn mirror(
     let inputs = PlanInputs {
         home,
         repository: repo,
+        namespace: "desktop",
         sources,
     };
     let changeset = plan_backup(&inputs).expect("planner should succeed");
-    execute_mirror(home, repo, sources, &changeset)
+    execute_mirror(home, repo, "desktop", sources, &changeset)
         .expect("executor should not fail with preflight")
 }
 
@@ -57,17 +58,17 @@ fn h01_symlink_in_destination_parent_blocks_copy() {
     let tmp = tempfile::tempdir().unwrap();
     let repo = tmp.path().join("repo");
     let attacker_dir = tmp.path().join("attacker");
-    fs::create_dir_all(repo.join("home")).unwrap();
+    fs::create_dir_all(repo.join("desktop/home")).unwrap();
     fs::create_dir_all(&attacker_dir).unwrap();
 
     // Plant symlink: repo/home/.config -> attacker_dir
-    symlink(&attacker_dir, repo.join("home/.config")).unwrap();
+    symlink(&attacker_dir, repo.join("desktop/home/.config")).unwrap();
 
     let source_file = tmp.path().join("source.txt");
     fs::write(&source_file, "sensitive data").unwrap();
 
-    let destination = repo.join("home/.config/fish/config.fish");
-    let result = copy_file_atomic(&repo, &source_file, &destination, false);
+    let destination = repo.join("desktop/home/.config/fish/config.fish");
+    let result = copy_file_atomic(&repo, "desktop", &source_file, &destination, false);
 
     assert!(result.is_err());
     match result.unwrap_err() {
@@ -90,16 +91,16 @@ fn h01_symlink_in_deep_nested_destination_parent_blocks_copy() {
     let tmp = tempfile::tempdir().unwrap();
     let repo = tmp.path().join("repo");
     let escape_dir = tmp.path().join("escape");
-    fs::create_dir_all(repo.join("home/.config/nested")).unwrap();
+    fs::create_dir_all(repo.join("desktop/home/.config/nested")).unwrap();
     fs::create_dir_all(&escape_dir).unwrap();
 
-    symlink(&escape_dir, repo.join("home/.config/nested/link")).unwrap();
+    symlink(&escape_dir, repo.join("desktop/home/.config/nested/link")).unwrap();
 
     let source_file = tmp.path().join("source.txt");
     fs::write(&source_file, "payload").unwrap();
 
-    let destination = repo.join("home/.config/nested/link/file.txt");
-    let result = copy_file_atomic(&repo, &source_file, &destination, false);
+    let destination = repo.join("desktop/home/.config/nested/link/file.txt");
+    let result = copy_file_atomic(&repo, "desktop", &source_file, &destination, false);
     assert!(result.is_err());
 }
 
@@ -108,16 +109,16 @@ fn h01_symlink_in_destination_parent_blocks_symlink_copy() {
     let tmp = tempfile::tempdir().unwrap();
     let repo = tmp.path().join("repo");
     let escape = tmp.path().join("escape");
-    fs::create_dir_all(repo.join("home")).unwrap();
+    fs::create_dir_all(repo.join("desktop/home")).unwrap();
     fs::create_dir_all(&escape).unwrap();
 
-    symlink(&escape, repo.join("home/.config")).unwrap();
+    symlink(&escape, repo.join("desktop/home/.config")).unwrap();
 
     let source_link = tmp.path().join("link");
     symlink("/usr/bin/bash", &source_link).unwrap();
 
-    let destination = repo.join("home/.config/link");
-    let result = copy_symlink(&repo, &source_link, &destination);
+    let destination = repo.join("desktop/home/.config/link");
+    let result = copy_symlink(&repo, "desktop", &source_link, &destination);
     assert!(result.is_err());
 }
 
@@ -126,17 +127,17 @@ fn h01_symlink_in_destination_parent_blocks_deletion() {
     let tmp = tempfile::tempdir().unwrap();
     let repo = tmp.path().join("repo");
     let escape = tmp.path().join("escape");
-    fs::create_dir_all(repo.join("home")).unwrap();
+    fs::create_dir_all(repo.join("desktop/home")).unwrap();
     fs::create_dir_all(&escape).unwrap();
 
     // Create a real file in the escape directory.
     fs::write(escape.join("secret.txt"), "do not delete").unwrap();
 
     // Symlink in destination parents.
-    symlink(&escape, repo.join("home/.config")).unwrap();
+    symlink(&escape, repo.join("desktop/home/.config")).unwrap();
 
-    let path_to_delete = repo.join("home/.config/secret.txt");
-    let result = delete_entry(&repo, &path_to_delete);
+    let path_to_delete = repo.join("desktop/home/.config/secret.txt");
+    let result = delete_entry(&repo, "desktop", &path_to_delete);
     assert!(result.is_err());
 
     // Verify escape directory file was not deleted.
@@ -154,7 +155,7 @@ fn h01_parent_traversal_in_destination_blocked() {
     fs::create_dir_all(&repo).unwrap();
 
     // Try to escape via ..
-    let destination = repo.join("home/../../etc/passwd");
+    let destination = repo.join("desktop/home/../../../etc/passwd");
     let result = validate_boundary(&repo, &destination);
     assert!(result.is_err());
 }
@@ -165,7 +166,7 @@ fn h01_multiple_parent_traversals_blocked() {
     let repo = tmp.path().join("repo");
     fs::create_dir_all(&repo).unwrap();
 
-    let destination = repo.join("home/a/b/../../../..");
+    let destination = repo.join("desktop/home/a/b/../../../..");
     let result = validate_boundary(&repo, &destination);
     assert!(result.is_err());
 }
@@ -177,7 +178,7 @@ fn h01_traversal_that_stays_inside_repo_passes() {
     fs::create_dir_all(&repo).unwrap();
 
     // home/a/../b normalizes to home/b — still inside repo.
-    let destination = repo.join("home/a/../b/file.txt");
+    let destination = repo.join("desktop/home/a/../b/file.txt");
     let result = validate_boundary(&repo, &destination);
     assert!(result.is_ok());
 }
@@ -216,7 +217,7 @@ fn h01_delete_outside_repository_rejected() {
     fs::create_dir_all(&outside).unwrap();
     fs::write(outside.join("file.txt"), "important").unwrap();
 
-    let result = delete_entry(&repo, &outside.join("file.txt"));
+    let result = delete_entry(&repo, "desktop", &outside.join("file.txt"));
     assert!(result.is_err());
     assert!(outside.join("file.txt").exists());
 }
@@ -225,11 +226,11 @@ fn h01_delete_outside_repository_rejected() {
 fn h01_delete_via_traversal_rejected() {
     let tmp = tempfile::tempdir().unwrap();
     let repo = tmp.path().join("repo");
-    fs::create_dir_all(repo.join("home")).unwrap();
+    fs::create_dir_all(repo.join("desktop/home")).unwrap();
     fs::write(tmp.path().join("target.txt"), "do not delete").unwrap();
 
-    let path = repo.join("home/../../target.txt");
-    let result = delete_entry(&repo, &path);
+    let path = repo.join("desktop/home/../../target.txt");
+    let result = delete_entry(&repo, "desktop", &path);
     assert!(result.is_err());
     assert!(tmp.path().join("target.txt").exists());
 }
@@ -238,9 +239,9 @@ fn h01_delete_via_traversal_rejected() {
 fn h01_delete_repo_root_itself_rejected() {
     let tmp = tempfile::tempdir().unwrap();
     let repo = tmp.path().join("repo");
-    fs::create_dir_all(repo.join("home")).unwrap();
+    fs::create_dir_all(repo.join("desktop/home")).unwrap();
 
-    let result = delete_entry(&repo, &repo);
+    let result = delete_entry(&repo, "desktop", &repo);
     assert!(result.is_err());
 }
 
@@ -259,17 +260,17 @@ fn h01_ensure_parent_dirs_revalidates_after_creation() {
     let tmp = tempfile::tempdir().unwrap();
     let repo = tmp.path().join("repo");
     let escape = tmp.path().join("escape");
-    fs::create_dir_all(repo.join("home")).unwrap();
+    fs::create_dir_all(repo.join("desktop/home")).unwrap();
     fs::create_dir_all(&escape).unwrap();
 
     // Create the parent as a symlink (simulating attacker replacing dir).
-    symlink(&escape, repo.join("home/evil")).unwrap();
+    symlink(&escape, repo.join("desktop/home/evil")).unwrap();
 
     let source_file = tmp.path().join("src.txt");
     fs::write(&source_file, "data").unwrap();
 
-    let destination = repo.join("home/evil/file.txt");
-    let result = copy_file_atomic(&repo, &source_file, &destination, false);
+    let destination = repo.join("desktop/home/evil/file.txt");
+    let result = copy_file_atomic(&repo, "desktop", &source_file, &destination, false);
     assert!(result.is_err());
 }
 
@@ -282,22 +283,23 @@ fn h01_mirror_with_injected_symlink_in_managed_namespace() {
     let repo = tmp.path().join("repo");
     let escape = tmp.path().join("escape");
     fs::create_dir_all(home.join(".config/app")).unwrap();
-    fs::create_dir_all(repo.join("home")).unwrap();
+    fs::create_dir_all(repo.join("desktop/home")).unwrap();
     fs::create_dir_all(&escape).unwrap();
 
     fs::write(home.join(".config/app/config.txt"), "data").unwrap();
 
     // Inject a symlink in the destination that points outside.
-    symlink(&escape, repo.join("home/.config")).unwrap();
+    symlink(&escape, repo.join("desktop/home/.config")).unwrap();
 
     let sources = vec![source(".config/app", &[])];
     let inputs = PlanInputs {
         home: &home,
         repository: &repo,
+        namespace: "desktop",
         sources: &sources,
     };
     let changeset = plan_backup(&inputs).unwrap();
-    let result = execute_mirror(&home, &repo, &sources, &changeset);
+    let result = execute_mirror(&home, &repo, "desktop", &sources, &changeset);
 
     // Preflight should detect the symlink and fail.
     assert!(result.is_err());
@@ -582,21 +584,29 @@ fn h02_mapping_is_managed_path_precise() {
 
     assert!(mapping::is_managed_path(
         repo,
-        Path::new("/repo/home/file.txt")
+        "desktop",
+        Path::new("/repo/desktop/home/file.txt")
     ));
     assert!(mapping::is_managed_path(
         repo,
-        Path::new("/repo/home/.config/fish")
+        "desktop",
+        Path::new("/repo/desktop/home/.config/fish")
     ));
     assert!(!mapping::is_managed_path(
         repo,
+        "desktop",
         Path::new("/repo/homepage/x")
     ));
     assert!(!mapping::is_managed_path(
         repo,
+        "desktop",
         Path::new("/repo/README.md")
     ));
-    assert!(!mapping::is_managed_path(repo, Path::new("/other/home/x")));
+    assert!(!mapping::is_managed_path(
+        repo,
+        "desktop",
+        Path::new("/other/home/x")
+    ));
 }
 
 // =============================================================================
@@ -752,16 +762,16 @@ fn h04_mirror_partial_copy_failure_blocks_publication() {
     let mut changeset = ChangeSet::new();
     changeset.additions.push(Addition {
         source: home.join(".config/app/good.txt"),
-        destination: repo.join("home/.config/app/good.txt"),
+        destination: repo.join("desktop/home/.config/app/good.txt"),
         entry_type: EntryType::RegularFile,
     });
     changeset.additions.push(Addition {
         source: home.join(".config/app/nonexistent.txt"),
-        destination: repo.join("home/.config/app/nonexistent.txt"),
+        destination: repo.join("desktop/home/.config/app/nonexistent.txt"),
         entry_type: EntryType::RegularFile,
     });
 
-    let result = execute_mirror(&home, &repo, &sources, &changeset).unwrap();
+    let result = execute_mirror(&home, &repo, "desktop", &sources, &changeset).unwrap();
     assert!(
         !result.may_publish,
         "partial failure should block publication"
@@ -788,11 +798,11 @@ fn h04_notification_tolerates_missing_notify_send() {
 fn h04_delete_nonexistent_file_is_idempotent() {
     let tmp = tempfile::tempdir().unwrap();
     let repo = tmp.path().join("repo");
-    fs::create_dir_all(repo.join("home")).unwrap();
+    fs::create_dir_all(repo.join("desktop/home")).unwrap();
 
     // Deleting something that doesn't exist should succeed silently.
-    let path = repo.join("home/nonexistent.txt");
-    let result = delete_entry(&repo, &path);
+    let path = repo.join("desktop/home/nonexistent.txt");
+    let result = delete_entry(&repo, "desktop", &path);
     assert!(result.is_ok());
 }
 
@@ -800,15 +810,15 @@ fn h04_delete_nonexistent_file_is_idempotent() {
 fn h04_copy_from_unreadable_source_reports_error() {
     let tmp = tempfile::tempdir().unwrap();
     let repo = tmp.path().join("repo");
-    fs::create_dir_all(repo.join("home")).unwrap();
+    fs::create_dir_all(repo.join("desktop/home")).unwrap();
 
     let source_file = tmp.path().join("unreadable.txt");
     fs::write(&source_file, "content").unwrap();
     // Make it unreadable.
     fs::set_permissions(&source_file, fs::Permissions::from_mode(0o000)).unwrap();
 
-    let destination = repo.join("home/unreadable.txt");
-    let result = copy_file_atomic(&repo, &source_file, &destination, false);
+    let destination = repo.join("desktop/home/unreadable.txt");
+    let result = copy_file_atomic(&repo, "desktop", &source_file, &destination, false);
 
     // Restore permissions for cleanup.
     fs::set_permissions(&source_file, fs::Permissions::from_mode(0o644)).unwrap();
@@ -832,7 +842,7 @@ fn h04_mirror_continues_after_single_source_failure() {
 
     // Should still mirror the good source.
     assert!(result.may_publish);
-    assert!(repo.join("home/.config/good/file.txt").exists());
+    assert!(repo.join("desktop/home/.config/good/file.txt").exists());
 }
 
 // =============================================================================
@@ -888,7 +898,7 @@ fn h05_paths_with_spaces_and_quotes_work() {
     assert!(result.may_publish);
     assert_eq!(result.copies_completed, 1);
     assert!(
-        repo.join("home/.config/app with spaces/file's \"name\".txt")
+        repo.join("desktop/home/.config/app with spaces/file's \"name\".txt")
             .exists()
     );
 }

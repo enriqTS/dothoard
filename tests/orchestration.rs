@@ -200,12 +200,16 @@ fn initial_backup_creates_commit_and_pushes() {
     // File exists in the repository.
     assert!(
         env.repository
-            .join("home/.config/fish/config.fish")
+            .join("test-machine/home/.config/fish/config.fish")
             .exists()
     );
 
     // Manifest exists.
-    assert!(env.repository.join(".dothoard-manifest.toml").exists());
+    assert!(
+        env.repository
+            .join("test-machine/.dothoard-manifest.toml")
+            .exists()
+    );
 
     // Commit message follows the expected format.
     let msg = env.last_commit_message();
@@ -274,8 +278,11 @@ fn modified_file_creates_new_commit() {
     assert_ne!(outcome2.commit, outcome1.commit);
 
     // Repository has the new content.
-    let repo_content =
-        fs::read_to_string(env.repository.join("home/.config/fish/config.fish")).unwrap();
+    let repo_content = fs::read_to_string(
+        env.repository
+            .join("test-machine/home/.config/fish/config.fish"),
+    )
+    .unwrap();
     assert_eq!(repo_content, "modified content");
 }
 
@@ -295,7 +302,11 @@ fn deleted_source_file_is_removed_from_repo() {
 
     let outcome1 = env.run_backup();
     assert!(outcome1.success);
-    assert!(env.repository.join("home/.config/fish/old.fish").exists());
+    assert!(
+        env.repository
+            .join("test-machine/home/.config/fish/old.fish")
+            .exists()
+    );
 
     // Delete the file from source.
     fs::remove_file(env.home.join(".config/fish/old.fish")).unwrap();
@@ -304,7 +315,11 @@ fn deleted_source_file_is_removed_from_repo() {
     assert!(outcome2.success);
     assert!(outcome2.commit.is_some());
     assert_eq!(outcome2.deletions, 1);
-    assert!(!env.repository.join("home/.config/fish/old.fish").exists());
+    assert!(
+        !env.repository
+            .join("test-machine/home/.config/fish/old.fish")
+            .exists()
+    );
 }
 
 // === Failure recovery ===
@@ -409,14 +424,15 @@ fn conflict_is_detected_and_local_commit_preserved() {
     let clone_dir = env.clone_remote();
     let clone_path = clone_dir.path();
 
-    fs::create_dir_all(clone_path.join("home/.config/fish")).unwrap();
+    fs::create_dir_all(clone_path.join("test-machine/home/.config/fish")).unwrap();
     fs::write(
-        clone_path.join("home/.config/fish/config.fish"),
+        clone_path.join("test-machine/home/.config/fish/config.fish"),
         "remote conflicting version",
     )
     .unwrap();
 
-    let cmd = GitCommand::new(clone_path).args(["add", "home/.config/fish/config.fish"]);
+    let cmd =
+        GitCommand::new(clone_path).args(["add", "test-machine/home/.config/fish/config.fish"]);
     env.runner.run(&cmd).unwrap();
     let cmd = GitCommand::new(clone_path).args(["commit", "-m", "remote change"]);
     env.runner.run(&cmd).unwrap();
@@ -480,11 +496,15 @@ fn multiple_sources_backed_up_together() {
     assert_eq!(outcome.copies, 3);
     assert!(
         env.repository
-            .join("home/.config/fish/config.fish")
+            .join("test-machine/home/.config/fish/config.fish")
             .exists()
     );
-    assert!(env.repository.join("home/.config/waybar/config").exists());
-    assert!(env.repository.join("home/.bashrc").exists());
+    assert!(
+        env.repository
+            .join("test-machine/home/.config/waybar/config")
+            .exists()
+    );
+    assert!(env.repository.join("test-machine/home/.bashrc").exists());
 }
 
 // === Ignore rules ===
@@ -511,15 +531,19 @@ fn ignored_files_are_excluded() {
     assert_eq!(outcome.copies, 1); // Only config.fish
     assert!(
         env.repository
-            .join("home/.config/fish/config.fish")
+            .join("test-machine/home/.config/fish/config.fish")
             .exists()
     );
     assert!(
         !env.repository
-            .join("home/.config/fish/fish_history")
+            .join("test-machine/home/.config/fish/fish_history")
             .exists()
     );
-    assert!(!env.repository.join("home/.config/fish/debug.log").exists());
+    assert!(
+        !env.repository
+            .join("test-machine/home/.config/fish/debug.log")
+            .exists()
+    );
 }
 
 // === Missing source root ===
@@ -538,7 +562,7 @@ fn missing_source_root_does_not_delete_backup() {
     assert!(outcome1.success);
     assert!(
         env.repository
-            .join("home/.config/fish/config.fish")
+            .join("test-machine/home/.config/fish/config.fish")
             .exists()
     );
 
@@ -551,7 +575,7 @@ fn missing_source_root_does_not_delete_backup() {
     // File is preserved in the repository.
     assert!(
         env.repository
-            .join("home/.config/fish/config.fish")
+            .join("test-machine/home/.config/fish/config.fish")
             .exists()
     );
     // Should have a warning about missing source.

@@ -11,9 +11,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Post-V1 milestones 10 and 11 complete.
 - **Milestone 12 complete**: Multi-Select Source Browser.
   MS01–MS08 all done. 827 unit tests passing.
-- **Milestone 13 active — MN03**: MN02 is complete. Ownership classification
-  and initialization inspect only the selected namespace; next, make mapping
-  and mirror boundaries namespace-aware.
+- **Milestone 13 active — MN04**: MN03 is complete. Mapping, mirroring,
+  previews, manifests, and Git publication are confined to the selected
+  namespace; next, complete the versioned per-namespace manifest work.
 
 ## Durable Decisions
 
@@ -117,10 +117,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Orchestration/acceptance lock-contention races in parallel mode are pre-existing
   and pass with `--test-threads=1`.
 - All tests passing after fixing incorrect test assertions in TUI rendering tests.
-- MN02 verification: `cargo fmt --check`,
+- MN03 verification: `cargo fmt --check`,
   `cargo clippy --all-targets --all-features -- -D warnings`, and
-  `cargo test --all-targets --all-features -- --test-threads=1` all pass
-  (838 lib tests plus integration suites).
+  `cargo test --all-targets --all-features -- --test-threads=1` pass.
 - Release binary: `target/release/dothoard` (3.3MB, x86_64)
 - Platform: CachyOS (Arch Linux), Rust 1.97.1
 
