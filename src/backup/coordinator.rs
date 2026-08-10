@@ -250,7 +250,7 @@ fn execute_workflow(
     );
 
     // Step 3 (continued): Validate ownership state.
-    let ownership = match git::classify_ownership(repository) {
+    let ownership = match git::classify_ownership(repository, &config.namespace) {
         Ok(state) => state,
         Err(e) => {
             return BackupOutcome::failed(format!("ownership check failed: {e}"), warnings);
@@ -262,7 +262,9 @@ fn execute_workflow(
     match &ownership {
         OwnershipState::New => {
             // Auto-initialize for headless backup (user chose the repo in config).
-            if let Err(e) = git::initialize_or_attach(repository, &ownership, true) {
+            if let Err(e) =
+                git::initialize_or_attach(repository, &config.namespace, &ownership, true)
+            {
                 return BackupOutcome::failed(format!("initialization failed: {e}"), warnings);
             }
             tracing::info!("initialized new managed namespace");

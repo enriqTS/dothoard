@@ -66,6 +66,7 @@ pub enum InitError {
 /// # Arguments
 ///
 /// * `repository` - Absolute path to the repository root.
+/// * `namespace` - The selected machine namespace to initialize.
 /// * `state` - The classified ownership state (from [`classify_ownership`]).
 /// * `confirmed` - Whether the user has explicitly confirmed the action.
 ///
@@ -79,6 +80,7 @@ pub enum InitError {
 /// [`classify_ownership`]: super::ownership::classify_ownership
 pub fn initialize_or_attach(
     repository: &Path,
+    namespace: &str,
     state: &OwnershipState,
     confirmed: bool,
 ) -> Result<InitAction, InitError> {
@@ -87,7 +89,7 @@ pub fn initialize_or_attach(
             if !confirmed {
                 return Err(InitError::ConfirmationRequired);
             }
-            create_managed_namespace(repository)?;
+            create_managed_namespace(repository, namespace)?;
             Ok(InitAction::Initialized)
         }
 
@@ -109,13 +111,13 @@ pub fn initialize_or_attach(
     }
 }
 
-/// Create the managed `home/` directory in the repository.
+/// Create the selected namespace's managed `home/` directory.
 ///
 /// This is the only filesystem mutation performed during initialization.
 /// The manifest will be created later by the mirror executor during the
 /// first successful backup.
-fn create_managed_namespace(repository: &Path) -> Result<(), InitError> {
-    let home_dir = mapping::managed_home_dir(repository);
+fn create_managed_namespace(repository: &Path, namespace: &str) -> Result<(), InitError> {
+    let home_dir = repository.join(namespace).join(mapping::HOME_DIR_NAME);
 
     if !home_dir.exists() {
         fs::create_dir_all(&home_dir).map_err(|source| InitError::CreateDir {
@@ -153,15 +155,17 @@ mod tests {
     use crate::config::SourceConfig;
     use crate::git::ownership::{ManifestSourceInfo, OwnedManifest, classify_ownership};
 
+    const NAMESPACE: &str = "desktop";
+
     #[test]
     fn initializes_new_namespace_when_confirmed() {
         let tmp = tempfile::tempdir().unwrap();
         let state = OwnershipState::New;
 
-        let result = initialize_or_attach(tmp.path(), &state, true).unwrap();
+        let result = initialize_or_attach(tmp.path(), NAMESPACE, &state, true).unwrap();
 
         assert_eq!(result, InitAction::Initialized);
-        assert!(tmp.path().join("home").exists());
+        assert!(tmp.path().join(NAMESPACE).join("home").exists());
     }
 
     #[test]
@@ -169,10 +173,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let state = OwnershipState::New;
 
-        let result = initialize_or_attach(tmp.path(), &state, false);
+        let result = initialize_or_attach(tmp.path(), NAMESPACE, &state, false);
 
         assert!(matches!(result, Err(InitError::ConfirmationRequired)));
-        assert!(!tmp.path().join("home").exists());
+        assert!(!tmp.path().join(NAMESPACE).join("home").exists());
     }
 
     #[test]
@@ -184,11 +188,12 @@ mod tests {
             path: ".config/fish".to_string(),
             ignore: vec!["*.log".to_string()],
         }]);
-        manifest.save(tmp.path()).unwrap();
+        fs::create_dir(tmp.path().join(NAMESPACE)).unwrap();
+        manifest.save(&tmp.path().join(NAMESPACE)).unwrap();
 
-        let state = classify_ownership(tmp.path()).unwrap();
+        let state = classify_ownership(tmp.path(), NAMESPACE).unwrap();
 
-        let result = initialize_or_attach(tmp.path(), &state, true).unwrap();
+        let result = initialize_or_attach(tmp.path(), NAMESPACE, &state, true).unwrap();
         assert_eq!(result, InitAction::Attached);
     }
 
@@ -204,7 +209,7 @@ mod tests {
         };
 
         let tmp = tempfile::tempdir().unwrap();
-        let result = initialize_or_attach(tmp.path(), &state, false);
+        let result = initialize_or_attach(tmp.path(), NAMESPACE, &state, false);
 
         assert!(matches!(result, Err(InitError::ConfirmationRequired)));
     }
@@ -218,10 +223,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
 
         // Even with confirmation, it refuses.
-        let result = initialize_or_attach(tmp.path(), &state, true);
+        let result = initialize_or_attach(tmp.path(), NAMESPACE, &state, true);
         assert!(matches!(result, Err(InitError::Refused { .. })));
 
-        let result = initialize_or_attach(tmp.path(), &state, false);
+        let result = initialize_or_attach(tmp.path(), NAMESPACE, &state, false);
         assert!(matches!(result, Err(InitError::Refused { .. })));
     }
 
@@ -233,10 +238,10 @@ mod tests {
 
         let tmp = tempfile::tempdir().unwrap();
 
-        let result = initialize_or_attach(tmp.path(), &state, true);
+        let result = initialize_or_attach(tmp.path(), NAMESPACE, &state, true);
         assert!(matches!(result, Err(InitError::Refused { .. })));
 
-        let result = initialize_or_attach(tmp.path(), &state, false);
+        let result = initialize_or_attach(tmp.path(), NAMESPACE, &state, false);
         assert!(matches!(result, Err(InitError::Refused { .. })));
     }
 
@@ -245,20 +250,41 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let state = OwnershipState::New;
 
-        initialize_or_attach(tmp.path(), &state, true).unwrap();
+        initialize_or_attach(tmp.path(), NAMESPACE, &state, true).unwrap();
 
-        let home = tmp.path().join("home");
+        let home = tmp.path().join(NAMESPACE).join("home");
         assert!(home.is_dir());
+    }
+
+    #[test]
+    fn initialization_leaves_root_and_sibling_namespaces_untouched() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(tmp.path().join("home")).unwrap();
+        fs::write(tmp.path().join("home/legacy"), "legacy").unwrap();
+        fs::create_dir_all(tmp.path().join("notebook/home")).unwrap();
+        fs::write(tmp.path().join("notebook/home/settings"), "sibling").unwrap();
+
+        initialize_or_attach(tmp.path(), NAMESPACE, &OwnershipState::New, true).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(tmp.path().join("home/legacy")).unwrap(),
+            "legacy"
+        );
+        assert_eq!(
+            fs::read_to_string(tmp.path().join("notebook/home/settings")).unwrap(),
+            "sibling"
+        );
+        assert!(tmp.path().join(NAMESPACE).join("home").is_dir());
     }
 
     #[test]
     fn initialization_is_idempotent_for_existing_home_dir() {
         let tmp = tempfile::tempdir().unwrap();
-        fs::create_dir(tmp.path().join("home")).unwrap();
+        fs::create_dir_all(tmp.path().join(NAMESPACE).join("home")).unwrap();
         let state = OwnershipState::New;
 
         // Should not fail if home/ already exists (empty).
-        let result = initialize_or_attach(tmp.path(), &state, true);
+        let result = initialize_or_attach(tmp.path(), NAMESPACE, &state, true);
         assert!(result.is_ok());
     }
 
@@ -317,7 +343,7 @@ mod tests {
         };
         let tmp = tempfile::tempdir().unwrap();
 
-        let err = initialize_or_attach(tmp.path(), &state, true).unwrap_err();
+        let err = initialize_or_attach(tmp.path(), NAMESPACE, &state, true).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("version 42 not supported"));
     }

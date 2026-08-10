@@ -25,6 +25,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use dothoard::backup::coordinator::{self, BackupOutcome};
+use dothoard::backup::manifest::Manifest;
 use dothoard::backup::planner::{PlanInputs, plan_backup};
 use dothoard::config::{Config, SourceConfig};
 use dothoard::git::{GitCommand, GitRunner, OwnershipState, classify_ownership};
@@ -186,8 +187,8 @@ impl AcceptanceEnv {
 fn ac01_existing_clone_is_recognized_as_valid() {
     let env = AcceptanceEnv::new();
 
-    // A fresh repository with no home/ namespace should be classifiable.
-    let state = classify_ownership(&env.repository).unwrap();
+    // A fresh selected namespace should be classifiable.
+    let state = classify_ownership(&env.repository, "test-machine").unwrap();
     assert!(matches!(state, OwnershipState::New));
 }
 
@@ -204,8 +205,11 @@ fn ac01_clone_with_valid_manifest_is_recognized() {
     let outcome = env.run_backup();
     assert!(outcome.success);
 
-    // Reclassify — should now recognize valid manifest.
-    let state = classify_ownership(&env.repository).unwrap();
+    // Place a valid manifest in the selected namespace and reclassify.
+    let namespace = env.repository.join("test-machine");
+    fs::create_dir_all(&namespace).unwrap();
+    Manifest::from_sources(&[]).save(&namespace).unwrap();
+    let state = classify_ownership(&env.repository, "test-machine").unwrap();
     assert!(matches!(state, OwnershipState::Owned { .. }));
 }
 
@@ -217,22 +221,23 @@ fn ac01_clone_with_valid_manifest_is_recognized() {
 fn ac02_ambiguous_home_content_is_refused() {
     let env = AcceptanceEnv::new();
 
-    // Create home/ directory with content but NO manifest.
-    fs::create_dir_all(env.repository.join("home/.config")).unwrap();
+    // Create selected namespace content but NO manifest.
+    fs::create_dir_all(env.repository.join("test-machine/home/.config")).unwrap();
     fs::write(
-        env.repository.join("home/.config/something.conf"),
+        env.repository
+            .join("test-machine/home/.config/something.conf"),
         "mystery content",
     )
     .unwrap();
 
     // Stage and commit so git tracks it.
-    let cmd = GitCommand::new(&env.repository).args(["add", "home/"]);
+    let cmd = GitCommand::new(&env.repository).args(["add", "test-machine/"]);
     env.runner.run(&cmd).unwrap();
     let cmd = GitCommand::new(&env.repository).args(["commit", "-m", "ambiguous content"]);
     env.runner.run(&cmd).unwrap();
 
     // Classify — should detect ambiguous content.
-    let state = classify_ownership(&env.repository).unwrap();
+    let state = classify_ownership(&env.repository, "test-machine").unwrap();
     assert!(
         matches!(state, OwnershipState::Ambiguous { .. }),
         "expected Ambiguous, got: {state:?}"

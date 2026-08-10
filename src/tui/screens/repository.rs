@@ -342,7 +342,7 @@ impl RepoScreen {
     /// Validate the current input path against the filesystem and git.
     ///
     /// This performs synchronous validation (fast enough for a single repo check).
-    pub fn validate(&mut self, home: &Path) {
+    pub fn validate(&mut self, home: &Path, namespace: &str) {
         let expanded = expand_tilde(&self.input, home);
 
         if expanded.as_os_str().is_empty() {
@@ -374,7 +374,7 @@ impl RepoScreen {
         match validate_repository(&runner, &expanded, "origin") {
             Ok(info) => {
                 // Classify ownership.
-                match classify_ownership(&expanded) {
+                match classify_ownership(&expanded, namespace) {
                     Ok(state) => {
                         use crate::git::OwnershipState;
                         let ownership = match &state {
@@ -415,7 +415,7 @@ impl RepoScreen {
     ///
     /// Returns the path to save in config if confirmed and initialized/attached
     /// successfully, or an error message.
-    pub fn confirm(&mut self, _home: &Path) -> Result<PathBuf, String> {
+    pub fn confirm(&mut self, _home: &Path, namespace: &str) -> Result<PathBuf, String> {
         let info = match &self.validation {
             Some(ValidationResult::Valid(info)) => info.clone(),
             _ => return Err("No valid repository to confirm".to_string()),
@@ -423,8 +423,8 @@ impl RepoScreen {
 
         use crate::git::{classify_ownership, initialize_or_attach};
 
-        let state = classify_ownership(&info.path).map_err(|e| e.to_string())?;
-        initialize_or_attach(&info.path, &state, true).map_err(|e| e.to_string())?;
+        let state = classify_ownership(&info.path, namespace).map_err(|e| e.to_string())?;
+        initialize_or_attach(&info.path, namespace, &state, true).map_err(|e| e.to_string())?;
 
         self.confirm_state = ConfirmState::Done;
         Ok(info.path)
@@ -547,7 +547,7 @@ mod tests {
     fn validate_rejects_empty_path() {
         let mut screen = RepoScreen::new();
         let home = PathBuf::from("/home/test");
-        screen.validate(&home);
+        screen.validate(&home, "desktop");
         match &screen.validation {
             Some(ValidationResult::Invalid(msg)) => assert!(msg.contains("empty")),
             _ => panic!("expected invalid"),
@@ -558,7 +558,7 @@ mod tests {
     fn validate_rejects_relative_path() {
         let mut screen = RepoScreen::with_path("relative/path");
         let home = PathBuf::from("/home/test");
-        screen.validate(&home);
+        screen.validate(&home, "desktop");
         match &screen.validation {
             Some(ValidationResult::Invalid(msg)) => assert!(msg.contains("absolute")),
             _ => panic!("expected invalid"),
@@ -569,7 +569,7 @@ mod tests {
     fn validate_rejects_nonexistent_path() {
         let mut screen = RepoScreen::with_path("/nonexistent/path/12345");
         let home = PathBuf::from("/home/test");
-        screen.validate(&home);
+        screen.validate(&home, "desktop");
         match &screen.validation {
             Some(ValidationResult::Invalid(msg)) => assert!(msg.contains("does not exist")),
             _ => panic!("expected invalid"),
@@ -582,7 +582,7 @@ mod tests {
         let path = tmp.path().to_str().unwrap().to_string();
         let mut screen = RepoScreen::with_path(&path);
         let home = PathBuf::from("/home/test");
-        screen.validate(&home);
+        screen.validate(&home, "desktop");
         match &screen.validation {
             Some(ValidationResult::Invalid(msg)) => {
                 assert!(
@@ -619,7 +619,7 @@ mod tests {
         let path = repo.to_str().unwrap().to_string();
         let mut screen = RepoScreen::with_path(&path);
         let home = PathBuf::from("/home/test");
-        screen.validate(&home);
+        screen.validate(&home, "desktop");
 
         match &screen.validation {
             Some(ValidationResult::Valid(info)) => {

@@ -1,7 +1,8 @@
 //! Repository ownership classification.
 //!
-//! Determines the ownership state of a repository's managed namespace by
-//! inspecting the `home/` directory and `.dothoard-manifest.toml` file.
+//! Determines the ownership state of a selected machine namespace by
+//! inspecting only its `home/` directory and `.dothoard-manifest.toml` file.
+//! Root-level V1 paths and sibling namespaces are unmanaged content.
 //!
 //! The classification distinguishes four states that determine how the
 //! application should proceed:
@@ -78,16 +79,18 @@ pub enum OwnershipError {
     },
 }
 
-/// Classify the ownership state of the managed namespace in the repository.
+/// Classify the ownership state of one selected namespace in the repository.
 ///
-/// Inspects:
-/// - Whether `repository/home/` exists and has any content.
-/// - Whether `.dothoard-manifest.toml` exists and is valid.
-///
-/// Returns one of the four ownership states.
-pub fn classify_ownership(repository: &Path) -> Result<OwnershipState, OwnershipError> {
-    let manifest_path = repository.join(app::MANIFEST_FILE_NAME);
-    let home_dir = mapping::managed_home_dir(repository);
+/// Inspects only `repository/namespace/home/` and
+/// `repository/namespace/.dothoard-manifest.toml`. It intentionally ignores
+/// root-level V1 paths and every sibling namespace, which remain unmanaged.
+pub fn classify_ownership(
+    repository: &Path,
+    namespace: &str,
+) -> Result<OwnershipState, OwnershipError> {
+    let namespace_dir = repository.join(namespace);
+    let manifest_path = namespace_dir.join(app::MANIFEST_FILE_NAME);
+    let home_dir = namespace_dir.join(mapping::HOME_DIR_NAME);
 
     let manifest_exists = manifest_path.exists();
     let home_exists = home_dir.exists();
@@ -98,7 +101,7 @@ pub fn classify_ownership(repository: &Path) -> Result<OwnershipState, Ownership
         (false, false) => Ok(OwnershipState::New),
 
         // Manifest exists → try to load and validate it.
-        (true, _) => classify_with_manifest(repository),
+        (true, _) => classify_with_manifest(&namespace_dir),
 
         // Home has content but no manifest → ambiguous.
         (false, true) => Ok(OwnershipState::Ambiguous {
@@ -112,8 +115,8 @@ pub fn classify_ownership(repository: &Path) -> Result<OwnershipState, Ownership
 }
 
 /// Attempt to load and validate the manifest, returning the appropriate state.
-fn classify_with_manifest(repository: &Path) -> Result<OwnershipState, OwnershipError> {
-    match Manifest::load(repository) {
+fn classify_with_manifest(namespace_dir: &Path) -> Result<OwnershipState, OwnershipError> {
+    match Manifest::load_from_directory(namespace_dir) {
         Ok(manifest) => {
             let sources = manifest
                 .sources
@@ -196,11 +199,17 @@ mod tests {
     use crate::backup::manifest::FORMAT_IDENTIFIER;
     use crate::config::SourceConfig;
 
+    const NAMESPACE: &str = "desktop";
+
+    fn namespace_dir(repository: &Path) -> PathBuf {
+        repository.join(NAMESPACE)
+    }
+
     #[test]
     fn empty_repository_is_new() {
         let tmp = tempfile::tempdir().unwrap();
 
-        let state = classify_ownership(tmp.path()).unwrap();
+        let state = classify_ownership(tmp.path(), NAMESPACE).unwrap();
 
         assert_eq!(state, OwnershipState::New);
     }
@@ -208,9 +217,9 @@ mod tests {
     #[test]
     fn empty_home_directory_is_new() {
         let tmp = tempfile::tempdir().unwrap();
-        fs::create_dir(tmp.path().join("home")).unwrap();
+        fs::create_dir_all(namespace_dir(tmp.path()).join("home")).unwrap();
 
-        let state = classify_ownership(tmp.path()).unwrap();
+        let state = classify_ownership(tmp.path(), NAMESPACE).unwrap();
 
         assert_eq!(state, OwnershipState::New);
     }
@@ -219,6 +228,7 @@ mod tests {
     fn valid_manifest_classifies_as_owned() {
         let tmp = tempfile::tempdir().unwrap();
 
+        fs::create_dir(namespace_dir(tmp.path())).unwrap();
         let manifest = Manifest::from_sources(&[
             SourceConfig {
                 path: ".config/fish".to_string(),
@@ -229,9 +239,9 @@ mod tests {
                 ignore: vec![],
             },
         ]);
-        manifest.save(tmp.path()).unwrap();
+        manifest.save(&namespace_dir(tmp.path())).unwrap();
 
-        let state = classify_ownership(tmp.path()).unwrap();
+        let state = classify_ownership(tmp.path(), NAMESPACE).unwrap();
 
         match state {
             OwnershipState::Owned { manifest } => {
@@ -248,7 +258,7 @@ mod tests {
     #[test]
     fn valid_manifest_with_home_content_classifies_as_owned() {
         let tmp = tempfile::tempdir().unwrap();
-        let home = tmp.path().join("home");
+        let home = namespace_dir(tmp.path()).join("home");
         fs::create_dir_all(home.join(".config/fish")).unwrap();
         fs::write(home.join(".config/fish/config.fish"), "# fish").unwrap();
 
@@ -256,9 +266,9 @@ mod tests {
             path: ".config/fish".to_string(),
             ignore: vec![],
         }]);
-        manifest.save(tmp.path()).unwrap();
+        manifest.save(&namespace_dir(tmp.path())).unwrap();
 
-        let state = classify_ownership(tmp.path()).unwrap();
+        let state = classify_ownership(tmp.path(), NAMESPACE).unwrap();
 
         assert!(matches!(state, OwnershipState::Owned { .. }));
     }
@@ -266,11 +276,11 @@ mod tests {
     #[test]
     fn home_content_without_manifest_is_ambiguous() {
         let tmp = tempfile::tempdir().unwrap();
-        let home = tmp.path().join("home");
+        let home = namespace_dir(tmp.path()).join("home");
         fs::create_dir_all(&home).unwrap();
         fs::write(home.join(".bashrc"), "# bashrc").unwrap();
 
-        let state = classify_ownership(tmp.path()).unwrap();
+        let state = classify_ownership(tmp.path(), NAMESPACE).unwrap();
 
         match state {
             OwnershipState::Ambiguous { reason } => {
@@ -283,14 +293,15 @@ mod tests {
     #[test]
     fn invalid_manifest_format_detected() {
         let tmp = tempfile::tempdir().unwrap();
-        let manifest_path = tmp.path().join(app::MANIFEST_FILE_NAME);
+        fs::create_dir(namespace_dir(tmp.path())).unwrap();
+        let manifest_path = namespace_dir(tmp.path()).join(app::MANIFEST_FILE_NAME);
         fs::write(
             &manifest_path,
             "format = \"wrong-format\"\nversion = 1\nsources = []\n",
         )
         .unwrap();
 
-        let state = classify_ownership(tmp.path()).unwrap();
+        let state = classify_ownership(tmp.path(), NAMESPACE).unwrap();
 
         match state {
             OwnershipState::InvalidManifest { reason } => {
@@ -303,11 +314,12 @@ mod tests {
     #[test]
     fn unsupported_manifest_version_detected() {
         let tmp = tempfile::tempdir().unwrap();
-        let manifest_path = tmp.path().join(app::MANIFEST_FILE_NAME);
+        fs::create_dir(namespace_dir(tmp.path())).unwrap();
+        let manifest_path = namespace_dir(tmp.path()).join(app::MANIFEST_FILE_NAME);
         let content = format!("format = \"{FORMAT_IDENTIFIER}\"\nversion = 99\nsources = []\n");
         fs::write(&manifest_path, content).unwrap();
 
-        let state = classify_ownership(tmp.path()).unwrap();
+        let state = classify_ownership(tmp.path(), NAMESPACE).unwrap();
 
         match state {
             OwnershipState::InvalidManifest { reason } => {
@@ -320,10 +332,11 @@ mod tests {
     #[test]
     fn unparseable_manifest_detected() {
         let tmp = tempfile::tempdir().unwrap();
-        let manifest_path = tmp.path().join(app::MANIFEST_FILE_NAME);
+        fs::create_dir(namespace_dir(tmp.path())).unwrap();
+        let manifest_path = namespace_dir(tmp.path()).join(app::MANIFEST_FILE_NAME);
         fs::write(&manifest_path, "this is not valid [[[toml").unwrap();
 
-        let state = classify_ownership(tmp.path()).unwrap();
+        let state = classify_ownership(tmp.path(), NAMESPACE).unwrap();
 
         match state {
             OwnershipState::InvalidManifest { reason } => {
@@ -336,17 +349,53 @@ mod tests {
     #[test]
     fn invalid_manifest_with_home_content_is_still_invalid_manifest() {
         let tmp = tempfile::tempdir().unwrap();
-        let home = tmp.path().join("home");
+        let home = namespace_dir(tmp.path()).join("home");
         fs::create_dir_all(&home).unwrap();
         fs::write(home.join("file.txt"), "data").unwrap();
 
-        let manifest_path = tmp.path().join(app::MANIFEST_FILE_NAME);
+        let manifest_path = namespace_dir(tmp.path()).join(app::MANIFEST_FILE_NAME);
         fs::write(&manifest_path, "broken toml {{{{").unwrap();
 
-        let state = classify_ownership(tmp.path()).unwrap();
+        let state = classify_ownership(tmp.path(), NAMESPACE).unwrap();
 
         // Invalid manifest takes precedence over ambiguous home content.
         assert!(matches!(state, OwnershipState::InvalidManifest { .. }));
+    }
+
+    #[test]
+    fn root_level_v1_paths_are_unmanaged() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root_home = tmp.path().join("home");
+        fs::create_dir_all(&root_home).unwrap();
+        fs::write(root_home.join(".bashrc"), "legacy").unwrap();
+        fs::write(
+            tmp.path().join(app::MANIFEST_FILE_NAME),
+            "this root-level manifest is deliberately invalid",
+        )
+        .unwrap();
+
+        assert_eq!(
+            classify_ownership(tmp.path(), NAMESPACE).unwrap(),
+            OwnershipState::New
+        );
+    }
+
+    #[test]
+    fn sibling_namespace_is_unmanaged() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sibling = tmp.path().join("notebook");
+        fs::create_dir_all(sibling.join("home")).unwrap();
+        fs::write(sibling.join("home/.bashrc"), "sibling").unwrap();
+        fs::write(
+            sibling.join(app::MANIFEST_FILE_NAME),
+            "this sibling manifest is deliberately invalid",
+        )
+        .unwrap();
+
+        assert_eq!(
+            classify_ownership(tmp.path(), NAMESPACE).unwrap(),
+            OwnershipState::New
+        );
     }
 
     #[test]
@@ -378,11 +427,11 @@ mod tests {
     #[test]
     fn nested_home_content_is_ambiguous() {
         let tmp = tempfile::tempdir().unwrap();
-        let home = tmp.path().join("home");
+        let home = namespace_dir(tmp.path()).join("home");
         fs::create_dir_all(home.join(".config/nvim")).unwrap();
         fs::write(home.join(".config/nvim/init.lua"), "-- nvim").unwrap();
 
-        let state = classify_ownership(tmp.path()).unwrap();
+        let state = classify_ownership(tmp.path(), NAMESPACE).unwrap();
 
         assert!(matches!(state, OwnershipState::Ambiguous { .. }));
     }

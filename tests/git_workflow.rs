@@ -330,7 +330,7 @@ fn validates_repository_structure() {
 fn new_repository_classifies_as_new() {
     let env = TestGitEnv::new();
 
-    let state = classify_ownership(env.worktree()).unwrap();
+    let state = classify_ownership(env.worktree(), "desktop").unwrap();
     assert!(matches!(state, dothoard::git::OwnershipState::New));
 }
 
@@ -342,9 +342,11 @@ fn repository_with_manifest_classifies_as_owned() {
         path: ".bashrc".to_string(),
         ignore: vec![],
     }]);
-    manifest.save(env.worktree()).unwrap();
+    let namespace = env.worktree().join("desktop");
+    fs::create_dir(&namespace).unwrap();
+    manifest.save(&namespace).unwrap();
 
-    let state = classify_ownership(env.worktree()).unwrap();
+    let state = classify_ownership(env.worktree(), "desktop").unwrap();
     assert!(matches!(state, dothoard::git::OwnershipState::Owned { .. }));
 }
 
@@ -369,7 +371,7 @@ fn full_backup_workflow_end_to_end() {
     assert_eq!(info.branch, "main");
 
     // 2. Classify ownership (new).
-    let state = classify_ownership(env.worktree()).unwrap();
+    let state = classify_ownership(env.worktree(), "desktop").unwrap();
     assert!(matches!(state, dothoard::git::OwnershipState::New));
 
     // 3. Check worktree is clean.

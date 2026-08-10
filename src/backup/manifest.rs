@@ -140,7 +140,15 @@ impl Manifest {
 
     /// Load and validate a manifest from the given repository root.
     pub fn load(repository: &Path) -> Result<Self, ManifestError> {
-        let path = repository.join(app::MANIFEST_FILE_NAME);
+        Self::load_from_directory(repository)
+    }
+
+    /// Load and validate a manifest from a directory containing a namespace.
+    ///
+    /// The caller chooses the directory deliberately; this is used by
+    /// ownership classification to inspect only the active namespace.
+    pub fn load_from_directory(directory: &Path) -> Result<Self, ManifestError> {
+        let path = Self::path_in(directory);
 
         if !path.exists() {
             return Err(ManifestError::NotFound { path: path.clone() });

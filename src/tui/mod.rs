@@ -657,7 +657,11 @@ impl App {
             screens::repository::KeyResult::Consumed => true,
             screens::repository::KeyResult::Validate => {
                 if let Some(ref paths) = self.paths {
-                    self.repo_screen.validate(paths.home());
+                    let namespace = self
+                        .config
+                        .as_ref()
+                        .map_or("default", |config| config.namespace.as_str());
+                    self.repo_screen.validate(paths.home(), namespace);
                     if let Some(screens::repository::ValidationResult::Valid(ref info)) =
                         self.repo_screen.validation
                         && info.ownership.needs_confirmation()
@@ -679,7 +683,11 @@ impl App {
             }
             screens::repository::KeyResult::Confirm => {
                 if let Some(ref paths) = self.paths {
-                    match self.repo_screen.confirm(paths.home()) {
+                    let namespace = self
+                        .config
+                        .as_ref()
+                        .map_or("default", |config| config.namespace.as_str());
+                    match self.repo_screen.confirm(paths.home(), namespace) {
                         Ok(repo_path) => {
                             let repo_str = repo_path.to_str().unwrap_or_default().to_string();
                             if let Some(ref mut config) = self.config {

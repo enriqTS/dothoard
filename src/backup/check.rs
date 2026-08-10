@@ -217,7 +217,7 @@ pub fn run_check(paths: &AppPaths) -> CheckReport {
     };
 
     // 7. Repository ownership.
-    match git::classify_ownership(&repository) {
+    match git::classify_ownership(&repository, &config.namespace) {
         Ok(OwnershipState::Owned { .. }) => {
             results.push(CheckResult {
                 category: "repository",
