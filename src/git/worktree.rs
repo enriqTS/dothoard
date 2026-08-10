@@ -168,8 +168,11 @@ fn parse_status_paths(output: &str) -> Vec<String> {
                 if let Some(path) = extract_path_from_rename(entry) {
                     paths.push(path);
                 }
-                // Consume the original path (next NUL-separated field).
-                let _ = entries.next();
+                // Both endpoints must be classified. A sibling path renamed
+                // into the active namespace is still an unmanaged change.
+                if let Some(original_path) = entries.next() {
+                    paths.push(original_path.to_string());
+                }
             }
             // Unmerged entry: "u XY sub m1 m2 m3 mW h1 h2 h3 path"
             'u' => {
@@ -456,13 +459,12 @@ mod tests {
     }
 
     #[test]
-    fn parse_renamed_entry_consumes_orig_path() {
+    fn parse_renamed_entry_includes_orig_path() {
         // Renamed: "2 XY sub mH mI mW hH hI R### new_path\0old_path\0"
         let output =
             "2 R. N... 100644 100644 100644 abc123 def456 R100 home/new.txt\0home/old.txt\0";
         let paths = parse_status_paths(output);
-        // Should only report the new path, not the old one.
-        assert_eq!(paths, vec!["home/new.txt"]);
+        assert_eq!(paths, vec!["home/new.txt", "home/old.txt"]);
     }
 
     #[test]
@@ -483,6 +485,63 @@ mod tests {
         assert!(!is_managed_relative_path("src/main.rs"));
         assert!(!is_managed_relative_path("homepage/index.html"));
         assert!(!is_managed_relative_path(".gitignore"));
+    }
+
+    #[test]
+    fn namespace_classification_treats_siblings_as_blocking() {
+        let (tmp, runner) = init_test_repo();
+        fs::create_dir_all(tmp.path().join("desktop/home")).unwrap();
+        fs::create_dir_all(tmp.path().join("notebook/home")).unwrap();
+        fs::write(tmp.path().join("desktop/home/.bashrc"), "desktop").unwrap();
+        fs::write(tmp.path().join("notebook/home/.bashrc"), "notebook").unwrap();
+
+        let status = classify_namespace_worktree(&runner, tmp.path(), "desktop").unwrap();
+        assert!(
+            status
+                .managed_dirty
+                .contains(&"desktop/home/.bashrc".to_string())
+        );
+        assert!(
+            status
+                .unmanaged_dirty
+                .contains(&"notebook/home/.bashrc".to_string())
+        );
+        assert!(status.has_blocking_changes());
+    }
+
+    #[test]
+    fn namespace_manifest_is_recoverable_but_sibling_manifest_blocks() {
+        let (tmp, runner) = init_test_repo();
+        fs::create_dir_all(tmp.path().join("desktop")).unwrap();
+        fs::create_dir_all(tmp.path().join("notebook")).unwrap();
+        fs::write(
+            tmp.path().join("desktop/.dothoard-manifest.toml"),
+            "desktop",
+        )
+        .unwrap();
+        fs::write(
+            tmp.path().join("notebook/.dothoard-manifest.toml"),
+            "notebook",
+        )
+        .unwrap();
+
+        let status = classify_namespace_worktree(&runner, tmp.path(), "desktop").unwrap();
+        assert!(status.has_recoverable_changes());
+        assert!(status.has_blocking_changes());
+        assert!(
+            status
+                .unmanaged_dirty
+                .contains(&"notebook/.dothoard-manifest.toml".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_rename_includes_both_paths() {
+        let output = "2 R. N... 100644 100644 100644 abc123 def456 R100 desktop/home/new.txt\0notebook/home/old.txt\0";
+        assert_eq!(
+            parse_status_paths(output),
+            vec!["desktop/home/new.txt", "notebook/home/old.txt"]
+        );
     }
 
     #[test]

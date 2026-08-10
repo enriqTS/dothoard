@@ -12,9 +12,9 @@ use dothoard::app;
 use dothoard::backup::manifest::Manifest;
 use dothoard::config::SourceConfig;
 use dothoard::git::{
-    GitCommand, GitRunner, check_auth, classify_ownership, classify_worktree, create_commit,
-    has_staged_changes, stage_managed_namespace, sync_with_remote, validate_repository,
-    verify_staged_boundaries,
+    GitCommand, GitRunner, check_auth, classify_namespace_worktree, classify_ownership,
+    classify_worktree, create_commit, has_staged_changes, stage_managed_namespace, stage_namespace,
+    sync_with_remote, validate_repository, verify_namespace_boundaries, verify_staged_boundaries,
 };
 
 /// Sets up a working repository with a bare remote, initial commit, and push.
@@ -200,6 +200,106 @@ fn unmanaged_changes_detected_as_blocking() {
     let status = classify_worktree(&env.runner, env.worktree()).unwrap();
     assert!(status.has_blocking_changes());
     assert!(status.has_recoverable_changes());
+}
+
+// --- Namespace publication boundaries ---
+
+#[test]
+fn active_namespace_staging_never_stages_a_clean_sibling() {
+    let env = TestGitEnv::new();
+    let desktop = env.worktree().join("desktop");
+    let notebook = env.worktree().join("notebook");
+    fs::create_dir_all(desktop.join("home")).unwrap();
+    fs::create_dir_all(notebook.join("home")).unwrap();
+    fs::write(desktop.join("home/.bashrc"), "desktop").unwrap();
+    fs::write(notebook.join("home/.bashrc"), "notebook").unwrap();
+
+    let desktop_manifest = Manifest::from_sources("desktop", &[]);
+    desktop_manifest.save(&desktop).unwrap();
+    let notebook_manifest = Manifest::from_sources("notebook", &[]);
+    notebook_manifest.save(&notebook).unwrap();
+    let cmd = GitCommand::new(env.worktree()).args(["add", "--", "notebook"]);
+    env.runner.run(&cmd).unwrap();
+    let cmd = GitCommand::new(env.worktree()).args(["commit", "-m", "notebook backup"]);
+    env.runner.run(&cmd).unwrap();
+
+    stage_namespace(&env.runner, env.worktree(), "desktop").unwrap();
+    let staged = verify_namespace_boundaries(&env.runner, env.worktree(), "desktop").unwrap();
+    assert!(staged.iter().all(|path| path.starts_with("desktop/")));
+    create_commit(&env.runner, env.worktree(), "desktop backup").unwrap();
+    sync_with_remote(&env.runner, env.worktree(), "origin", "main").unwrap();
+
+    let clone = env.clone_remote();
+    assert_eq!(
+        fs::read_to_string(clone.path().join("notebook/home/.bashrc")).unwrap(),
+        "notebook"
+    );
+    assert!(clone.path().join("desktop/home/.bashrc").exists());
+}
+
+#[test]
+fn dirty_or_staged_sibling_namespace_blocks_active_namespace() {
+    let env = TestGitEnv::new();
+    fs::create_dir_all(env.worktree().join("desktop/home")).unwrap();
+    fs::create_dir_all(env.worktree().join("notebook/home")).unwrap();
+    fs::write(env.worktree().join("desktop/home/.bashrc"), "desktop").unwrap();
+    fs::write(env.worktree().join("notebook/home/.bashrc"), "notebook").unwrap();
+
+    let status = classify_namespace_worktree(&env.runner, env.worktree(), "desktop").unwrap();
+    assert!(status.has_blocking_changes());
+    assert!(
+        status
+            .unmanaged_dirty
+            .contains(&"notebook/home/.bashrc".to_string())
+    );
+
+    let cmd = GitCommand::new(env.worktree()).args(["add", "--", "notebook/home/.bashrc"]);
+    env.runner.run(&cmd).unwrap();
+    let status = classify_namespace_worktree(&env.runner, env.worktree(), "desktop").unwrap();
+    assert!(status.has_blocking_changes());
+    assert!(
+        status
+            .unmanaged_dirty
+            .contains(&"notebook/home/.bashrc".to_string())
+    );
+}
+
+#[test]
+fn two_namespaces_publish_independently_to_shared_remote() {
+    let env = TestGitEnv::new();
+    let desktop = env.worktree().join("desktop");
+    fs::create_dir_all(desktop.join("home")).unwrap();
+    fs::write(desktop.join("home/.bashrc"), "desktop").unwrap();
+    Manifest::from_sources("desktop", &[])
+        .save(&desktop)
+        .unwrap();
+    stage_namespace(&env.runner, env.worktree(), "desktop").unwrap();
+    verify_namespace_boundaries(&env.runner, env.worktree(), "desktop").unwrap();
+    create_commit(&env.runner, env.worktree(), "desktop backup").unwrap();
+    sync_with_remote(&env.runner, env.worktree(), "origin", "main").unwrap();
+
+    let notebook = env.clone_remote();
+    let notebook_namespace = notebook.path().join("notebook");
+    fs::create_dir_all(notebook_namespace.join("home")).unwrap();
+    fs::write(notebook_namespace.join("home/.bashrc"), "notebook").unwrap();
+    Manifest::from_sources("notebook", &[])
+        .save(&notebook_namespace)
+        .unwrap();
+    stage_namespace(&env.runner, notebook.path(), "notebook").unwrap();
+    let staged = verify_namespace_boundaries(&env.runner, notebook.path(), "notebook").unwrap();
+    assert!(staged.iter().all(|path| path.starts_with("notebook/")));
+    create_commit(&env.runner, notebook.path(), "notebook backup").unwrap();
+    sync_with_remote(&env.runner, notebook.path(), "origin", "main").unwrap();
+
+    let remote_view = env.clone_remote();
+    assert_eq!(
+        fs::read_to_string(remote_view.path().join("desktop/home/.bashrc")).unwrap(),
+        "desktop"
+    );
+    assert_eq!(
+        fs::read_to_string(remote_view.path().join("notebook/home/.bashrc")).unwrap(),
+        "notebook"
+    );
 }
 
 // --- Hooks ---

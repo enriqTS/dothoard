@@ -1,7 +1,7 @@
 //! Restricted staging and staged-boundary verification.
 //!
-//! This module stages only the managed namespace (`home/` and the manifest file)
-//! using literal pathspecs with `--` separation to prevent pathspec
+//! This module stages only the selected managed namespace (`<namespace>/home/`
+//! and its manifest) using literal pathspecs with `--` separation to prevent pathspec
 //! metacharacters from being interpreted. After staging, it verifies that every
 //! staged path is within the managed namespace before allowing a commit.
 //!
@@ -118,9 +118,9 @@ fn is_path_tracked(runner: &GitRunner, worktree: &Path, path: &str) -> Result<bo
 
 /// Verify that all currently staged paths are within the managed namespace.
 ///
-/// Uses `git diff --cached --name-only -z` to get the complete list of staged
-/// paths (NUL-delimited for safe parsing), then checks each against the
-/// managed namespace boundaries.
+/// Uses `git diff --cached --name-status -z` to get the complete list of staged
+/// paths (NUL-delimited for safe parsing), including both endpoints of a rename
+/// or copy, then checks each against the managed namespace boundaries.
 ///
 /// Returns `Ok(staged_paths)` if all paths are managed, or
 /// `Err(StagingError::UnmanagedStaged)` if any path is outside the namespace.
@@ -142,15 +142,10 @@ pub fn verify_namespace_boundaries(
     worktree: &Path,
     namespace: &str,
 ) -> Result<Vec<String>, StagingError> {
-    let cmd = GitCommand::new(worktree).args(["diff", "--cached", "--name-only", "-z"]);
+    let cmd = GitCommand::new(worktree).args(["diff", "--cached", "--name-status", "-z"]);
     let output = runner.run(&cmd)?;
 
-    let staged_paths: Vec<String> = output
-        .stdout
-        .split('\0')
-        .filter(|s| !s.is_empty())
-        .map(String::from)
-        .collect();
+    let staged_paths = parse_staged_paths(&output.stdout);
 
     let unmanaged: Vec<String> = staged_paths
         .iter()
@@ -186,6 +181,31 @@ pub fn has_staged_changes(runner: &GitRunner, worktree: &Path) -> Result<bool, S
 #[cfg(test)]
 fn is_managed_relative_path(path: &str) -> bool {
     is_namespace_managed_relative_path(path, "")
+}
+
+/// Parse NUL-delimited `git diff --name-status` output.
+///
+/// Rename and copy records include two paths. Both are verified because a
+/// rename from a sibling namespace into the active one would otherwise expose
+/// only its active destination to a name-only listing.
+fn parse_staged_paths(output: &str) -> Vec<String> {
+    let mut fields = output.split('\0').filter(|field| !field.is_empty());
+    let mut paths = Vec::new();
+
+    while let Some(status) = fields.next() {
+        let is_rename_or_copy = status.starts_with('R') || status.starts_with('C');
+        let Some(path) = fields.next() else {
+            break;
+        };
+        paths.push(path.to_string());
+        if is_rename_or_copy {
+            if let Some(path) = fields.next() {
+                paths.push(path.to_string());
+            }
+        }
+    }
+
+    paths
 }
 
 fn is_namespace_managed_relative_path(path: &str, namespace: &str) -> bool {
@@ -390,5 +410,72 @@ mod tests {
         assert!(!is_managed_relative_path("README.md"));
         assert!(!is_managed_relative_path("src/main.rs"));
         assert!(!is_managed_relative_path("homepage/index.html"));
+    }
+
+    #[test]
+    fn namespace_staging_leaves_siblings_and_legacy_paths_unstaged() {
+        let (tmp, runner) = init_test_repo();
+        fs::create_dir_all(tmp.path().join("desktop/home")).unwrap();
+        fs::create_dir_all(tmp.path().join("notebook/home")).unwrap();
+        fs::write(tmp.path().join("desktop/home/.bashrc"), "desktop").unwrap();
+        fs::write(
+            tmp.path().join("desktop/.dothoard-manifest.toml"),
+            "desktop",
+        )
+        .unwrap();
+        fs::write(tmp.path().join("notebook/home/.bashrc"), "notebook").unwrap();
+        fs::create_dir_all(tmp.path().join("home")).unwrap();
+        fs::write(tmp.path().join("home/.bashrc"), "legacy").unwrap();
+
+        stage_namespace(&runner, tmp.path(), "desktop").unwrap();
+
+        let staged = verify_namespace_boundaries(&runner, tmp.path(), "desktop").unwrap();
+        assert!(staged.contains(&"desktop/home/.bashrc".to_string()));
+        assert!(staged.contains(&"desktop/.dothoard-manifest.toml".to_string()));
+        assert!(!staged.iter().any(|path| path.starts_with("notebook/")));
+        assert!(!staged.contains(&"home/.bashrc".to_string()));
+    }
+
+    #[test]
+    fn namespace_boundary_rejects_staged_sibling_and_rename_source() {
+        let (tmp, runner) = init_test_repo();
+        fs::create_dir_all(tmp.path().join("notebook/home")).unwrap();
+        fs::write(tmp.path().join("notebook/home/.bashrc"), "sibling").unwrap();
+        let cmd = GitCommand::new(tmp.path()).args(["add", "--", "notebook/home/.bashrc"]);
+        runner.run(&cmd).unwrap();
+
+        let result = verify_namespace_boundaries(&runner, tmp.path(), "desktop");
+        assert!(matches!(result, Err(StagingError::UnmanagedStaged { .. })));
+
+        let cmd = GitCommand::new(tmp.path()).args(["reset", "--hard"]);
+        runner.run(&cmd).unwrap();
+        fs::create_dir_all(tmp.path().join("notebook/home")).unwrap();
+        fs::write(tmp.path().join("notebook/home/.bashrc"), "sibling").unwrap();
+        let cmd = GitCommand::new(tmp.path()).args(["add", "--", "notebook/home/.bashrc"]);
+        runner.run(&cmd).unwrap();
+        let cmd = GitCommand::new(tmp.path()).args(["commit", "-m", "sibling"]);
+        runner.run(&cmd).unwrap();
+        fs::create_dir_all(tmp.path().join("desktop/home")).unwrap();
+        fs::rename(
+            tmp.path().join("notebook/home/.bashrc"),
+            tmp.path().join("desktop/home/.bashrc"),
+        )
+        .unwrap();
+        let cmd = GitCommand::new(tmp.path()).args(["add", "--all"]);
+        runner.run(&cmd).unwrap();
+
+        let result = verify_namespace_boundaries(&runner, tmp.path(), "desktop");
+        let Err(StagingError::UnmanagedStaged { paths }) = result else {
+            panic!("cross-namespace rename must be rejected");
+        };
+        assert!(paths.contains(&"notebook/home/.bashrc".to_string()));
+    }
+
+    #[test]
+    fn parse_staged_paths_includes_both_rename_endpoints() {
+        assert_eq!(
+            parse_staged_paths("M\0desktop/home/a\0R100\0notebook/home/a\0desktop/home/a\0"),
+            vec!["desktop/home/a", "notebook/home/a", "desktop/home/a"]
+        );
     }
 }
