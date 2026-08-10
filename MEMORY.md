@@ -11,10 +11,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Post-V1 milestones 10 and 11 complete.
 - **Milestone 12 complete**: Multi-Select Source Browser.
   MS01–MS08 all done. 827 unit tests passing.
-- **Milestone 13 active — MN07**: MN06 carries the validated namespace through
-  headless backup orchestration, state history, CLI output, check ownership
-  reporting, and failure/recovery notifications; next, implement safe namespace
-  lifecycle operations for TUI use.
+- **Milestone 13 active — MN08**: MN07 adds backend namespace create, select,
+  rename, and delete operations with ownership, no-follow, clean-worktree,
+  confirmation, and atomic configuration safeguards; next, build TUI namespace
+  management.
 
 ## Durable Decisions
 
@@ -107,8 +107,8 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 - `cargo fmt --check` — clean
 - `cargo clippy --all-targets --all-features -- -D warnings` — clean
-- `cargo test --all-targets --all-features -- --test-threads=1` — 833 unit tests passed
-  - 833 unit tests (lib) including browser, picker, state-sync, selection, diagnostics, and namespace-validation tests
+- `cargo test --all-targets --all-features -- --test-threads=1` — 839 unit tests passed
+  - 839 unit tests (lib) including browser, picker, state-sync, selection, diagnostics, namespace-validation, and lifecycle tests
   - 18 acceptance tests
   - 1 bootstrap integration test
   - 12 git_workflow integration tests
@@ -118,11 +118,11 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Orchestration/acceptance lock-contention races in parallel mode are pre-existing
   and pass with `--test-threads=1`.
 - All tests passing after fixing incorrect test assertions in TUI rendering tests.
-- MN06 verification: `cargo fmt --check`,
+- MN07 verification: `cargo fmt --check`,
   `cargo clippy --all-targets --all-features -- -D warnings`, and
   `cargo test --all-targets --all-features -- --test-threads=1` pass.
-  Headless namespace tests cover independent initial/no-op backups, offline
-  retry, blocked sibling changes, state history, check reporting, and notifications.
+  Lifecycle tests cover confirmation, collisions, ownership refusal, rename
+  manifest/config updates, protected deletion, and dirty sibling worktree refusal.
 - Release binary: `target/release/dothoard` (3.3MB, x86_64)
 - Platform: CachyOS (Arch Linux), Rust 1.97.1
 

@@ -515,7 +515,7 @@ repository content; this milestone provides no in-application migration.
   sensitive data. Test initial backup, no-op backup, offline retry, and blocked
   external changes for two independent namespaces.
 
-- [ ] **MN07 - Implement safe namespace lifecycle operations.** Implement the
+- [x] **MN07 - Implement safe namespace lifecycle operations.** Implement the
   backend operations needed by TUI create, select, rename, and delete actions
   with narrow filesystem boundaries, atomic configuration updates where
   applicable, and recoverable failure handling. Creation may initialize only a
