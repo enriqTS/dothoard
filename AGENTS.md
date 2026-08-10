@@ -6,7 +6,8 @@ making changes.
 
 ## Document Roles
 
-- `PLAN.md` is the source of truth for V1 behavior, scope, and safety rules.
+- `PLAN.md` is the source of truth for product behavior, scope, and safety
+  rules.
 - `DEVELOPMENT_PLAN.md` is the ordered implementation backlog and completion
   checklist.
 - `MEMORY.md` records the current task, durable decisions, blockers, and the
@@ -19,8 +20,9 @@ and resolve the conflict explicitly. Do not silently reinterpret `PLAN.md`.
 
 ## Current State
 
-The Bootstrap milestone is complete and the Rust crate exists. Begin with the
-active or next task recorded in `MEMORY.md`; do not skip ahead to the TUI.
+Milestones 0 through 12 are complete. Milestone 13 (Multiple-Machine
+Namespaces) is in progress; MN01 is complete and MN02 is next. Begin with the
+active or next task recorded in `MEMORY.md` and do not skip ordered work.
 
 ## Architecture
 
@@ -66,9 +68,13 @@ These rules are non-negotiable unless `PLAN.md` is deliberately revised:
 - A source-root symlink is copied as a link; its target is not read.
 - Reject symlinks in source parent components beneath `$HOME`.
 - Every destination write and deletion must remain beneath the repository.
-- The application owns only `home/` and `.dothoard-manifest.toml`.
+- The legacy V1 implementation owns only root-level `home/` and
+  `.dothoard-manifest.toml`. Namespace work must transition ownership to only
+  the active `<namespace>/home/` and `<namespace>/.dothoard-manifest.toml`;
+  root-level legacy paths and sibling namespaces remain unmanaged and
+  untouched.
 - Never modify, stage, discard, or commit unmanaged repository paths.
-- Refuse `home/` content that lacks a valid ownership manifest.
+- Refuse managed-namespace content that lacks a valid ownership manifest.
 - Dirty unmanaged paths block backup; dirty managed paths are recoverable.
 - A failed source or manifest operation prevents all Git publication for that
   run.
