@@ -1685,7 +1685,10 @@ mod tests {
             latest_error: None,
             history: Vec::new(),
         });
-        app.config = Some(crate::config::Config::new("~/dotfiles-repo"));
+        app.config = Some(crate::config::Config::new(
+            "~/dotfiles-repo",
+            "test-machine",
+        ));
         app
     }
 
@@ -1932,7 +1935,8 @@ mod tests {
 
         let mut app = app_on(Screen::Sources);
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -2004,7 +2008,8 @@ mod tests {
 
         let mut app = app_on(Screen::Ignore);
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -2032,7 +2037,8 @@ mod tests {
 
         let mut app = app_on(Screen::Ignore);
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -2128,7 +2134,7 @@ mod tests {
 
         let mut app = app_on(Screen::Automation);
         app.automation_screen.status_text = Some("active".to_string());
-        app.config = Some(crate::config::Config::new("~/repo"));
+        app.config = Some(crate::config::Config::new("~/repo", "test-machine"));
 
         terminal
             .draw(|frame| draw(frame, &mut app))
@@ -2530,7 +2536,8 @@ mod tests {
         app.focus = crate::tui::Focus::Content;
         app.sources_screen.mode = crate::tui::screens::sources::Mode::ConfirmApply;
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -2569,7 +2576,8 @@ mod tests {
         app.focus = crate::tui::Focus::Content;
         app.sources_screen.mode = crate::tui::screens::sources::Mode::ConfirmApply;
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,

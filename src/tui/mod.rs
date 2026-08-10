@@ -685,7 +685,7 @@ impl App {
                             if let Some(ref mut config) = self.config {
                                 config.repository = repo_str;
                             } else {
-                                self.config = Some(crate::config::Config::new(repo_str));
+                                self.config = Some(crate::config::Config::new(repo_str, "default"));
                             }
                             if let Some(ref paths) = self.paths
                                 && let Some(ref config) = self.config
@@ -1385,7 +1385,8 @@ mod tests {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         let mut app = test_app();
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -1434,7 +1435,8 @@ mod tests {
         app.focus = Focus::Content;
         app.active_screen = Screen::Sources;
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -1456,7 +1458,8 @@ mod tests {
         app.focus = Focus::Content;
         app.active_screen = Screen::Sources;
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -1583,7 +1586,8 @@ mod tests {
         app.focus = Focus::Content;
         app.active_screen = Screen::Ignore;
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -1607,7 +1611,8 @@ mod tests {
         app.focus = Focus::Content;
         app.active_screen = Screen::Ignore;
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -1668,7 +1673,8 @@ mod tests {
             .unwrap(),
         );
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -1690,7 +1696,8 @@ mod tests {
     fn remove_source_marks_preview_stale() {
         let mut app = test_app();
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -1718,7 +1725,8 @@ mod tests {
     fn remove_source_clamps_sources_selection() {
         let mut app = test_app();
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -1746,7 +1754,8 @@ mod tests {
     fn remove_source_clamps_ignore_source_idx() {
         let mut app = test_app();
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -1775,7 +1784,8 @@ mod tests {
     fn remove_all_sources_resets_ignore_indices() {
         let mut app = test_app();
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -1847,7 +1857,8 @@ mod tests {
             .unwrap(),
         );
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -1919,7 +1930,8 @@ mod tests {
     fn apply_selection_no_changes_returns_to_list() {
         let mut app = test_app();
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -1947,7 +1959,8 @@ mod tests {
     fn apply_selection_additions_only_applies_immediately() {
         let mut app = test_app();
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -1986,7 +1999,8 @@ mod tests {
     fn apply_selection_with_removals_enters_confirm() {
         let mut app = test_app();
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -2031,7 +2045,8 @@ mod tests {
     fn confirm_apply_executes_diff() {
         let mut app = test_app();
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -2076,7 +2091,8 @@ mod tests {
     fn confirm_apply_adds_ignore_rules() {
         let mut app = test_app();
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -2113,7 +2129,8 @@ mod tests {
     fn e2e_inherited_deselection_produces_anchored_ignore_rules() {
         let mut app = test_app();
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -2155,7 +2172,8 @@ mod tests {
     fn e2e_uncheck_existing_source_with_confirmation() {
         let mut app = test_app();
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -2205,7 +2223,8 @@ mod tests {
     fn e2e_re_entering_browser_reflects_applied_config() {
         let mut app = test_app();
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -2253,7 +2272,8 @@ mod tests {
     fn e2e_empty_selection_esc_is_noop() {
         let mut app = test_app();
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -2282,7 +2302,8 @@ mod tests {
     fn e2e_selection_reset_prevents_stale_state() {
         let mut app = test_app();
         app.config = Some(crate::config::Config {
-            version: 1,
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/repo".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,

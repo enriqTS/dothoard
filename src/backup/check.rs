@@ -534,7 +534,7 @@ mod tests {
         std::fs::create_dir_all(&config_dir).unwrap();
 
         // Valid config but repo doesn't exist.
-        let config = Config::new("~/nonexistent-repo");
+        let config = Config::new("~/nonexistent-repo", "test-machine");
         config.save(&config_dir.join("config.toml")).unwrap();
 
         let paths = AppPaths::resolve(crate::paths::PathInputs {

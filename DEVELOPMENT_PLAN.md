@@ -461,6 +461,94 @@ visual checkbox indicators. Existing sources appear pre-checked, folder
 selection inherits to children, deselecting children generates anchored ignore
 rules, removals require confirmation, and the complete quality suite passes.
 
+## 13. Multiple-Machine Namespaces
+
+Replace the single root-level managed namespace with a user-named namespace
+inside the configured repository. This milestone implements the planned layout
+in `PLAN.md` "Planned Multiple-Machine Namespaces". A configured machine owns
+only `<namespace>/home/` and `<namespace>/.dothoard-manifest.toml`; it must
+never write, delete, stage, normalize, or claim another machine's directory.
+Existing root-level `home/` and `.dothoard-manifest.toml` paths are unmanaged
+repository content; this milestone provides no in-application migration.
+
+- [x] **MN01 - Define namespace-aware schemas and validation.** Add an explicit
+  user-selected machine namespace to local configuration and version the
+  configuration and manifest schemas as required. Reject empty names, absolute
+  paths, separators, `.`/`..`, traversal, and non-portable path components.
+  Keep the namespace independent from the detected hostname. Add serialization
+  and validation tests.
+
+- [ ] **MN02 - Define safe namespace ownership states.** Extend ownership
+  classification to inspect only the selected namespace and its manifest. Add
+  explicit states for new, owned, invalid, and ambiguous namespaces. Treat
+  root-level V1 paths and sibling namespaces as unmanaged content: never
+  silently adopt, move, or delete them. Test every state with temporary
+  repositories.
+
+- [ ] **MN03 - Make source mapping and mirror boundaries namespace-aware.** Map
+  home-relative sources beneath `<repository>/<namespace>/home/`, and update
+  reverse mapping, managed-path checks, destination preflight, symlink checks,
+  copying, deletion, dry-run paths, and change-set presentation accordingly.
+  Preserve all no-follow and repository-boundary guarantees. Add filesystem
+  regression tests proving a run cannot affect sibling namespaces.
+
+- [ ] **MN04 - Generate per-namespace manifests.** Store, validate, atomically
+  replace, and compare each manifest at
+  `<repository>/<namespace>/.dothoard-manifest.toml`. Record the namespace in
+  the manifest when the versioned schema requires it and reject a manifest
+  whose declared namespace does not match its directory. Test cross-namespace
+  manifest substitution and malformed namespace inputs.
+
+- [ ] **MN05 - Restrict Git worktree handling and publication to one namespace.**
+  Stage only the active namespace directory with literal pathspecs and verify
+  that every staged path is within it. Classify a clean, committed sibling
+  namespace as untouched repository content; staged or dirty paths outside the
+  active namespace remain blocking unmanaged changes. Preserve current
+  noninteractive synchronization and conflict recovery behavior. Add Git
+  integration tests with two machine namespaces sharing one local bare remote.
+
+- [ ] **MN06 - Integrate namespace selection into orchestration and headless
+  commands.** Load and validate the selected namespace before planning,
+  ownership initialization, mirroring, and publication. Ensure `backup` and
+  `check` report the active namespace and actionable ownership errors, while
+  state and notifications identify the relevant machine without exposing
+  sensitive data. Test initial backup, no-op backup, offline retry, and blocked
+  external changes for two independent namespaces.
+
+- [ ] **MN07 - Implement safe namespace lifecycle operations.** Implement the
+  backend operations needed by TUI create, select, rename, and delete actions
+  with narrow filesystem boundaries, atomic configuration updates where
+  applicable, and recoverable failure handling. Creation may initialize only a
+  chosen empty namespace. A rename may affect only the selected namespace;
+  deletion may remove only that namespace's owned `home/` and manifest after
+  confirmation. Never adopt, move, or delete root-level V1 paths or sibling
+  namespaces. Add filesystem and Git tests for collisions, cancellation,
+  partial failures, and staged-boundary protection.
+
+- [ ] **MN08 - Build TUI namespace management.** Let users create, select,
+  rename, and delete valid namespaces both during initial repository setup and
+  at any later time. Display the active namespace in Repository and Dashboard
+  views. Renaming and deletion must show the affected path, require explicit
+  confirmation, reject collisions and invalid or ambiguous content, and never
+  affect a sibling namespace. Require the user to select or create another
+  active namespace before deleting the current one. Keep source and ignore
+  editing scoped to the active namespace; changing it invalidates dependent
+  previews safely. Add interaction and rendering tests.
+
+- [ ] **MN09 - Document and accept multiple-machine operation.** Update the
+  README and safety documentation with repository layout, independent machine
+  setup, namespace lifecycle, synchronization expectations, and limitations. Run the
+  complete formatting, Clippy, unit, filesystem, Git, orchestration, and TUI
+  test baseline, including a manual two-machine smoke test against a shared
+  remote.
+
+**Milestone gate:** Two or more computers can use one repository through
+user-named, non-overlapping namespaces. Each machine can back up and
+synchronize only its own directory; it cannot alter or publish a sibling
+namespace. Users can create, select, rename, and delete namespaces safely in
+the TUI, while root-level V1 data remains unmanaged and untouched. The full
+quality suite passes.
+
 ## Execution Order
 
 ```text
@@ -478,6 +566,7 @@ Bootstrap
   -> TUI Usability Improvements
   -> TUI Bug Fixes
   -> Multi-Select Source Browser
+  -> Multiple-Machine Namespaces
 ```
 
 The explicit naming prerequisite avoids introducing installed paths and unit

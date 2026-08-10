@@ -115,7 +115,8 @@ impl AcceptanceEnv {
 
     fn write_config(&self, sources: &[SourceConfig]) {
         let config = Config {
-            version: 1,
+            version: Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: self.repository.to_str().unwrap().to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -544,7 +545,9 @@ fn ac07_offline_commit_preserved_and_pushed_later() {
 #[test]
 fn ac08_timer_unit_has_correct_schedule() {
     let config = Config {
-        version: 1,
+        version: Config::CURRENT_VERSION,
+
+        namespace: "test-machine".to_string(),
         repository: "/tmp/test-repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 7,
@@ -568,7 +571,9 @@ fn ac08_timer_unit_has_correct_schedule() {
 #[test]
 fn ac08_service_unit_has_finite_timeout() {
     let config = Config {
-        version: 1,
+        version: Config::CURRENT_VERSION,
+
+        namespace: "test-machine".to_string(),
         repository: "/tmp/test-repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
@@ -731,7 +736,9 @@ fn ac11_git_commands_handle_special_characters_without_shell() {
 fn ac11_systemd_service_invokes_binary_directly() {
     // Verify the service unit invokes the binary directly, not through a shell.
     let config = Config {
-        version: 1,
+        version: Config::CURRENT_VERSION,
+
+        namespace: "test-machine".to_string(),
         repository: "/home/user/dotfiles".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,

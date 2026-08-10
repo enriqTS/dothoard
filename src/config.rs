@@ -69,6 +69,16 @@ pub enum ValidationError {
     EmptyRepository,
     /// The remote name is empty.
     EmptyRemote,
+    /// The configured machine namespace is empty.
+    EmptyNamespace,
+    /// The configured machine namespace is an absolute path.
+    AbsoluteNamespace { namespace: String },
+    /// The configured machine namespace contains a path separator.
+    NamespaceContainsSeparator { namespace: String },
+    /// The configured machine namespace is reserved as a path component.
+    ReservedNamespace { namespace: String },
+    /// The configured machine namespace contains a non-portable character.
+    InvalidNamespaceCharacter { namespace: String },
     /// The backup interval is zero.
     ZeroInterval,
     /// The network timeout is zero.
@@ -94,6 +104,23 @@ impl std::fmt::Display for ValidationError {
             }
             Self::EmptyRepository => write!(f, "repository path is empty"),
             Self::EmptyRemote => write!(f, "remote name is empty"),
+            Self::EmptyNamespace => write!(f, "machine namespace is empty"),
+            Self::AbsoluteNamespace { namespace } => {
+                write!(f, "machine namespace must not be absolute: \"{namespace}\"")
+            }
+            Self::NamespaceContainsSeparator { namespace } => {
+                write!(
+                    f,
+                    "machine namespace must be one path component: \"{namespace}\""
+                )
+            }
+            Self::ReservedNamespace { namespace } => {
+                write!(f, "machine namespace is reserved: \"{namespace}\"")
+            }
+            Self::InvalidNamespaceCharacter { namespace } => write!(
+                f,
+                "machine namespace contains non-portable characters: \"{namespace}\""
+            ),
             Self::ZeroInterval => write!(f, "interval_minutes must be at least 1"),
             Self::ZeroTimeout => write!(f, "network_timeout_seconds must be at least 1"),
             Self::EmptySourcePath { index } => {
@@ -129,6 +156,14 @@ pub struct Config {
     /// Git remote name used for push and pull. Defaults to `"origin"`.
     #[serde(default = "default_remote")]
     pub remote: String,
+
+    /// User-selected directory that exclusively contains this machine's backup.
+    ///
+    /// It is validated as a portable, single path component before use. The
+    /// default only permits old configuration files to deserialize far enough
+    /// to report actionable validation errors; it is never operational.
+    #[serde(default)]
+    pub namespace: String,
 
     /// Backup interval in minutes for the systemd timer. Defaults to 5.
     #[serde(default = "default_interval_minutes")]
@@ -172,7 +207,7 @@ fn default_network_timeout_seconds() -> u32 {
 
 impl Config {
     /// The current schema version that new configurations are created with.
-    pub const CURRENT_VERSION: u32 = 1;
+    pub const CURRENT_VERSION: u32 = 2;
 
     /// Deserialize a configuration from TOML text.
     pub fn from_toml(text: &str) -> Result<Self, toml::de::Error> {
@@ -184,12 +219,13 @@ impl Config {
         toml::to_string_pretty(self)
     }
 
-    /// Create a minimal default configuration pointing at the given repository.
-    pub fn new(repository: impl Into<String>) -> Self {
+    /// Create a minimal configuration for the given repository and namespace.
+    pub fn new(repository: impl Into<String>, namespace: impl Into<String>) -> Self {
         Self {
             version: Self::CURRENT_VERSION,
             repository: repository.into(),
             remote: default_remote(),
+            namespace: namespace.into(),
             interval_minutes: default_interval_minutes(),
             network_timeout_seconds: default_network_timeout_seconds(),
             sources: Vec::new(),
@@ -230,6 +266,8 @@ impl Config {
         if self.remote.trim().is_empty() {
             errors.push(ValidationError::EmptyRemote);
         }
+
+        validate_namespace(&self.namespace, &mut errors);
 
         // Interval must be positive.
         if self.interval_minutes == 0 {
@@ -348,7 +386,44 @@ impl Config {
     }
 }
 
-/// Check whether a path string contains parent traversal components (`..`).
+/// Validate a user-selected machine namespace as a portable path component.
+fn validate_namespace(namespace: &str, errors: &mut Vec<ValidationError>) {
+    if namespace.is_empty() {
+        errors.push(ValidationError::EmptyNamespace);
+        return;
+    }
+
+    if Path::new(namespace).is_absolute() {
+        errors.push(ValidationError::AbsoluteNamespace {
+            namespace: namespace.to_string(),
+        });
+        return;
+    }
+
+    if namespace.contains(['/', '\\']) {
+        errors.push(ValidationError::NamespaceContainsSeparator {
+            namespace: namespace.to_string(),
+        });
+        return;
+    }
+
+    if matches!(namespace, "." | "..") {
+        errors.push(ValidationError::ReservedNamespace {
+            namespace: namespace.to_string(),
+        });
+        return;
+    }
+
+    if !namespace
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+    {
+        errors.push(ValidationError::InvalidNamespaceCharacter {
+            namespace: namespace.to_string(),
+        });
+    }
+}
+
 fn contains_parent_traversal(path: &str) -> bool {
     Path::new(path)
         .components()
@@ -367,9 +442,10 @@ mod tests {
     use super::*;
 
     const EXAMPLE_TOML: &str = r#"
-version = 1
+version = 2
 repository = "~/pessoal/example-repo"
 remote = "origin"
+namespace = "desktop"
 interval_minutes = 5
 network_timeout_seconds = 120
 
@@ -392,9 +468,10 @@ ignore = [
     fn deserializes_complete_config() {
         let config = Config::from_toml(EXAMPLE_TOML).unwrap();
 
-        assert_eq!(config.version, 1);
+        assert_eq!(config.version, Config::CURRENT_VERSION);
         assert_eq!(config.repository, "~/pessoal/example-repo");
         assert_eq!(config.remote, "origin");
+        assert_eq!(config.namespace, "desktop");
         assert_eq!(config.interval_minutes, 5);
         assert_eq!(config.network_timeout_seconds, 120);
         assert_eq!(config.sources.len(), 2);
@@ -407,12 +484,14 @@ ignore = [
     #[test]
     fn applies_defaults_for_omitted_fields() {
         let minimal = r#"
-version = 1
+version = 2
 repository = "~/repo"
+namespace = "notebook"
 "#;
         let config = Config::from_toml(minimal).unwrap();
 
         assert_eq!(config.remote, "origin");
+        assert_eq!(config.namespace, "notebook");
         assert_eq!(config.interval_minutes, 5);
         assert_eq!(config.network_timeout_seconds, 120);
         assert!(config.sources.is_empty());
@@ -421,7 +500,8 @@ repository = "~/repo"
     #[test]
     fn round_trips_through_toml() {
         let original = Config {
-            version: 1,
+            version: Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/pessoal/dotfiles".to_string(),
             remote: "upstream".to_string(),
             interval_minutes: 10,
@@ -446,11 +526,12 @@ repository = "~/repo"
 
     #[test]
     fn new_creates_minimal_config() {
-        let config = Config::new("~/pessoal/sync");
+        let config = Config::new("~/pessoal/sync", "desktop");
 
         assert_eq!(config.version, Config::CURRENT_VERSION);
         assert_eq!(config.repository, "~/pessoal/sync");
         assert_eq!(config.remote, "origin");
+        assert_eq!(config.namespace, "desktop");
         assert_eq!(config.interval_minutes, 5);
         assert_eq!(config.network_timeout_seconds, 120);
         assert!(config.sources.is_empty());
@@ -458,7 +539,7 @@ repository = "~/repo"
 
     #[test]
     fn expands_tilde_in_repository_path() {
-        let config = Config::new("~/pessoal/dotfiles");
+        let config = Config::new("~/pessoal/dotfiles", "desktop");
         let home = std::path::Path::new("/home/user");
 
         assert_eq!(
@@ -471,7 +552,7 @@ repository = "~/repo"
     fn preserves_absolute_repository_path() {
         let config = Config {
             repository: "/opt/backups/dotfiles".to_string(),
-            ..Config::new("")
+            ..Config::new("", "test-machine")
         };
         let home = std::path::Path::new("/home/user");
 
@@ -485,7 +566,7 @@ repository = "~/repo"
     fn handles_bare_tilde_repository_path() {
         let config = Config {
             repository: "~".to_string(),
-            ..Config::new("")
+            ..Config::new("", "test-machine")
         };
         let home = std::path::Path::new("/home/user");
 
@@ -508,8 +589,9 @@ version = 1
     #[test]
     fn source_with_empty_ignore_list() {
         let text = r#"
-version = 1
+version = 2
 repository = "~/repo"
+namespace = "desktop"
 
 [[sources]]
 path = ".bashrc"
@@ -525,7 +607,7 @@ path = ".bashrc"
     fn save_creates_parent_directories() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("nested").join("dir").join("config.toml");
-        let config = Config::new("~/repo");
+        let config = Config::new("~/repo", "test-machine");
 
         config.save(&path).unwrap();
 
@@ -539,7 +621,8 @@ path = ".bashrc"
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("config.toml");
         let config = Config {
-            version: 1,
+            version: Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/dotfiles".to_string(),
             remote: "upstream".to_string(),
             interval_minutes: 10,
@@ -562,11 +645,11 @@ path = ".bashrc"
         let path = tmp.path().join("config.toml");
 
         // Write initial config.
-        let first = Config::new("~/first");
+        let first = Config::new("~/first", "test-machine");
         first.save(&path).unwrap();
 
         // Overwrite with different config.
-        let second = Config::new("~/second");
+        let second = Config::new("~/second", "test-machine");
         second.save(&path).unwrap();
 
         let loaded = Config::load(&path).unwrap();
@@ -599,7 +682,8 @@ path = ".bashrc"
     #[test]
     fn valid_config_produces_no_errors() {
         let config = Config {
-            version: 1,
+            version: Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: "~/dotfiles".to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -617,13 +701,14 @@ path = ".bashrc"
     fn rejects_unsupported_version() {
         let config = Config {
             version: 99,
-            ..Config::new("~/repo")
+            namespace: "test-machine".to_string(),
+            ..Config::new("~/repo", "test-machine")
         };
 
         let errors = config.validate();
         assert!(errors.contains(&ValidationError::UnsupportedVersion {
             found: 99,
-            supported: 1,
+            supported: Config::CURRENT_VERSION,
         }));
     }
 
@@ -631,7 +716,7 @@ path = ".bashrc"
     fn rejects_empty_repository() {
         let config = Config {
             repository: "  ".to_string(),
-            ..Config::new("")
+            ..Config::new("", "test-machine")
         };
 
         let errors = config.validate();
@@ -642,7 +727,7 @@ path = ".bashrc"
     fn rejects_empty_remote() {
         let config = Config {
             remote: "".to_string(),
-            ..Config::new("~/repo")
+            ..Config::new("~/repo", "test-machine")
         };
 
         let errors = config.validate();
@@ -650,10 +735,100 @@ path = ".bashrc"
     }
 
     #[test]
+    fn rejects_empty_namespace() {
+        let config = Config::new("~/repo", "");
+
+        assert!(config.validate().contains(&ValidationError::EmptyNamespace));
+    }
+
+    #[test]
+    fn rejects_absolute_namespace() {
+        let config = Config::new("~/repo", "/desktop");
+
+        assert!(
+            config
+                .validate()
+                .contains(&ValidationError::AbsoluteNamespace {
+                    namespace: "/desktop".to_string(),
+                })
+        );
+    }
+
+    #[test]
+    fn rejects_namespace_with_path_separators() {
+        for namespace in ["desktop/notebook", r"desktop\\notebook"] {
+            let config = Config::new("~/repo", namespace);
+
+            assert!(
+                config
+                    .validate()
+                    .contains(&ValidationError::NamespaceContainsSeparator {
+                        namespace: namespace.to_string(),
+                    })
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_reserved_namespace_components() {
+        for namespace in [".", ".."] {
+            let config = Config::new("~/repo", namespace);
+
+            assert!(
+                config
+                    .validate()
+                    .contains(&ValidationError::ReservedNamespace {
+                        namespace: namespace.to_string(),
+                    })
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_nonportable_namespace_characters() {
+        for namespace in ["desktop name", "desktop:pc", "notebooké"] {
+            let config = Config::new("~/repo", namespace);
+
+            assert!(
+                config
+                    .validate()
+                    .contains(&ValidationError::InvalidNamespaceCharacter {
+                        namespace: namespace.to_string(),
+                    })
+            );
+        }
+    }
+
+    #[test]
+    fn accepts_portable_namespace() {
+        let config = Config::new("~/repo", "home-server_2.0");
+
+        assert!(config.validate().is_empty());
+    }
+
+    #[test]
+    fn old_config_without_namespace_is_rejected_by_validation() {
+        let config = Config::from_toml(
+            r#"
+version = 1
+repository = "~/repo"
+"#,
+        )
+        .unwrap();
+
+        let errors = config.validate();
+        assert!(errors.contains(&ValidationError::UnsupportedVersion {
+            found: 1,
+            supported: Config::CURRENT_VERSION,
+        }));
+        assert!(errors.contains(&ValidationError::EmptyNamespace));
+    }
+
+    #[test]
     fn rejects_zero_interval() {
         let config = Config {
             interval_minutes: 0,
-            ..Config::new("~/repo")
+            ..Config::new("~/repo", "test-machine")
         };
 
         let errors = config.validate();
@@ -664,7 +839,7 @@ path = ".bashrc"
     fn rejects_zero_timeout() {
         let config = Config {
             network_timeout_seconds: 0,
-            ..Config::new("~/repo")
+            ..Config::new("~/repo", "test-machine")
         };
 
         let errors = config.validate();
@@ -678,7 +853,7 @@ path = ".bashrc"
                 path: "".to_string(),
                 ignore: vec![],
             }],
-            ..Config::new("~/repo")
+            ..Config::new("~/repo", "test-machine")
         };
 
         let errors = config.validate();
@@ -692,7 +867,7 @@ path = ".bashrc"
                 path: "/etc/passwd".to_string(),
                 ignore: vec![],
             }],
-            ..Config::new("~/repo")
+            ..Config::new("~/repo", "test-machine")
         };
 
         let errors = config.validate();
@@ -717,7 +892,7 @@ path = ".bashrc"
                     path: case.to_string(),
                     ignore: vec![],
                 }],
-                ..Config::new("~/repo")
+                ..Config::new("~/repo", "test-machine")
             };
 
             let errors = config.validate();
@@ -747,7 +922,7 @@ path = ".bashrc"
                     ignore: vec![],
                 },
             ],
-            ..Config::new("~/repo")
+            ..Config::new("~/repo", "test-machine")
         };
 
         assert!(config.validate().is_empty());
@@ -766,7 +941,7 @@ path = ".bashrc"
                     ignore: vec!["*.log".to_string()],
                 },
             ],
-            ..Config::new("~/repo")
+            ..Config::new("~/repo", "test-machine")
         };
 
         let errors = config.validate();
@@ -789,7 +964,7 @@ path = ".bashrc"
                     ignore: vec![],
                 },
             ],
-            ..Config::new("~/repo")
+            ..Config::new("~/repo", "test-machine")
         };
 
         let errors = config.validate();
@@ -804,6 +979,7 @@ path = ".bashrc"
     fn collects_multiple_errors() {
         let config = Config {
             version: 99,
+            namespace: "test-machine".to_string(),
             repository: "".to_string(),
             remote: "".to_string(),
             interval_minutes: 0,

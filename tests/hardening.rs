@@ -323,7 +323,7 @@ fn h01_validate_boundary_with_dot_components() {
 
 #[test]
 fn h01_source_path_with_parent_traversal_rejected_by_config() {
-    let config = dothoard::config::Config::new("~/dotfiles");
+    let config = dothoard::config::Config::new("~/dotfiles", "test-machine");
     let mut config = config;
     config.sources.push(SourceConfig {
         path: "../etc/shadow".to_string(),
@@ -341,7 +341,7 @@ fn h01_source_path_with_parent_traversal_rejected_by_config() {
 
 #[test]
 fn h01_source_path_absolute_rejected_by_config() {
-    let mut config = dothoard::config::Config::new("~/dotfiles");
+    let mut config = dothoard::config::Config::new("~/dotfiles", "test-machine");
     config.sources.push(SourceConfig {
         path: "/etc/shadow".to_string(),
         ignore: vec![],

@@ -108,7 +108,8 @@ impl OrcEnv {
     /// Write a config that points to this environment's repository.
     fn write_config(&self, sources: &[SourceConfig]) {
         let config = Config {
-            version: 1,
+            version: Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
             repository: self.repository.to_str().unwrap().to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
@@ -323,7 +324,9 @@ fn backup_fails_with_invalid_config() {
 
     // Write config with zero interval (invalid).
     let config = Config {
-        version: 1,
+        version: Config::CURRENT_VERSION,
+
+        namespace: "test-machine".to_string(),
         repository: env.repository.to_str().unwrap().to_string(),
         remote: "origin".to_string(),
         interval_minutes: 0,

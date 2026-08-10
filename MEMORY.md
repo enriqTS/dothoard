@@ -11,7 +11,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Post-V1 milestones 10 and 11 complete.
 - **Milestone 12 complete**: Multi-Select Source Browser.
   MS01–MS08 all done. 827 unit tests passing.
-- No active task. All planned work complete.
+- **Milestone 13 active — MN02**: MN01 is complete. Namespace-aware
+  configuration schema and validation are implemented and verified. Next:
+  define safe namespace ownership states.
 
 ## Durable Decisions
 
@@ -23,8 +25,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   configurable interval that defaults to five minutes.
 - V1 validates and uses an existing dedicated Git clone; cloning and repository
   creation are deferred.
-- The application owns only repository `home/` and
-  `.dothoard-manifest.toml`. A valid manifest establishes ownership.
+- The current implementation owns only repository `home/` and
+  `.dothoard-manifest.toml`. MN01 introduces configuration-only support for a
+  future user-named namespace; namespace-aware ownership begins in MN02.
+  A valid manifest establishes ownership.
 - Existing `home/` content without a valid manifest is refused rather than
   adopted silently.
 - Source and destination traversal never follows symlinks. A source-root
@@ -92,13 +96,18 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Source/repository changes mark preview and ignore previews stale and clamp
   dependent screen selections (sources list, ignore source index).
 - Release profile: lto=true, strip=true, codegen-units=1.
+- Namespace names are explicit user-selected portable ASCII path components:
+  letters, digits, `.`, `_`, and `-` only; empty names, path separators,
+  `.`/`..`, absolute paths, and other characters are rejected. Configuration
+  schema version 2 adds the required `namespace` field; old configuration can
+  deserialize only to report validation errors and has no automatic migration.
 
 ## Verification
 
 - `cargo fmt --check` — clean
 - `cargo clippy --all-targets --all-features -- -D warnings` — clean
-- `cargo test --all-targets --all-features` — 827 unit tests passed
-  - 827 unit tests (lib) including browser, picker, state-sync, selection, and diagnostics tests
+- `cargo test --all-targets --all-features -- --test-threads=1` — 835 unit tests passed
+  - 835 unit tests (lib) including browser, picker, state-sync, selection, diagnostics, and namespace-validation tests
   - 18 acceptance tests
   - 1 bootstrap integration test
   - 12 git_workflow integration tests
@@ -108,6 +117,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Orchestration/acceptance lock-contention races in parallel mode are pre-existing
   and pass with `--test-threads=1`.
 - All tests passing after fixing incorrect test assertions in TUI rendering tests.
+- MN01 verification: `cargo fmt --check`,
+  `cargo clippy --all-targets --all-features -- -D warnings`, and
+  `cargo test --all-targets --all-features -- --test-threads=1` all pass.
 - Release binary: `target/release/dothoard` (3.3MB, x86_64)
 - Platform: CachyOS (Arch Linux), Rust 1.97.1
 
