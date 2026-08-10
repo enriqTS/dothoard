@@ -507,7 +507,7 @@ repository content; this milestone provides no in-application migration.
   noninteractive synchronization and conflict recovery behavior. Add Git
   integration tests with two machine namespaces sharing one local bare remote.
 
-- [ ] **MN06 - Integrate namespace selection into orchestration and headless
+- [x] **MN06 - Integrate namespace selection into orchestration and headless
   commands.** Load and validate the selected namespace before planning,
   ownership initialization, mirroring, and publication. Ensure `backup` and
   `check` report the active namespace and actionable ownership errors, while

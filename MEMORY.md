@@ -11,10 +11,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Post-V1 milestones 10 and 11 complete.
 - **Milestone 12 complete**: Multi-Select Source Browser.
   MS01–MS08 all done. 827 unit tests passing.
-- **Milestone 13 active — MN06**: MN05 restricts worktree classification,
-  staging, and staged-boundary verification to the active namespace, including
-  both endpoints of cross-namespace renames; next, integrate namespace
-  selection and reporting into orchestration and headless commands.
+- **Milestone 13 active — MN07**: MN06 carries the validated namespace through
+  headless backup orchestration, state history, CLI output, check ownership
+  reporting, and failure/recovery notifications; next, implement safe namespace
+  lifecycle operations for TUI use.
 
 ## Durable Decisions
 
@@ -114,15 +114,15 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   - 12 git_workflow integration tests
   - 49 hardening tests
   - 20 mirror integration tests
-  - 13 orchestration integration tests
+  - 14 orchestration integration tests
 - Orchestration/acceptance lock-contention races in parallel mode are pre-existing
   and pass with `--test-threads=1`.
 - All tests passing after fixing incorrect test assertions in TUI rendering tests.
-- MN05 verification: `cargo fmt --check`,
+- MN06 verification: `cargo fmt --check`,
   `cargo clippy --all-targets --all-features -- -D warnings`, and
   `cargo test --all-targets --all-features -- --test-threads=1` pass.
-  Namespace Git tests cover clean siblings, dirty/staged sibling blocking,
-  cross-namespace rename protection, and independent publication to one bare remote.
+  Headless namespace tests cover independent initial/no-op backups, offline
+  retry, blocked sibling changes, state history, check reporting, and notifications.
 - Release binary: `target/release/dothoard` (3.3MB, x86_64)
 - Platform: CachyOS (Arch Linux), Rust 1.97.1
 
