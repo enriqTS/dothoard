@@ -11,9 +11,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Post-V1 milestones 10 and 11 complete.
 - **Milestone 12 complete**: Multi-Select Source Browser.
   MS01–MS08 all done. 827 unit tests passing.
-- **Milestone 13 active — MN04**: MN03 is complete. Mapping, mirroring,
-  previews, manifests, and Git publication are confined to the selected
-  namespace; next, complete the versioned per-namespace manifest work.
+- **Milestone 13 active — MN05**: MN04 is complete. Version-2 manifests are
+  atomically stored at the selected namespace, declare a validated namespace,
+  and reject cross-namespace substitution; next, restrict Git worktree
+  handling and publication to that namespace.
 
 ## Durable Decisions
 
@@ -117,7 +118,7 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Orchestration/acceptance lock-contention races in parallel mode are pre-existing
   and pass with `--test-threads=1`.
 - All tests passing after fixing incorrect test assertions in TUI rendering tests.
-- MN03 verification: `cargo fmt --check`,
+- MN04 verification: `cargo fmt --check`,
   `cargo clippy --all-targets --all-features -- -D warnings`, and
   `cargo test --all-targets --all-features -- --test-threads=1` pass.
 - Release binary: `target/release/dothoard` (3.3MB, x86_64)

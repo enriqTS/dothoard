@@ -492,7 +492,7 @@ repository content; this milestone provides no in-application migration.
   Preserve all no-follow and repository-boundary guarantees. Add filesystem
   regression tests proving a run cannot affect sibling namespaces.
 
-- [ ] **MN04 - Generate per-namespace manifests.** Store, validate, atomically
+- [x] **MN04 - Generate per-namespace manifests.** Store, validate, atomically
   replace, and compare each manifest at
   `<repository>/<namespace>/.dothoard-manifest.toml`. Record the namespace in
   the manifest when the versioned schema requires it and reject a manifest
