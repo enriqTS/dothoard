@@ -599,7 +599,7 @@ regression test that demonstrates the current failure.
   cancellation-by-invalidation, and continued input/render responsiveness with
   controlled backends rather than real external state.
 
-- [ ] **TU05 - Separate contextual help from status and progress.** Establish
+- [x] **TU05 - Separate contextual help from status and progress.** Establish
   one authoritative, mode-aware shortcut footer and remove duplicated in-body
   key hints. Add a separate status region for transient success, warning,
   error, and running messages so feedback never hides shortcuts. Define message
