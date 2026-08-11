@@ -4,8 +4,134 @@
 //! and communicate results back to the main event loop via a channel. This
 //! prevents the UI from freezing during I/O-heavy operations.
 
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
+
+/// Monotonic identity for a screen-data request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RequestId(u64);
+
+impl RequestId {
+    #[cfg(test)]
+    pub(crate) fn for_test(value: u64) -> Self {
+        Self(value)
+    }
+}
+
+/// Typed lifecycle for data loaded by a TUI background task.
+#[derive(Debug)]
+pub enum LoadState<T> {
+    NotLoaded,
+    Loading {
+        request_id: RequestId,
+        previous: Option<T>,
+    },
+    Loaded(T),
+    Stale {
+        previous: Option<T>,
+    },
+    Failed {
+        error: String,
+        previous: Option<T>,
+    },
+}
+
+impl<T> LoadState<T> {
+    pub fn data(&self) -> Option<&T> {
+        match self {
+            Self::Loading { previous, .. }
+            | Self::Stale { previous }
+            | Self::Failed { previous, .. } => previous.as_ref(),
+            Self::Loaded(data) => Some(data),
+            Self::NotLoaded => None,
+        }
+    }
+
+    pub fn error(&self) -> Option<&str> {
+        match self {
+            Self::Failed { error, .. } => Some(error),
+            _ => None,
+        }
+    }
+
+    pub fn loading_id(&self) -> Option<RequestId> {
+        match self {
+            Self::Loading { request_id, .. } => Some(*request_id),
+            _ => None,
+        }
+    }
+
+    pub fn begin(&mut self, request_id: RequestId, preserve_previous: bool) {
+        let previous = if preserve_previous {
+            match std::mem::replace(self, Self::NotLoaded) {
+                Self::Loaded(data) => Some(data),
+                Self::Loading { previous, .. }
+                | Self::Stale { previous }
+                | Self::Failed { previous, .. } => previous,
+                Self::NotLoaded => None,
+            }
+        } else {
+            None
+        };
+        *self = Self::Loading {
+            request_id,
+            previous,
+        };
+    }
+
+    /// Complete only the currently expected request.
+    pub fn finish(&mut self, request_id: RequestId, result: Result<T, String>) -> bool {
+        if self.loading_id() != Some(request_id) {
+            return false;
+        }
+        let previous = match std::mem::replace(self, Self::NotLoaded) {
+            Self::Loading { previous, .. } => previous,
+            _ => unreachable!("loading request checked above"),
+        };
+        *self = match result {
+            Ok(data) => Self::Loaded(data),
+            Err(error) => Self::Failed { error, previous },
+        };
+        true
+    }
+
+    /// Invalidate current work while retaining the last usable data.
+    pub fn invalidate(&mut self) {
+        let previous = match std::mem::replace(self, Self::NotLoaded) {
+            Self::Loaded(data) => Some(data),
+            Self::Loading { previous, .. }
+            | Self::Stale { previous }
+            | Self::Failed { previous, .. } => previous,
+            Self::NotLoaded => None,
+        };
+        *self = Self::Stale { previous };
+    }
+
+    pub fn fail(&mut self, error: String, preserve_previous: bool) {
+        let previous = if preserve_previous {
+            match std::mem::replace(self, Self::NotLoaded) {
+                Self::Loaded(data) => Some(data),
+                Self::Loading { previous, .. }
+                | Self::Stale { previous }
+                | Self::Failed { previous, .. } => previous,
+                Self::NotLoaded => None,
+            }
+        } else {
+            None
+        };
+        *self = Self::Failed { error, previous };
+    }
+
+    pub fn reset(&mut self) {
+        *self = Self::NotLoaded;
+    }
+
+    pub fn is_loading(&self) -> bool {
+        matches!(self, Self::Loading { .. })
+    }
+}
 
 /// The result of a background task, sent back to the UI thread.
 #[derive(Debug)]
@@ -16,6 +142,43 @@ pub enum TaskResult {
     Check(CheckResult),
     /// A push operation completed.
     Push(PushResult),
+    RepositoryValidation {
+        request_id: RequestId,
+        result: Result<crate::tui::screens::repository::RepoInfo, String>,
+    },
+    BackupPreview {
+        request_id: RequestId,
+        result: Result<crate::tui::screens::preview::PreviewData, String>,
+    },
+    IgnorePreview {
+        request_id: RequestId,
+        source_idx: usize,
+        result: Result<Vec<crate::tui::screens::ignore::PreviewEntry>, String>,
+    },
+    AutomationInspection {
+        request_id: RequestId,
+        result: Result<String, String>,
+    },
+}
+
+impl TaskResult {
+    fn load_identity(&self) -> Option<(LoadTaskKind, RequestId)> {
+        match self {
+            Self::RepositoryValidation { request_id, .. } => {
+                Some((LoadTaskKind::RepositoryValidation, *request_id))
+            }
+            Self::BackupPreview { request_id, .. } => {
+                Some((LoadTaskKind::BackupPreview, *request_id))
+            }
+            Self::IgnorePreview { request_id, .. } => {
+                Some((LoadTaskKind::IgnorePreview, *request_id))
+            }
+            Self::AutomationInspection { request_id, .. } => {
+                Some((LoadTaskKind::AutomationInspection, *request_id))
+            }
+            Self::Backup(_) | Self::Check(_) | Self::Push(_) => None,
+        }
+    }
 }
 
 /// Outcome of a background backup.
@@ -60,12 +223,21 @@ pub enum CheckItemStatus {
     Error,
 }
 
-/// Identifies which background task is currently running.
+/// Identifies which user operation is currently running.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskKind {
     Backup,
     Check,
     Push,
+}
+
+/// Identifies independently loadable screen data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LoadTaskKind {
+    RepositoryValidation,
+    BackupPreview,
+    IgnorePreview,
+    AutomationInspection,
 }
 
 /// Manages background task spawning and result collection.
@@ -74,8 +246,12 @@ pub struct TaskManager {
     receiver: Receiver<TaskResult>,
     /// Channel sender cloned into spawned threads.
     pub(crate) sender: Sender<TaskResult>,
-    /// Which task is currently running, if any.
+    /// Which user operation is currently running, if any.
     pub(crate) active: Option<TaskKind>,
+    /// Active screen-data request per logical resource.
+    active_loads: HashMap<LoadTaskKind, RequestId>,
+    next_request_id: u64,
+    spawn_workers: bool,
 }
 
 impl Default for TaskManager {
@@ -92,7 +268,17 @@ impl TaskManager {
             receiver,
             sender,
             active: None,
+            active_loads: HashMap::new(),
+            next_request_id: 1,
+            spawn_workers: true,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_controlled() -> Self {
+        let mut manager = Self::new();
+        manager.spawn_workers = false;
+        manager
     }
 
     /// Whether a background task is currently running.
@@ -105,6 +291,25 @@ impl TaskManager {
         self.active
     }
 
+    pub fn is_load_active(&self, kind: LoadTaskKind) -> bool {
+        self.active_loads.contains_key(&kind)
+    }
+
+    /// Forget an invalidated request so a replacement may start immediately.
+    pub fn invalidate_load(&mut self, kind: LoadTaskKind) {
+        self.active_loads.remove(&kind);
+    }
+
+    fn begin_load(&mut self, kind: LoadTaskKind) -> Option<RequestId> {
+        if self.active_loads.contains_key(&kind) {
+            return None;
+        }
+        let request_id = RequestId(self.next_request_id);
+        self.next_request_id = self.next_request_id.wrapping_add(1).max(1);
+        self.active_loads.insert(kind, request_id);
+        Some(request_id)
+    }
+
     /// Poll for a completed task result without blocking.
     ///
     /// Returns `Some(result)` if a task completed since the last poll,
@@ -113,7 +318,14 @@ impl TaskManager {
     pub fn poll(&mut self) -> Option<TaskResult> {
         match self.receiver.try_recv() {
             Ok(result) => {
-                self.active = None;
+                match result.load_identity() {
+                    Some((kind, request_id)) => {
+                        if self.active_loads.get(&kind) == Some(&request_id) {
+                            self.active_loads.remove(&kind);
+                        }
+                    }
+                    None => self.active = None,
+                }
                 Some(result)
             }
             Err(mpsc::TryRecvError::Empty) => None,
@@ -123,6 +335,95 @@ impl TaskManager {
                 None
             }
         }
+    }
+
+    pub fn spawn_repository_validation(
+        &mut self,
+        input: String,
+        home: PathBuf,
+        namespace: String,
+        remote: String,
+        timeout_seconds: u32,
+    ) -> Option<RequestId> {
+        let request_id = self.begin_load(LoadTaskKind::RepositoryValidation)?;
+        if !self.spawn_workers {
+            return Some(request_id);
+        }
+        let sender = self.sender.clone();
+        thread::spawn(move || {
+            let result = crate::tui::screens::repository::RepoScreen::validate_path(
+                &input,
+                &home,
+                &namespace,
+                &remote,
+                timeout_seconds,
+            );
+            let _ = sender.send(TaskResult::RepositoryValidation { request_id, result });
+        });
+        Some(request_id)
+    }
+
+    pub fn spawn_backup_preview(
+        &mut self,
+        config: crate::config::Config,
+        home: PathBuf,
+        repository: PathBuf,
+    ) -> Option<RequestId> {
+        let request_id = self.begin_load(LoadTaskKind::BackupPreview)?;
+        if !self.spawn_workers {
+            return Some(request_id);
+        }
+        let sender = self.sender.clone();
+        thread::spawn(move || {
+            let result =
+                crate::tui::screens::preview::PreviewScreen::generate(&config, &home, &repository);
+            let _ = sender.send(TaskResult::BackupPreview { request_id, result });
+        });
+        Some(request_id)
+    }
+
+    pub fn spawn_ignore_preview(
+        &mut self,
+        source_idx: usize,
+        source_path: String,
+        patterns: Vec<String>,
+        home: PathBuf,
+    ) -> Option<RequestId> {
+        let request_id = self.begin_load(LoadTaskKind::IgnorePreview)?;
+        if !self.spawn_workers {
+            return Some(request_id);
+        }
+        let sender = self.sender.clone();
+        thread::spawn(move || {
+            let result = Ok(crate::tui::screens::ignore::IgnoreScreen::generate_preview(
+                &source_path,
+                &patterns,
+                &home,
+            ));
+            let _ = sender.send(TaskResult::IgnorePreview {
+                request_id,
+                source_idx,
+                result,
+            });
+        });
+        Some(request_id)
+    }
+
+    pub fn spawn_automation_inspection(
+        &mut self,
+        config: crate::config::Config,
+        home: PathBuf,
+    ) -> Option<RequestId> {
+        let request_id = self.begin_load(LoadTaskKind::AutomationInspection)?;
+        if !self.spawn_workers {
+            return Some(request_id);
+        }
+        let sender = self.sender.clone();
+        thread::spawn(move || {
+            let result = crate::tui::screens::automation::AutomationScreen::inspect(&config, &home);
+            let _ = sender.send(TaskResult::AutomationInspection { request_id, result });
+        });
+        Some(request_id)
     }
 
     /// Spawn a backup operation in the background.
@@ -379,6 +680,72 @@ fn record_push_outcome(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn load_state_preserves_usable_data_and_rejects_stale_results() {
+        let mut state = LoadState::Loaded("old".to_string());
+        let first = RequestId(1);
+        state.begin(first, true);
+        assert_eq!(state.data().map(String::as_str), Some("old"));
+
+        state.invalidate();
+        assert!(matches!(state, LoadState::Stale { .. }));
+        assert!(!state.finish(first, Ok("obsolete".to_string())));
+        assert_eq!(state.data().map(String::as_str), Some("old"));
+
+        let second = RequestId(2);
+        state.begin(second, true);
+        assert!(state.finish(second, Err("failed".to_string())));
+        assert_eq!(state.error(), Some("failed"));
+        assert_eq!(state.data().map(String::as_str), Some("old"));
+    }
+
+    #[test]
+    fn keyed_loads_suppress_duplicates_but_allow_unrelated_work() {
+        let mut manager = TaskManager::new_controlled();
+        assert!(manager.begin_load(LoadTaskKind::BackupPreview).is_some());
+        assert!(manager.begin_load(LoadTaskKind::BackupPreview).is_none());
+        assert!(
+            manager
+                .begin_load(LoadTaskKind::AutomationInspection)
+                .is_some()
+        );
+        assert!(manager.is_load_active(LoadTaskKind::BackupPreview));
+        assert!(manager.is_load_active(LoadTaskKind::AutomationInspection));
+        assert!(!manager.is_busy());
+    }
+
+    #[test]
+    fn invalidated_old_result_does_not_clear_replacement_request() {
+        let mut manager = TaskManager::new_controlled();
+        let old = manager
+            .begin_load(LoadTaskKind::AutomationInspection)
+            .unwrap();
+        manager.invalidate_load(LoadTaskKind::AutomationInspection);
+        let replacement = manager
+            .begin_load(LoadTaskKind::AutomationInspection)
+            .unwrap();
+
+        manager
+            .sender
+            .send(TaskResult::AutomationInspection {
+                request_id: old,
+                result: Ok("old".to_string()),
+            })
+            .unwrap();
+        let _ = manager.poll();
+        assert!(manager.is_load_active(LoadTaskKind::AutomationInspection));
+
+        manager
+            .sender
+            .send(TaskResult::AutomationInspection {
+                request_id: replacement,
+                result: Ok("new".to_string()),
+            })
+            .unwrap();
+        let _ = manager.poll();
+        assert!(!manager.is_load_active(LoadTaskKind::AutomationInspection));
+    }
 
     #[test]
     fn new_task_manager_is_not_busy() {

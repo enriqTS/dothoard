@@ -7,7 +7,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::tui::browser::{Browser, BrowserConfig};
-use crate::tui::text;
+use crate::tui::{task::LoadState, text};
 
 /// The interaction mode for repository selection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,8 +31,8 @@ pub struct RepoScreen {
     pub cursor: usize,
     /// The filesystem browser state (for Browser mode).
     pub browser: Option<Browser>,
-    /// Validation result after the user selects/enters a path.
-    pub validation: Option<ValidationResult>,
+    /// Lifecycle and last successful repository validation.
+    pub validation: LoadState<RepoInfo>,
     /// Whether a confirmation dialog is active.
     pub confirm_state: ConfirmState,
     /// Error message from a failed selection attempt.
@@ -43,15 +43,6 @@ pub struct RepoScreen {
     pub namespace_action: NamespaceAction,
     pub namespace_origin: String,
     pub namespace_confirmation: Option<String>,
-}
-
-/// Result of validating the repository path.
-#[derive(Debug, Clone)]
-pub enum ValidationResult {
-    /// The path is a valid git repository ready for use.
-    Valid(RepoInfo),
-    /// The path has an issue.
-    Invalid(String),
 }
 
 /// Information about a validated repository.
@@ -125,7 +116,7 @@ impl RepoScreen {
             input: String::new(),
             cursor: 0,
             browser: None,
-            validation: None,
+            validation: LoadState::NotLoaded,
             confirm_state: ConfirmState::None,
             selection_error: None,
             namespace_input: "desktop".to_string(),
@@ -144,7 +135,7 @@ impl RepoScreen {
             input: path.to_string(),
             cursor,
             browser: None,
-            validation: None,
+            validation: LoadState::NotLoaded,
             confirm_state: ConfirmState::None,
             selection_error: None,
             namespace_input: "desktop".to_string(),
@@ -416,25 +407,25 @@ impl RepoScreen {
             (KeyModifiers::CONTROL, KeyCode::Char('u')) => {
                 self.input.clear();
                 self.cursor = 0;
-                self.validation = None;
+                self.validation.reset();
                 KeyResult::Consumed
             }
 
             // Text editing.
             (_, KeyCode::Char(c)) => {
                 text::insert_char(&mut self.input, &mut self.cursor, c);
-                self.validation = None;
+                self.validation.reset();
                 KeyResult::Consumed
             }
             (_, KeyCode::Backspace) => {
                 if text::backspace(&mut self.input, &mut self.cursor) {
-                    self.validation = None;
+                    self.validation.reset();
                 }
                 KeyResult::Consumed
             }
             (_, KeyCode::Delete) => {
                 if text::delete(&mut self.input, &mut self.cursor) {
-                    self.validation = None;
+                    self.validation.reset();
                 }
                 KeyResult::Consumed
             }
@@ -459,76 +450,46 @@ impl RepoScreen {
         }
     }
 
-    /// Validate the current input path against the filesystem and git.
-    ///
-    /// This performs synchronous validation (fast enough for a single repo check).
-    pub fn validate(&mut self, home: &Path, namespace: &str) {
-        let expanded = expand_tilde(&self.input, home);
+    /// Validate a path snapshot on a background worker.
+    pub fn validate_path(
+        input: &str,
+        home: &Path,
+        namespace: &str,
+        remote: &str,
+        timeout_seconds: u32,
+    ) -> Result<RepoInfo, String> {
+        let expanded = expand_tilde(input, home);
 
         if expanded.as_os_str().is_empty() {
-            self.validation = Some(ValidationResult::Invalid(
-                "Path cannot be empty".to_string(),
-            ));
-            return;
+            return Err("Path cannot be empty".to_string());
         }
-
         if !expanded.is_absolute() {
-            self.validation = Some(ValidationResult::Invalid(
-                "Path must be absolute or start with ~/".to_string(),
-            ));
-            return;
+            return Err("Path must be absolute or start with ~/".to_string());
         }
-
         if !expanded.exists() {
-            self.validation = Some(ValidationResult::Invalid(format!(
-                "Directory does not exist: {}",
-                expanded.display()
-            )));
-            return;
+            return Err(format!("Directory does not exist: {}", expanded.display()));
         }
 
-        // Validate git repository structure.
-        use crate::git::{GitRunner, classify_ownership, validate_repository};
-        let runner = GitRunner::new(std::time::Duration::from_secs(120));
+        use crate::git::{GitRunner, OwnershipState, classify_ownership, validate_repository};
+        let runner = GitRunner::new(std::time::Duration::from_secs(u64::from(timeout_seconds)));
+        let info = validate_repository(&runner, &expanded, remote)
+            .map_err(|e| format!("Not a valid repository: {e}"))?;
+        let state = classify_ownership(&expanded, namespace)
+            .map_err(|e| format!("Failed to classify ownership: {e}"))?;
+        let ownership = match state {
+            OwnershipState::New => OwnershipInfo::New,
+            OwnershipState::Owned { manifest } => OwnershipInfo::Owned {
+                sources: manifest.sources.into_iter().map(|s| s.path).collect(),
+            },
+            OwnershipState::InvalidManifest { reason } => OwnershipInfo::InvalidManifest(reason),
+            OwnershipState::Ambiguous { reason } => OwnershipInfo::Ambiguous(reason),
+        };
 
-        match validate_repository(&runner, &expanded, "origin") {
-            Ok(info) => {
-                // Classify ownership.
-                match classify_ownership(&expanded, namespace) {
-                    Ok(state) => {
-                        use crate::git::OwnershipState;
-                        let ownership = match &state {
-                            OwnershipState::New => OwnershipInfo::New,
-                            OwnershipState::Owned { manifest } => OwnershipInfo::Owned {
-                                sources: manifest.sources.iter().map(|s| s.path.clone()).collect(),
-                            },
-                            OwnershipState::InvalidManifest { reason } => {
-                                OwnershipInfo::InvalidManifest(reason.clone())
-                            }
-                            OwnershipState::Ambiguous { reason } => {
-                                OwnershipInfo::Ambiguous(reason.clone())
-                            }
-                        };
-
-                        self.validation = Some(ValidationResult::Valid(RepoInfo {
-                            path: expanded,
-                            branch: info.branch,
-                            ownership,
-                        }));
-                    }
-                    Err(e) => {
-                        self.validation = Some(ValidationResult::Invalid(format!(
-                            "Failed to classify ownership: {e}"
-                        )));
-                    }
-                }
-            }
-            Err(e) => {
-                self.validation = Some(ValidationResult::Invalid(format!(
-                    "Not a valid repository: {e}"
-                )));
-            }
-        }
+        Ok(RepoInfo {
+            path: expanded,
+            branch: info.branch,
+            ownership,
+        })
     }
 
     /// Attempt to confirm the current validated repository.
@@ -537,8 +498,8 @@ impl RepoScreen {
     /// successfully, or an error message.
     pub fn confirm(&mut self, _home: &Path, namespace: &str) -> Result<PathBuf, String> {
         let info = match &self.validation {
-            Some(ValidationResult::Valid(info)) => info.clone(),
-            _ => return Err("No valid repository to confirm".to_string()),
+            LoadState::Loaded(info) => info.clone(),
+            _ => return Err("No current repository validation to confirm".to_string()),
         };
 
         use crate::git::{classify_ownership, initialize_or_attach};
@@ -595,7 +556,7 @@ mod tests {
         let screen = RepoScreen::new();
         assert!(screen.input.is_empty());
         assert_eq!(screen.cursor, 0);
-        assert!(screen.validation.is_none());
+        assert!(matches!(screen.validation, LoadState::NotLoaded));
     }
 
     #[test]
@@ -682,53 +643,53 @@ mod tests {
 
     #[test]
     fn validate_rejects_empty_path() {
-        let mut screen = RepoScreen::new();
-        let home = PathBuf::from("/home/test");
-        screen.validate(&home, "desktop");
-        match &screen.validation {
-            Some(ValidationResult::Invalid(msg)) => assert!(msg.contains("empty")),
-            _ => panic!("expected invalid"),
-        }
+        let error =
+            RepoScreen::validate_path("", Path::new("/home/test"), "desktop", "origin", 120)
+                .unwrap_err();
+        assert!(error.contains("empty"));
     }
 
     #[test]
     fn validate_rejects_relative_path() {
-        let mut screen = RepoScreen::with_path("relative/path");
-        let home = PathBuf::from("/home/test");
-        screen.validate(&home, "desktop");
-        match &screen.validation {
-            Some(ValidationResult::Invalid(msg)) => assert!(msg.contains("absolute")),
-            _ => panic!("expected invalid"),
-        }
+        let error = RepoScreen::validate_path(
+            "relative/path",
+            Path::new("/home/test"),
+            "desktop",
+            "origin",
+            120,
+        )
+        .unwrap_err();
+        assert!(error.contains("absolute"));
     }
 
     #[test]
     fn validate_rejects_nonexistent_path() {
-        let mut screen = RepoScreen::with_path("/nonexistent/path/12345");
-        let home = PathBuf::from("/home/test");
-        screen.validate(&home, "desktop");
-        match &screen.validation {
-            Some(ValidationResult::Invalid(msg)) => assert!(msg.contains("does not exist")),
-            _ => panic!("expected invalid"),
-        }
+        let error = RepoScreen::validate_path(
+            "/nonexistent/path/12345",
+            Path::new("/home/test"),
+            "desktop",
+            "origin",
+            120,
+        )
+        .unwrap_err();
+        assert!(error.contains("does not exist"));
     }
 
     #[test]
     fn validate_rejects_non_repo_directory() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().to_str().unwrap().to_string();
-        let mut screen = RepoScreen::with_path(&path);
-        let home = PathBuf::from("/home/test");
-        screen.validate(&home, "desktop");
-        match &screen.validation {
-            Some(ValidationResult::Invalid(msg)) => {
-                assert!(
-                    msg.contains("repository") || msg.contains("git"),
-                    "unexpected message: {msg}"
-                );
-            }
-            _ => panic!("expected invalid"),
-        }
+        let error = RepoScreen::validate_path(
+            tmp.path().to_str().unwrap(),
+            Path::new("/home/test"),
+            "desktop",
+            "origin",
+            120,
+        )
+        .unwrap_err();
+        assert!(
+            error.contains("repository") || error.contains("git"),
+            "unexpected message: {error}"
+        );
     }
 
     #[test]
@@ -753,19 +714,16 @@ mod tests {
             .output()
             .unwrap();
 
-        let path = repo.to_str().unwrap().to_string();
-        let mut screen = RepoScreen::with_path(&path);
-        let home = PathBuf::from("/home/test");
-        screen.validate(&home, "desktop");
-
-        match &screen.validation {
-            Some(ValidationResult::Valid(info)) => {
-                assert_eq!(info.branch, "main");
-                assert!(matches!(info.ownership, OwnershipInfo::New));
-            }
-            Some(ValidationResult::Invalid(msg)) => panic!("unexpected invalid: {msg}"),
-            None => panic!("expected validation result"),
-        }
+        let info = RepoScreen::validate_path(
+            repo.to_str().unwrap(),
+            Path::new("/home/test"),
+            "desktop",
+            "origin",
+            120,
+        )
+        .unwrap();
+        assert_eq!(info.branch, "main");
+        assert!(matches!(info.ownership, OwnershipInfo::New));
     }
 
     #[test]
@@ -777,6 +735,24 @@ mod tests {
         );
         assert_eq!(expand_tilde("~", home), PathBuf::from("/home/user"));
         assert_eq!(expand_tilde("/abs/path", home), PathBuf::from("/abs/path"));
+    }
+
+    #[test]
+    fn confirm_rejects_preserved_but_non_current_validation() {
+        let mut screen = RepoScreen::new();
+        screen.validation = LoadState::Stale {
+            previous: Some(RepoInfo {
+                path: PathBuf::from("/repo"),
+                branch: "main".to_string(),
+                ownership: OwnershipInfo::New,
+            }),
+        };
+
+        let error = screen
+            .confirm(Path::new("/home/test"), "desktop")
+            .unwrap_err();
+
+        assert!(error.contains("current"));
     }
 
     #[test]

@@ -780,12 +780,38 @@ fn draw_automation(frame: &mut Frame, area: Rect, app: &App) {
     lines.push(Line::from(""));
 
     // Status.
-    if let Some(ref status) = app.automation_screen.status_text {
-        lines.push(field_line("  Status", status.clone()));
-    } else if app.automation_screen.stale {
-        lines.push(dim_line("  Status not loaded. Press 'r' to check."));
-    } else {
-        lines.push(dim_line("  Status: unknown"));
+    use crate::tui::task::LoadState;
+    match &app.automation_screen.status_state {
+        LoadState::NotLoaded => {
+            lines.push(dim_line(
+                "  Status not loaded. Entering this screen checks it.",
+            ));
+        }
+        LoadState::Loading { previous, .. } => {
+            lines.push(Line::from(Span::styled(
+                "  Checking automation status...",
+                Style::default().fg(Color::Yellow),
+            )));
+            if let Some(status) = previous {
+                lines.push(field_line("  Previous", status.clone()));
+            }
+        }
+        LoadState::Loaded(status) => lines.push(field_line("  Status", status.clone())),
+        LoadState::Stale { previous } => {
+            lines.push(dim_line("  Status is stale. Press 'r' to refresh."));
+            if let Some(status) = previous {
+                lines.push(field_line("  Previous", status.clone()));
+            }
+        }
+        LoadState::Failed { error, previous } => {
+            lines.push(Line::from(Span::styled(
+                format!("  Status check failed: {error}"),
+                Style::default().fg(Color::Red),
+            )));
+            if let Some(status) = previous {
+                lines.push(field_line("  Previous", status.clone()));
+            }
+        }
     }
 
     // Config info.
@@ -876,34 +902,37 @@ fn draw_preview(frame: &mut Frame, area: Rect, app: &App) {
 
     let mut lines: Vec<Line> = Vec::new();
 
-    // Error state.
-    if let Some(ref err) = app.preview_screen.error {
-        lines.push(Line::from(""));
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled(format!("Error: {err}"), Style::default().fg(Color::Red)),
-        ]));
-        lines.push(Line::from(""));
-        lines.push(dim_line("  Press 'r' to retry."));
-        let paragraph = Paragraph::new(lines);
-        frame.render_widget(paragraph, inner);
-        return;
+    use crate::tui::task::LoadState;
+    match &app.preview_screen.load_state {
+        LoadState::Loading { .. } => lines.push(Line::from(Span::styled(
+            "  Generating preview...",
+            Style::default().fg(Color::Yellow),
+        ))),
+        LoadState::Stale { .. } => {
+            lines.push(dim_line("  Preview is stale. Press 'r' to refresh."));
+        }
+        LoadState::Failed { error, .. } => lines.push(Line::from(Span::styled(
+            format!("  Preview failed: {error} (press 'r' to retry)"),
+            Style::default().fg(Color::Red),
+        ))),
+        LoadState::NotLoaded | LoadState::Loaded(_) => {}
     }
 
-    // Stale / not yet loaded.
-    if app.preview_screen.stale || app.preview_screen.preview.is_none() {
+    let Some(data) = app.preview_screen.load_state.data() else {
         lines.push(Line::from(""));
-        lines.push(dim_line("  Preview not loaded. Press 'r' to generate."));
+        let message = if app.preview_screen.load_state.is_loading() {
+            "  Waiting for the backup planner."
+        } else {
+            "  Preview not loaded. Press 'r' to generate."
+        };
+        lines.push(dim_line(message));
         lines.push(Line::from(""));
         lines.push(dim_line(
             "  This runs the backup planner without making changes.",
         ));
-        let paragraph = Paragraph::new(lines);
-        frame.render_widget(paragraph, inner);
+        frame.render_widget(Paragraph::new(lines), inner);
         return;
-    }
-
-    let data = app.preview_screen.preview.as_ref().unwrap();
+    };
 
     // Summary line.
     lines.push(Line::from(""));
@@ -1044,24 +1073,47 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
                 .add_modifier(Modifier::BOLD),
         )));
 
+        use crate::tui::task::LoadState;
+        match &app.ignore_screen.preview_state {
+            LoadState::Loading { .. } => lines.push(Line::from(Span::styled(
+                "  Generating ignore preview...",
+                Style::default().fg(Color::Yellow),
+            ))),
+            LoadState::Stale { .. } => {
+                lines.push(dim_line("  Preview is stale. Press 'r' to refresh."))
+            }
+            LoadState::Failed { error, .. } => lines.push(Line::from(Span::styled(
+                format!("  Preview failed: {error}"),
+                Style::default().fg(Color::Red),
+            ))),
+            LoadState::NotLoaded | LoadState::Loaded(_) => {}
+        }
+
         let feedback_rows = usize::from(app.ignore_screen.message.is_some()) * 2;
         let available_rows = (inner.height as usize)
             .saturating_sub(lines.len())
             .saturating_sub(feedback_rows);
+        let preview_len = app.ignore_screen.preview().map_or(0, <[_]>::len);
 
-        if app.ignore_screen.preview.is_empty() {
+        if preview_len == 0 {
             app.ignore_screen.set_preview_viewport_height(0);
-            lines.push(dim_line("  No files found."));
+            let message = if app.ignore_screen.preview_state.is_loading() {
+                "  Waiting for filesystem scan."
+            } else {
+                "  No files found."
+            };
+            lines.push(dim_line(message));
         } else {
-            let show_range = app.ignore_screen.preview.len() > available_rows && available_rows > 1;
+            let show_range = preview_len > available_rows && available_rows > 1;
             let visible_rows = available_rows.saturating_sub(usize::from(show_range));
             app.ignore_screen.set_preview_viewport_height(visible_rows);
             let visible_range = app
                 .ignore_screen
                 .preview_viewport
-                .visible_range(app.ignore_screen.preview.len());
+                .visible_range(preview_len);
+            let preview = app.ignore_screen.preview().unwrap_or_default();
 
-            for entry in &app.ignore_screen.preview[visible_range.clone()] {
+            for entry in &preview[visible_range.clone()] {
                 let mut spans = vec![Span::raw("  ")];
 
                 if entry.ignored {
@@ -1095,7 +1147,7 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
                     "  [{}-{} of {}] ↑↓/jk scroll",
                     visible_range.start + 1,
                     visible_range.end,
-                    app.ignore_screen.preview.len()
+                    preview_len
                 )));
             }
         }
@@ -1442,7 +1494,8 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
 
 /// Draw the repository selection screen.
 fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
-    use crate::tui::screens::repository::{RepoMode, ValidationResult};
+    use crate::tui::screens::repository::RepoMode;
+    use crate::tui::task::LoadState;
 
     let block = Block::default()
         .borders(Borders::ALL)
@@ -1503,7 +1556,7 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
             }
 
             match &app.repo_screen.validation {
-                Some(ValidationResult::Valid(info)) => {
+                LoadState::Loaded(info) => {
                     lines.push(Line::from(vec![
                         Span::raw(" "),
                         Span::styled("✓ Valid repository", Style::default().fg(Color::Green)),
@@ -1512,18 +1565,21 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
                     ]));
                     draw_ownership_line(&info.ownership, &mut lines);
                 }
-                Some(ValidationResult::Invalid(msg)) => {
-                    lines.push(Line::from(vec![
-                        Span::raw(" "),
-                        Span::styled(format!("✗ {msg}"), Style::default().fg(Color::Red)),
-                    ]));
-                }
-                None => {
-                    lines.push(Line::from(Span::styled(
-                        " Space: select directory │ :/  text input │ ↑↓←→ navigate",
-                        Style::default().fg(Color::DarkGray),
-                    )));
-                }
+                LoadState::Loading { .. } => lines.push(Line::from(Span::styled(
+                    " Checking repository...",
+                    Style::default().fg(Color::Yellow),
+                ))),
+                LoadState::Failed { error, .. } => lines.push(Line::from(vec![
+                    Span::raw(" "),
+                    Span::styled(format!("✗ {error}"), Style::default().fg(Color::Red)),
+                ])),
+                LoadState::Stale { .. } => lines.push(dim_line(
+                    " Repository validation is stale. Select or validate again.",
+                )),
+                LoadState::NotLoaded => lines.push(Line::from(Span::styled(
+                    " Space: select directory │ :/  text input │ ↑↓←→ navigate",
+                    Style::default().fg(Color::DarkGray),
+                ))),
             }
 
             // Confirmation dialog overlay.
@@ -1601,7 +1657,7 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
 
             // Validation result.
             match &app.repo_screen.validation {
-                Some(ValidationResult::Valid(info)) => {
+                LoadState::Loaded(info) => {
                     lines.push(Line::from(vec![
                         Span::raw("  "),
                         Span::styled("✓ Valid repository", Style::default().fg(Color::Green)),
@@ -1611,13 +1667,18 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
                     lines.push(Line::from(""));
                     draw_ownership_lines(&info.ownership, &mut lines);
                 }
-                Some(ValidationResult::Invalid(msg)) => {
-                    lines.push(Line::from(vec![
-                        Span::raw("  "),
-                        Span::styled(format!("✗ {msg}"), Style::default().fg(Color::Red)),
-                    ]));
+                LoadState::Loading { .. } => lines.push(Line::from(Span::styled(
+                    "  Checking repository...",
+                    Style::default().fg(Color::Yellow),
+                ))),
+                LoadState::Failed { error, .. } => lines.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled(format!("✗ {error}"), Style::default().fg(Color::Red)),
+                ])),
+                LoadState::Stale { .. } => {
+                    lines.push(dim_line("  Validation is stale. Press Enter to retry."));
                 }
-                None => {
+                LoadState::NotLoaded => {
                     lines.push(dim_line("  Press Enter to validate the path."));
                 }
             }
@@ -2059,10 +2120,10 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
 
         let mut app = app_on(Screen::Repository);
-        app.repo_screen.validation =
-            Some(crate::tui::screens::repository::ValidationResult::Invalid(
-                "Directory does not exist".to_string(),
-            ));
+        app.repo_screen.validation = crate::tui::task::LoadState::Failed {
+            error: "Directory does not exist".to_string(),
+            previous: None,
+        };
 
         terminal
             .draw(|frame| draw(frame, &mut app))
@@ -2212,7 +2273,7 @@ mod tests {
             }],
         });
         app.ignore_screen.mode = crate::tui::screens::ignore::Mode::Preview;
-        app.ignore_screen.preview = vec![
+        app.ignore_screen.replace_preview(vec![
             crate::tui::screens::ignore::PreviewEntry {
                 path: "config.fish".to_string(),
                 ignored: false,
@@ -2225,7 +2286,7 @@ mod tests {
                 matched_by: Some("*_history".to_string()),
                 secret_warning: false,
             },
-        ];
+        ]);
 
         terminal
             .draw(|frame| draw(frame, &mut app))
@@ -2253,23 +2314,23 @@ mod tests {
             }],
         });
         app.ignore_screen.mode = crate::tui::screens::ignore::Mode::Preview;
-        app.ignore_screen.preview = (0..30)
-            .map(|i| crate::tui::screens::ignore::PreviewEntry {
-                path: format!("file-{i:02}"),
-                ignored: false,
-                matched_by: None,
-                secret_warning: false,
-            })
-            .collect();
+        app.ignore_screen.replace_preview(
+            (0..30)
+                .map(|i| crate::tui::screens::ignore::PreviewEntry {
+                    path: format!("file-{i:02}"),
+                    ignored: false,
+                    matched_by: None,
+                    secret_warning: false,
+                })
+                .collect(),
+        );
 
         terminal.draw(|frame| draw(frame, &mut app)).unwrap();
         let first_page = buffer_text(terminal.backend());
         assert!(first_page.contains("file-00"));
         assert!(first_page.contains("of 30"));
 
-        app.ignore_screen
-            .preview_viewport
-            .end(app.ignore_screen.preview.len());
+        app.ignore_screen.preview_viewport.end(30);
         terminal.draw(|frame| draw(frame, &mut app)).unwrap();
 
         let content = buffer_text(terminal.backend());
@@ -2289,31 +2350,96 @@ mod tests {
             ignore: vec![],
         }];
         app.ignore_screen.mode = crate::tui::screens::ignore::Mode::Preview;
-        app.ignore_screen.preview = (0..20)
-            .map(|i| crate::tui::screens::ignore::PreviewEntry {
-                path: format!("item-{i:02}"),
-                ignored: false,
-                matched_by: None,
-                secret_warning: false,
-            })
-            .collect();
+        app.ignore_screen.replace_preview(
+            (0..20)
+                .map(|i| crate::tui::screens::ignore::PreviewEntry {
+                    path: format!("item-{i:02}"),
+                    ignored: false,
+                    matched_by: None,
+                    secret_warning: false,
+                })
+                .collect(),
+        );
 
         terminal.draw(|frame| draw(frame, &mut app)).unwrap();
-        app.ignore_screen
-            .preview_viewport
-            .end(app.ignore_screen.preview.len());
+        app.ignore_screen.preview_viewport.end(20);
         let active_row = app.ignore_screen.preview_viewport.visible_range(20).start;
         terminal.backend_mut().resize(60, 13);
         terminal.autoresize().unwrap();
         terminal.draw(|frame| draw(frame, &mut app)).unwrap();
 
-        let range = app
-            .ignore_screen
-            .preview_viewport
-            .visible_range(app.ignore_screen.preview.len());
+        let range = app.ignore_screen.preview_viewport.visible_range(20);
         assert_eq!(range.start, active_row);
         assert!(range.start < range.end);
         assert!(range.end <= 20);
+    }
+
+    #[test]
+    fn slow_screen_states_render_loading_and_preserve_previous_data() {
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let request_id = crate::tui::task::RequestId::for_test(1);
+
+        let mut repository = app_on(Screen::Repository);
+        repository.repo_screen.mode = crate::tui::screens::repository::RepoMode::TextInput;
+        repository.repo_screen.validation = crate::tui::task::LoadState::Loading {
+            request_id,
+            previous: None,
+        };
+        terminal.draw(|frame| draw(frame, &mut repository)).unwrap();
+        assert!(buffer_text(terminal.backend()).contains("Checking repository"));
+
+        let mut preview = app_on(Screen::Preview);
+        preview.preview_screen.load_state = crate::tui::task::LoadState::Loading {
+            request_id,
+            previous: Some(crate::tui::screens::preview::PreviewData {
+                additions: 1,
+                modifications: 0,
+                deletions: 0,
+                exclusions: 0,
+                warnings: 0,
+                entries: vec![crate::tui::screens::preview::PreviewEntry {
+                    kind: crate::tui::screens::preview::EntryKind::Addition,
+                    path: "previous-file".to_string(),
+                    detail: None,
+                }],
+            }),
+        };
+        terminal.draw(|frame| draw(frame, &mut preview)).unwrap();
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("Generating preview"));
+        assert!(content.contains("previous-file"));
+
+        let mut ignore = app_on(Screen::Ignore);
+        ignore.config = Some(crate::config::Config::new("~/repo", "test-machine"));
+        ignore.config.as_mut().unwrap().sources = vec![crate::config::SourceConfig {
+            path: ".config".to_string(),
+            ignore: vec![],
+        }];
+        ignore.ignore_screen.mode = crate::tui::screens::ignore::Mode::Preview;
+        ignore.ignore_screen.preview_state = crate::tui::task::LoadState::Loading {
+            request_id,
+            previous: Some(vec![crate::tui::screens::ignore::PreviewEntry {
+                path: "previous-ignore-file".to_string(),
+                ignored: false,
+                matched_by: None,
+                secret_warning: false,
+            }]),
+        };
+        terminal.draw(|frame| draw(frame, &mut ignore)).unwrap();
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("Generating ignore preview"));
+        assert!(content.contains("previous-ignore-file"));
+
+        let mut automation = app_on(Screen::Automation);
+        automation.automation_screen.status_state = crate::tui::task::LoadState::Loading {
+            request_id,
+            previous: Some("previous-active".to_string()),
+        };
+        terminal.draw(|frame| draw(frame, &mut automation)).unwrap();
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("Checking automation status"));
+        assert!(content.contains("previous-active"));
     }
 
     /// Verify preview screen renders empty state.
@@ -2339,26 +2465,26 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
 
         let mut app = app_on(Screen::Preview);
-        app.preview_screen.stale = false;
-        app.preview_screen.preview = Some(crate::tui::screens::preview::PreviewData {
-            additions: 3,
-            modifications: 1,
-            deletions: 0,
-            exclusions: 2,
-            warnings: 0,
-            entries: vec![
-                crate::tui::screens::preview::PreviewEntry {
-                    kind: crate::tui::screens::preview::EntryKind::Addition,
-                    path: ".config/fish/config.fish".to_string(),
-                    detail: Some("regular file".to_string()),
-                },
-                crate::tui::screens::preview::PreviewEntry {
-                    kind: crate::tui::screens::preview::EntryKind::Modification,
-                    path: ".bashrc".to_string(),
-                    detail: Some("content changed".to_string()),
-                },
-            ],
-        });
+        app.preview_screen.load_state =
+            crate::tui::task::LoadState::Loaded(crate::tui::screens::preview::PreviewData {
+                additions: 3,
+                modifications: 1,
+                deletions: 0,
+                exclusions: 2,
+                warnings: 0,
+                entries: vec![
+                    crate::tui::screens::preview::PreviewEntry {
+                        kind: crate::tui::screens::preview::EntryKind::Addition,
+                        path: ".config/fish/config.fish".to_string(),
+                        detail: Some("regular file".to_string()),
+                    },
+                    crate::tui::screens::preview::PreviewEntry {
+                        kind: crate::tui::screens::preview::EntryKind::Modification,
+                        path: ".bashrc".to_string(),
+                        detail: Some("content changed".to_string()),
+                    },
+                ],
+            });
 
         terminal
             .draw(|frame| draw(frame, &mut app))
@@ -2377,7 +2503,8 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
 
         let mut app = app_on(Screen::Automation);
-        app.automation_screen.status_text = Some("active".to_string());
+        app.automation_screen.status_state =
+            crate::tui::task::LoadState::Loaded("active".to_string());
         app.config = Some(crate::config::Config::new("~/repo", "test-machine"));
 
         terminal

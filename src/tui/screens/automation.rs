@@ -2,13 +2,13 @@
 //!
 //! Provides install, remove, and status inspection of the systemd user timer.
 
+use crate::tui::task::LoadState;
+
 /// The state of the automation controls screen.
 #[derive(Debug)]
 pub struct AutomationScreen {
-    /// Cached automation status description.
-    pub status_text: Option<String>,
-    /// Whether the status needs to be refreshed.
-    pub stale: bool,
+    /// Lifecycle and last usable automation status description.
+    pub status_state: LoadState<String>,
     /// Feedback message from the last operation.
     pub message: Option<Message>,
     /// Active confirmation dialog.
@@ -41,8 +41,7 @@ impl Default for AutomationScreen {
 impl AutomationScreen {
     pub fn new() -> Self {
         Self {
-            status_text: None,
-            stale: true,
+            status_state: LoadState::NotLoaded,
             message: None,
             confirm: ConfirmAction::None,
         }
@@ -75,10 +74,7 @@ impl AutomationScreen {
 
         match key.code {
             // Refresh status.
-            KeyCode::Char('r') => {
-                self.stale = true;
-                Action::RefreshStatus
-            }
+            KeyCode::Char('r') => Action::RefreshStatus,
             // Install timer.
             KeyCode::Char('i') => {
                 self.confirm = ConfirmAction::Install;
@@ -93,29 +89,18 @@ impl AutomationScreen {
         }
     }
 
-    /// Refresh the automation status.
-    pub fn refresh_status(&mut self, config: &crate::config::Config, home: &std::path::Path) {
+    /// Inspect automation status on a background worker.
+    pub fn inspect(
+        config: &crate::config::Config,
+        home: &std::path::Path,
+    ) -> Result<String, String> {
         use crate::systemd;
 
-        match systemd::params_from_config(config) {
-            Ok(params) => {
-                let unit_dir = systemd::user_unit_dir(home);
-                match systemd::status(&params, &unit_dir) {
-                    Ok(status) => {
-                        self.status_text = Some(status.to_string());
-                        self.stale = false;
-                    }
-                    Err(e) => {
-                        self.status_text = Some(format!("error: {e}"));
-                        self.stale = false;
-                    }
-                }
-            }
-            Err(e) => {
-                self.status_text = Some(format!("error: {e}"));
-                self.stale = false;
-            }
-        }
+        let params = systemd::params_from_config(config).map_err(|e| e.to_string())?;
+        let unit_dir = systemd::user_unit_dir(home);
+        systemd::status(&params, &unit_dir)
+            .map(|status| status.to_string())
+            .map_err(|e| e.to_string())
     }
 
     /// Install the timer.
@@ -134,7 +119,6 @@ impl AutomationScreen {
                             ),
                             success: true,
                         });
-                        self.stale = true;
                     }
                     Err(e) => {
                         self.message = Some(Message {
@@ -164,7 +148,6 @@ impl AutomationScreen {
                     text: "Timer removed.".to_string(),
                     success: true,
                 });
-                self.stale = true;
             }
             Err(e) => {
                 self.message = Some(Message {
@@ -199,19 +182,17 @@ mod tests {
     }
 
     #[test]
-    fn new_screen_is_stale() {
+    fn new_screen_is_not_loaded() {
         let screen = AutomationScreen::new();
-        assert!(screen.stale);
-        assert!(screen.status_text.is_none());
+        assert!(matches!(screen.status_state, LoadState::NotLoaded));
     }
 
     #[test]
     fn r_triggers_refresh() {
         let mut screen = AutomationScreen::new();
-        screen.stale = false;
         let action = screen.handle_key(key(KeyCode::Char('r')));
         assert_eq!(action, Action::RefreshStatus);
-        assert!(screen.stale);
+        assert!(matches!(screen.status_state, LoadState::NotLoaded));
     }
 
     #[test]

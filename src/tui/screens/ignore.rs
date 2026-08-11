@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use crate::tui::{text, viewport::Viewport};
+use crate::tui::{task::LoadState, text, viewport::Viewport};
 
 /// The state of the ignore editor screen.
 #[derive(Debug)]
@@ -23,12 +23,10 @@ pub struct IgnoreScreen {
     pub input: String,
     /// Cursor position in the input.
     pub cursor: usize,
-    /// Preview of matched files for the current patterns.
-    pub preview: Vec<PreviewEntry>,
+    /// Lifecycle and last usable preview of matched files.
+    pub preview_state: LoadState<Vec<PreviewEntry>>,
     /// Viewport for the file preview.
     pub(crate) preview_viewport: Viewport,
-    /// Whether the preview is stale and needs refresh.
-    pub preview_stale: bool,
     /// Feedback message.
     pub message: Option<String>,
 }
@@ -81,22 +79,32 @@ impl IgnoreScreen {
             list_focus: ListFocus::SourceSelector,
             input: String::new(),
             cursor: 0,
-            preview: Vec::new(),
+            preview_state: LoadState::NotLoaded,
             preview_viewport: Viewport::default(),
-            preview_stale: true,
             message: None,
         }
     }
 
     /// Replace preview data while preserving and clamping its viewport.
+    #[cfg(test)]
     pub(crate) fn replace_preview(&mut self, preview: Vec<PreviewEntry>) {
-        self.preview = preview;
-        self.preview_viewport.clamp(self.preview.len());
+        let len = preview.len();
+        self.preview_state = LoadState::Loaded(preview);
+        self.preview_viewport.clamp(len);
+    }
+
+    pub(crate) fn preview(&self) -> Option<&[PreviewEntry]> {
+        self.preview_state.data().map(Vec::as_slice)
+    }
+
+    pub(crate) fn mark_preview_stale(&mut self) {
+        self.preview_state.invalidate();
     }
 
     /// Update the preview viewport from the actual render area.
     pub(crate) fn set_preview_viewport_height(&mut self, height: usize) {
-        self.preview_viewport.set_height(height, self.preview.len());
+        let len = self.preview().map_or(0, <[PreviewEntry]>::len);
+        self.preview_viewport.set_height(height, len);
     }
 
     /// Handle a key event for this screen.
@@ -147,7 +155,7 @@ impl IgnoreScreen {
                         self.pattern_idx = 0;
                         self.list_focus = ListFocus::SourceSelector;
                         self.preview_viewport.home();
-                        self.preview_stale = true;
+                        self.mark_preview_stale();
                     }
                     Action::Consumed
                 }
@@ -157,7 +165,7 @@ impl IgnoreScreen {
                         self.pattern_idx = 0;
                         self.list_focus = ListFocus::SourceSelector;
                         self.preview_viewport.home();
-                        self.preview_stale = true;
+                        self.mark_preview_stale();
                     }
                     Action::Consumed
                 }
@@ -259,6 +267,7 @@ impl IgnoreScreen {
                     self.mode = Mode::List;
                     Action::Consumed
                 }
+                (_, KeyCode::Char('r')) => Action::RefreshPreview(self.source_idx),
                 (_, KeyCode::Char('q')) => Action::NotConsumed,
                 // Scroll preview.
                 (_, KeyCode::Up) | (_, KeyCode::Char('k')) => {
@@ -266,7 +275,8 @@ impl IgnoreScreen {
                     Action::Consumed
                 }
                 (_, KeyCode::Down) | (_, KeyCode::Char('j')) => {
-                    self.preview_viewport.scroll_down(1, self.preview.len());
+                    let len = self.preview().map_or(0, <[PreviewEntry]>::len);
+                    self.preview_viewport.scroll_down(1, len);
                     Action::Consumed
                 }
                 (_, KeyCode::PageUp) => {
@@ -275,8 +285,9 @@ impl IgnoreScreen {
                     Action::Consumed
                 }
                 (_, KeyCode::PageDown) => {
+                    let len = self.preview().map_or(0, <[PreviewEntry]>::len);
                     self.preview_viewport
-                        .scroll_down(self.preview_viewport.page_size(), self.preview.len());
+                        .scroll_down(self.preview_viewport.page_size(), len);
                     Action::Consumed
                 }
                 (_, KeyCode::Home) => {
@@ -284,7 +295,8 @@ impl IgnoreScreen {
                     Action::Consumed
                 }
                 (_, KeyCode::End) => {
-                    self.preview_viewport.end(self.preview.len());
+                    let len = self.preview().map_or(0, <[PreviewEntry]>::len);
+                    self.preview_viewport.end(len);
                     Action::Consumed
                 }
                 _ => Action::Consumed,
@@ -526,15 +538,26 @@ mod tests {
     }
 
     #[test]
+    fn r_refreshes_while_preview_remains_open() {
+        let mut screen = IgnoreScreen::new();
+        screen.mode = Mode::Preview;
+        assert_eq!(
+            screen.handle_key(key(KeyCode::Char('r')), 0, 1),
+            Action::RefreshPreview(0)
+        );
+        assert_eq!(screen.mode, Mode::Preview);
+    }
+
+    #[test]
     fn one_row_preview_does_not_scroll_out_of_view() {
         let mut screen = IgnoreScreen::new();
         screen.mode = Mode::Preview;
-        screen.preview = vec![PreviewEntry {
+        screen.replace_preview(vec![PreviewEntry {
             path: "only-file".to_string(),
             ignored: false,
             matched_by: None,
             secret_warning: false,
-        }];
+        }]);
         screen.set_preview_viewport_height(4);
 
         screen.handle_key(key(KeyCode::End), 0, 1);
@@ -547,14 +570,16 @@ mod tests {
     fn preview_scrolls_with_arrows_pages_home_and_end() {
         let mut screen = IgnoreScreen::new();
         screen.mode = Mode::Preview;
-        screen.preview = (0..12)
-            .map(|i| PreviewEntry {
-                path: format!("file-{i}"),
-                ignored: false,
-                matched_by: None,
-                secret_warning: false,
-            })
-            .collect();
+        screen.replace_preview(
+            (0..12)
+                .map(|i| PreviewEntry {
+                    path: format!("file-{i}"),
+                    ignored: false,
+                    matched_by: None,
+                    secret_warning: false,
+                })
+                .collect(),
+        );
         screen.set_preview_viewport_height(4);
 
         screen.handle_key(key(KeyCode::Down), 0, 1);
@@ -572,18 +597,21 @@ mod tests {
     #[test]
     fn preview_viewport_clamps_after_refresh_shrinks_data() {
         let mut screen = IgnoreScreen::new();
-        screen.preview = (0..10)
-            .map(|i| PreviewEntry {
-                path: format!("file-{i}"),
-                ignored: false,
-                matched_by: None,
-                secret_warning: false,
-            })
-            .collect();
+        screen.replace_preview(
+            (0..10)
+                .map(|i| PreviewEntry {
+                    path: format!("file-{i}"),
+                    ignored: false,
+                    matched_by: None,
+                    secret_warning: false,
+                })
+                .collect(),
+        );
         screen.set_preview_viewport_height(3);
-        screen.preview_viewport.end(screen.preview.len());
+        screen.preview_viewport.end(10);
 
-        screen.replace_preview(screen.preview[..2].to_vec());
+        let shortened = screen.preview().unwrap()[..2].to_vec();
+        screen.replace_preview(shortened);
 
         assert_eq!(screen.preview_viewport.visible_range(2), 0..2);
     }
@@ -592,14 +620,16 @@ mod tests {
     fn preview_viewport_survives_tab_focus_escape() {
         let mut screen = IgnoreScreen::new();
         screen.mode = Mode::Preview;
-        screen.preview = (0..8)
-            .map(|i| PreviewEntry {
-                path: format!("file-{i}"),
-                ignored: false,
-                matched_by: None,
-                secret_warning: false,
-            })
-            .collect();
+        screen.replace_preview(
+            (0..8)
+                .map(|i| PreviewEntry {
+                    path: format!("file-{i}"),
+                    ignored: false,
+                    matched_by: None,
+                    secret_warning: false,
+                })
+                .collect(),
+        );
         screen.set_preview_viewport_height(3);
         screen.handle_key(key(KeyCode::PageDown), 0, 1);
 

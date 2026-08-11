@@ -588,7 +588,7 @@ regression test that demonstrates the current failure.
   Shift+Tab, confirmations, unchanged source sessions, and pending additions,
   removals, and ignore rules.
 
-- [ ] **TU04 - Move slow TUI reads and validation off the render thread.** Use
+- [x] **TU04 - Move slow TUI reads and validation off the render thread.** Use
   the existing task/event architecture for repository validation, backup
   preview generation, Ignore Preview generation, and initial automation
   inspection. Introduce typed per-screen `NotLoaded`, `Loading`, `Loaded`,

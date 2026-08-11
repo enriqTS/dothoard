@@ -8,18 +8,15 @@ use std::path::Path;
 use crate::backup::changeset::ChangeSet;
 use crate::backup::planner::{PlanInputs, plan_backup};
 use crate::config::Config;
+use crate::tui::task::LoadState;
 
 /// The state of the backup preview screen.
 #[derive(Debug)]
 pub struct PreviewScreen {
-    /// The computed preview (if available).
-    pub preview: Option<PreviewData>,
+    /// Lifecycle and last usable backup preview.
+    pub load_state: LoadState<PreviewData>,
     /// Scroll offset for viewing long lists.
     pub scroll: usize,
-    /// Error message if preview generation failed.
-    pub error: Option<String>,
-    /// Whether a refresh is needed.
-    pub stale: bool,
 }
 
 /// Processed preview data ready for display.
@@ -78,10 +75,8 @@ impl Default for PreviewScreen {
 impl PreviewScreen {
     pub fn new() -> Self {
         Self {
-            preview: None,
+            load_state: LoadState::NotLoaded,
             scroll: 0,
-            error: None,
-            stale: true,
         }
     }
 
@@ -91,10 +86,7 @@ impl PreviewScreen {
 
         match key.code {
             // Refresh preview.
-            KeyCode::Char('r') => {
-                self.stale = true;
-                Action::Refresh
-            }
+            KeyCode::Char('r') => Action::Refresh,
             // Run backup.
             KeyCode::Char('b') => Action::RunBackup,
             // Push pending commits to remote.
@@ -121,10 +113,10 @@ impl PreviewScreen {
         }
     }
 
-    /// Generate the preview from the current configuration.
+    /// Generate a preview from an immutable configuration snapshot.
     ///
-    /// This runs the planner synchronously (it only reads the filesystem,
-    /// does not modify anything).
+    /// This helper performs filesystem reads and must run on a background
+    /// worker when called by the TUI.
     pub fn generate(
         config: &Config,
         home: &Path,
@@ -240,20 +232,18 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn new_screen_is_stale() {
+    fn new_screen_is_not_loaded() {
         let screen = PreviewScreen::new();
-        assert!(screen.stale);
-        assert!(screen.preview.is_none());
+        assert!(matches!(screen.load_state, LoadState::NotLoaded));
     }
 
     #[test]
     fn r_triggers_refresh() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         let mut screen = PreviewScreen::new();
-        screen.stale = false;
         let action = screen.handle_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE));
         assert_eq!(action, Action::Refresh);
-        assert!(screen.stale);
+        assert!(matches!(screen.load_state, LoadState::NotLoaded));
     }
 
     #[test]

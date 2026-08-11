@@ -15,10 +15,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   namespace-scoped backup/Git behavior, lifecycle operations, TUI namespace
   selection/create/rename/delete controls, and multi-machine documentation.
 - **Milestone 14 in progress**: TU01–TU14 define the post-namespace TUI
-  usability and visual design work. **TU01–TU03 are complete**: Unicode text
-  handling, reliable History/Ignore Preview viewports, and consistent
-  back/cancel/apply/quit behavior are implemented. **TU04 is active**: move
-  slow TUI reads and validation onto the task/event architecture.
+  usability and visual design work. **TU01–TU04 are complete**: Unicode text,
+  reliable viewports, consistent interaction exits, and nonblocking slow TUI
+  reads are implemented. **TU05 is active**: separate contextual help from
+  transient status and progress.
 
 ## Durable Decisions
 
@@ -110,6 +110,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - History lists, History logs, and Ignore Preview use shared viewport state
   whose page size comes from the most recently rendered area. Selection and
   offsets are clamped after resize, refresh, and data shrinkage.
+- Repository validation, Backup Preview, Ignore Preview, and automation status
+  inspection run as keyed background tasks. Their typed load states preserve
+  safe prior data during refresh, suppress duplicates, and reject results from
+  invalidated request generations. Preview and Automation load on first entry.
 - Namespace names are explicit user-selected portable ASCII path components:
   letters, digits, `.`, `_`, and `-` only; empty names, path separators,
   `.`/`..`, absolute paths, and other characters are rejected. Configuration
@@ -118,6 +122,12 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- TU04 verified with Rust 1.97.1:
+  - `cargo fmt --check` — clean
+  - `cargo clippy --all-targets --all-features -- -D warnings` — clean
+  - `cargo test --all-targets --all-features -- --test-threads=1` — clean
+  - 894 library tests, 18 acceptance tests, 1 bootstrap test, 15 Git workflow
+    tests, 49 hardening tests, 21 mirror tests, and 14 orchestration tests pass.
 - TU03 verified with Rust 1.97.1:
   - `cargo fmt --check` — clean
   - `cargo clippy --all-targets --all-features -- -D warnings` — clean

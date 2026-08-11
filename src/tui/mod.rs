@@ -174,9 +174,9 @@ impl App {
         }
     }
 
-    /// Poll for completed background tasks and update state.
+    /// Poll for all completed background tasks and update state.
     pub fn poll_tasks(&mut self) {
-        if let Some(result) = self.tasks.poll() {
+        while let Some(result) = self.tasks.poll() {
             match result {
                 task::TaskResult::Backup(r) => {
                     self.status_message = if r.success {
@@ -188,10 +188,8 @@ impl App {
                         ))
                     };
                     self.last_backup = Some(r);
-                    // Reload persistent state to reflect the new backup outcome.
                     self.reload_state();
-                    // Mark preview stale since files may have changed.
-                    self.preview_screen.stale = true;
+                    self.invalidate_backup_preview();
                 }
                 task::TaskResult::Check(r) => {
                     self.status_message = if r.healthy {
@@ -210,11 +208,78 @@ impl App {
                             r.error.as_deref().unwrap_or("unknown error")
                         ))
                     };
-                    // Reload state to reflect updated pending_push status.
                     self.reload_state();
+                }
+                task::TaskResult::RepositoryValidation { request_id, result } => {
+                    if self.repo_screen.validation.finish(request_id, result)
+                        && let Some(info) = self.repo_screen.validation.data()
+                        && info.ownership.needs_confirmation()
+                    {
+                        self.repo_screen.confirm_state = match info.ownership {
+                            screens::repository::OwnershipInfo::New => {
+                                screens::repository::ConfirmState::AskInitialize
+                            }
+                            screens::repository::OwnershipInfo::Owned { .. } => {
+                                screens::repository::ConfirmState::AskAttach
+                            }
+                            _ => screens::repository::ConfirmState::None,
+                        };
+                    }
+                }
+                task::TaskResult::BackupPreview { request_id, result } => {
+                    if self.preview_screen.load_state.finish(request_id, result) {
+                        self.preview_screen.scroll = 0;
+                    }
+                }
+                task::TaskResult::IgnorePreview {
+                    request_id,
+                    source_idx,
+                    result,
+                } => {
+                    if source_idx == self.ignore_screen.source_idx
+                        && self.ignore_screen.preview_state.finish(request_id, result)
+                    {
+                        let len = self.ignore_screen.preview().map_or(0, <[_]>::len);
+                        self.ignore_screen.preview_viewport.clamp(len);
+                    }
+                }
+                task::TaskResult::AutomationInspection { request_id, result } => {
+                    self.automation_screen
+                        .status_state
+                        .finish(request_id, result);
                 }
             }
         }
+    }
+
+    fn invalidate_repository_validation(&mut self) {
+        self.tasks
+            .invalidate_load(task::LoadTaskKind::RepositoryValidation);
+        self.repo_screen.validation.invalidate();
+        self.repo_screen.confirm_state = screens::repository::ConfirmState::None;
+    }
+
+    fn invalidate_backup_preview(&mut self) {
+        self.tasks
+            .invalidate_load(task::LoadTaskKind::BackupPreview);
+        self.preview_screen.load_state.invalidate();
+    }
+
+    fn invalidate_ignore_preview(&mut self) {
+        self.tasks
+            .invalidate_load(task::LoadTaskKind::IgnorePreview);
+        self.ignore_screen.mark_preview_stale();
+    }
+
+    fn invalidate_dependent_previews(&mut self) {
+        self.invalidate_backup_preview();
+        self.invalidate_ignore_preview();
+    }
+
+    fn invalidate_automation_status(&mut self) {
+        self.tasks
+            .invalidate_load(task::LoadTaskKind::AutomationInspection);
+        self.automation_screen.status_state.invalidate();
     }
 
     /// Add a new source path to the configuration.
@@ -264,9 +329,7 @@ impl App {
                             screens::sources::MessageKind::Info
                         },
                     });
-                    // Mark previews stale after source change.
-                    self.preview_screen.stale = true;
-                    self.ignore_screen.preview_stale = true;
+                    self.invalidate_dependent_previews();
                 }
                 Err(e) => {
                     self.sources_screen.message = Some(screens::sources::Message {
@@ -285,9 +348,11 @@ impl App {
 
     /// Remove the source at the given index from configuration.
     fn handle_remove_source(&mut self, idx: usize) {
+        let mut removed_source = false;
         if let Some(ref mut config) = self.config
             && idx < config.sources.len()
         {
+            removed_source = true;
             let removed = config.sources.remove(idx);
             // Save config.
             if let Some(ref paths) = self.paths {
@@ -310,9 +375,9 @@ impl App {
                 self.ignore_screen.source_idx = config.sources.len() - 1;
                 self.ignore_screen.pattern_idx = 0;
             }
-            // Mark previews stale.
-            self.preview_screen.stale = true;
-            self.ignore_screen.preview_stale = true;
+        }
+        if removed_source {
+            self.invalidate_dependent_previews();
         }
         self.sources_screen.mode = screens::sources::Mode::List;
     }
@@ -456,9 +521,7 @@ impl App {
         // Reset selection so next Browse entry reloads from config.
         self.sources_screen.selection = None;
 
-        // Mark previews stale.
-        self.preview_screen.stale = true;
-        self.ignore_screen.preview_stale = true;
+        self.invalidate_dependent_previews();
     }
 
     /// Add a pattern to the source at the given index.
@@ -471,9 +534,9 @@ impl App {
                 let _ = config.save(paths.config_file());
             }
             self.ignore_screen.mode = screens::ignore::Mode::List;
-            self.ignore_screen.preview_stale = true;
             self.ignore_screen.message = Some(format!("Added pattern '{pattern}'."));
         }
+        self.invalidate_dependent_previews();
     }
 
     /// Remove a pattern from the source.
@@ -483,7 +546,6 @@ impl App {
                 && pat_idx < source.ignore.len()
             {
                 let removed = source.ignore.remove(pat_idx);
-                self.ignore_screen.preview_stale = true;
                 self.ignore_screen.message = Some(format!("Removed pattern '{removed}'."));
                 // Adjust selection.
                 if self.ignore_screen.pattern_idx >= source.ignore.len()
@@ -497,45 +559,123 @@ impl App {
                 let _ = config.save(paths.config_file());
             }
         }
+        self.invalidate_dependent_previews();
     }
 
-    /// Refresh the ignore preview for a source.
-    fn handle_refresh_preview(&mut self, src_idx: usize) {
-        if let Some(ref config) = self.config
-            && let Some(source) = config.sources.get(src_idx)
-            && let Some(ref paths) = self.paths
-        {
-            let preview = screens::ignore::IgnoreScreen::generate_preview(
-                &source.path,
-                &source.ignore,
-                paths.home(),
-            );
-            self.ignore_screen.replace_preview(preview);
-            self.ignore_screen.preview_stale = false;
+    fn start_ignore_preview(&mut self, src_idx: usize) {
+        if self.ignore_screen.preview_state.is_loading() {
+            return;
+        }
+        let Some(config) = self.config.as_ref() else {
+            self.ignore_screen
+                .preview_state
+                .fail("No configuration loaded.".to_string(), true);
+            return;
+        };
+        let Some(source) = config.sources.get(src_idx) else {
+            self.ignore_screen
+                .preview_state
+                .fail("No source selected.".to_string(), true);
+            return;
+        };
+        let Some(paths) = self.paths.as_ref() else {
+            self.ignore_screen
+                .preview_state
+                .fail("Application paths are unavailable.".to_string(), true);
+            return;
+        };
+        if let Some(request_id) = self.tasks.spawn_ignore_preview(
+            src_idx,
+            source.path.clone(),
+            source.ignore.clone(),
+            paths.home().to_path_buf(),
+        ) {
+            self.ignore_screen.preview_state.begin(request_id, true);
         }
     }
 
-    /// Refresh the backup preview (dry-run planner).
-    fn refresh_preview(&mut self) {
-        if let Some(ref config) = self.config {
-            if let Some(ref paths) = self.paths {
-                let repo_path = config.repository_path(paths.home());
-                match screens::preview::PreviewScreen::generate(config, paths.home(), &repo_path) {
-                    Ok(data) => {
-                        self.preview_screen.preview = Some(data);
-                        self.preview_screen.error = None;
-                        self.preview_screen.stale = false;
-                        self.preview_screen.scroll = 0;
-                    }
-                    Err(e) => {
-                        self.preview_screen.error = Some(e);
-                        self.preview_screen.preview = None;
-                        self.preview_screen.stale = false;
-                    }
-                }
-            }
-        } else {
-            self.preview_screen.error = Some("No configuration loaded.".to_string());
+    fn start_backup_preview(&mut self) {
+        if self.preview_screen.load_state.is_loading() {
+            return;
+        }
+        let Some(config) = self.config.clone() else {
+            self.preview_screen
+                .load_state
+                .fail("No configuration loaded.".to_string(), true);
+            return;
+        };
+        let Some(paths) = self.paths.as_ref() else {
+            self.preview_screen
+                .load_state
+                .fail("Application paths are unavailable.".to_string(), true);
+            return;
+        };
+        let home = paths.home().to_path_buf();
+        let repository = config.repository_path(&home);
+        if let Some(request_id) = self.tasks.spawn_backup_preview(config, home, repository) {
+            self.preview_screen.load_state.begin(request_id, true);
+        }
+    }
+
+    fn start_automation_inspection(&mut self) {
+        if self.automation_screen.status_state.is_loading() {
+            return;
+        }
+        let Some(config) = self.config.clone() else {
+            self.automation_screen
+                .status_state
+                .fail("No configuration loaded.".to_string(), true);
+            return;
+        };
+        let Some(paths) = self.paths.as_ref() else {
+            self.automation_screen
+                .status_state
+                .fail("Application paths are unavailable.".to_string(), true);
+            return;
+        };
+        if let Some(request_id) = self
+            .tasks
+            .spawn_automation_inspection(config, paths.home().to_path_buf())
+        {
+            self.automation_screen.status_state.begin(request_id, true);
+        }
+    }
+
+    fn start_repository_validation(&mut self) {
+        if self.repo_screen.validation.is_loading() {
+            return;
+        }
+        let Some(paths) = self.paths.as_ref() else {
+            self.repo_screen
+                .validation
+                .fail("Application paths are unavailable.".to_string(), false);
+            return;
+        };
+        let (namespace, remote, timeout_seconds) = self.config.as_ref().map_or_else(
+            || {
+                (
+                    self.repo_screen.namespace_input.clone(),
+                    "origin".to_string(),
+                    120,
+                )
+            },
+            |config| {
+                (
+                    config.namespace.clone(),
+                    config.remote.clone(),
+                    config.network_timeout_seconds,
+                )
+            },
+        );
+        if let Some(request_id) = self.tasks.spawn_repository_validation(
+            self.repo_screen.input.clone(),
+            paths.home().to_path_buf(),
+            namespace,
+            remote,
+            timeout_seconds,
+        ) {
+            self.repo_screen.validation.begin(request_id, false);
+            self.repo_screen.confirm_state = screens::repository::ConfirmState::None;
         }
     }
 
@@ -608,6 +748,20 @@ impl App {
                     if let Some(ref paths) = self.paths {
                         self.repo_screen.ensure_browser(paths.home());
                     }
+                } else if self.active_screen == Screen::Preview
+                    && matches!(
+                        self.preview_screen.load_state,
+                        task::LoadState::NotLoaded | task::LoadState::Stale { .. }
+                    )
+                {
+                    self.start_backup_preview();
+                } else if self.active_screen == Screen::Automation
+                    && matches!(
+                        self.automation_screen.status_state,
+                        task::LoadState::NotLoaded | task::LoadState::Stale { .. }
+                    )
+                {
+                    self.start_automation_inspection();
                 }
             }
             // Direct tab selection via number keys.
@@ -761,8 +915,9 @@ impl App {
                 self.repo_screen.set_namespace(&requested);
                 self.repo_screen.namespace_action = screens::repository::NamespaceAction::None;
                 self.repo_screen.mode = screens::repository::RepoMode::Browser;
-                self.preview_screen.stale = true;
-                self.ignore_screen.preview_stale = true;
+                self.invalidate_repository_validation();
+                self.invalidate_dependent_previews();
+                self.invalidate_automation_status();
                 self.status_message = Some(format!("Active namespace: {requested}"));
             }
             Err(e) => self.status_message = Some(format!("Namespace operation failed: {e}")),
@@ -805,7 +960,14 @@ impl App {
             self.repo_screen.ensure_browser(paths.home());
         }
 
+        let previous_input = self.repo_screen.input.clone();
         let result = self.repo_screen.handle_key(key);
+        if self.repo_screen.input != previous_input {
+            self.tasks
+                .invalidate_load(task::LoadTaskKind::RepositoryValidation);
+            self.repo_screen.validation.reset();
+            self.repo_screen.confirm_state = screens::repository::ConfirmState::None;
+        }
         match result {
             screens::repository::KeyResult::Consumed => true,
             screens::repository::KeyResult::Namespace => {
@@ -813,30 +975,7 @@ impl App {
                 true
             }
             screens::repository::KeyResult::Validate => {
-                if let Some(ref paths) = self.paths {
-                    let namespace = self
-                        .config
-                        .as_ref()
-                        .map(|config| config.namespace.clone())
-                        .unwrap_or_else(|| self.repo_screen.namespace_input.clone());
-                    self.repo_screen.validate(paths.home(), &namespace);
-                    if let Some(screens::repository::ValidationResult::Valid(ref info)) =
-                        self.repo_screen.validation
-                        && info.ownership.needs_confirmation()
-                    {
-                        self.repo_screen.confirm_state = match info.ownership {
-                            screens::repository::OwnershipInfo::New => {
-                                screens::repository::ConfirmState::AskInitialize
-                            }
-                            screens::repository::OwnershipInfo::Owned { .. } => {
-                                screens::repository::ConfirmState::AskAttach
-                            }
-                            _ => screens::repository::ConfirmState::None,
-                        };
-                    }
-                } else {
-                    self.status_message = Some("Cannot validate: paths not resolved.".to_string());
-                }
+                self.start_repository_validation();
                 true
             }
             screens::repository::KeyResult::Confirm => {
@@ -859,6 +998,8 @@ impl App {
                             {
                                 let _ = config.save(paths.config_file());
                             }
+                            self.invalidate_dependent_previews();
+                            self.invalidate_automation_status();
                             self.status_message =
                                 Some("Repository configured successfully.".to_string());
                         }
@@ -932,6 +1073,7 @@ impl App {
 
     /// Ignore content key handling.
     fn handle_ignore_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
+        let previous_source_idx = self.ignore_screen.source_idx;
         let source_count = self.config.as_ref().map(|c| c.sources.len()).unwrap_or(0);
         let pattern_count = self
             .config
@@ -942,6 +1084,10 @@ impl App {
         let action = self
             .ignore_screen
             .handle_key(key, pattern_count, source_count);
+        if self.ignore_screen.source_idx != previous_source_idx {
+            self.tasks
+                .invalidate_load(task::LoadTaskKind::IgnorePreview);
+        }
         match action {
             screens::ignore::Action::Consumed => true,
             screens::ignore::Action::AddPattern(src_idx, pattern) => {
@@ -953,7 +1099,7 @@ impl App {
                 true
             }
             screens::ignore::Action::RefreshPreview(src_idx) => {
-                self.handle_refresh_preview(src_idx);
+                self.start_ignore_preview(src_idx);
                 true
             }
             screens::ignore::Action::NotConsumed => false,
@@ -966,7 +1112,7 @@ impl App {
         match action {
             screens::preview::Action::Consumed => true,
             screens::preview::Action::Refresh => {
-                self.refresh_preview();
+                self.start_backup_preview();
                 true
             }
             screens::preview::Action::RunBackup => {
@@ -1004,11 +1150,7 @@ impl App {
         match action {
             screens::automation::Action::Consumed => true,
             screens::automation::Action::RefreshStatus => {
-                if let Some(ref config) = self.config
-                    && let Some(ref paths) = self.paths
-                {
-                    self.automation_screen.refresh_status(config, paths.home());
-                }
+                self.start_automation_inspection();
                 true
             }
             screens::automation::Action::Install => {
@@ -1017,12 +1159,14 @@ impl App {
                 {
                     self.automation_screen.install(config, paths.home());
                 }
+                self.invalidate_automation_status();
                 true
             }
             screens::automation::Action::Remove => {
                 if let Some(ref paths) = self.paths {
                     self.automation_screen.remove(paths.home());
                 }
+                self.invalidate_automation_status();
                 true
             }
             screens::automation::Action::NotConsumed => false,
@@ -1061,7 +1205,7 @@ mod tests {
             focus: Focus::TabBar,
             active_screen: Screen::Dashboard,
             should_quit: false,
-            tasks: task::TaskManager::new(),
+            tasks: task::TaskManager::new_controlled(),
             last_backup: None,
             last_check: None,
             paths: None,
@@ -1074,6 +1218,49 @@ mod tests {
             preview_screen: screens::preview::PreviewScreen::new(),
             automation_screen: screens::automation::AutomationScreen::new(),
             history_screen: screens::history::HistoryScreen::new(),
+        }
+    }
+
+    fn configured_test_app() -> (App, tempfile::TempDir) {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path();
+        let config_dir = home.join(".config/dothoard");
+        let state_dir = home.join(".local/state/dothoard");
+        let runtime_dir = home.join(".run");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&state_dir).unwrap();
+        std::fs::create_dir_all(&runtime_dir).unwrap();
+
+        let mut app = test_app();
+        app.paths = Some(
+            crate::paths::AppPaths::resolve(crate::paths::PathInputs {
+                home: Some(home.to_path_buf()),
+                config_dir: Some(config_dir),
+                state_dir: Some(state_dir),
+                runtime_dir: Some(runtime_dir),
+                use_environment: false,
+            })
+            .unwrap(),
+        );
+        app.config = Some(crate::config::Config::new(
+            home.join("repo").display().to_string(),
+            "test-machine",
+        ));
+        (app, temp)
+    }
+
+    fn preview_data(path: &str) -> screens::preview::PreviewData {
+        screens::preview::PreviewData {
+            additions: 1,
+            modifications: 0,
+            deletions: 0,
+            exclusions: 0,
+            warnings: 0,
+            entries: vec![screens::preview::PreviewEntry {
+                kind: screens::preview::EntryKind::Addition,
+                path: path.to_string(),
+                detail: None,
+            }],
         }
     }
 
@@ -1980,15 +2167,17 @@ mod tests {
             network_timeout_seconds: 120,
             sources: Vec::new(),
         });
-        app.preview_screen.stale = false;
-        app.ignore_screen.preview_stale = false;
-
         // Add a source.
         app.handle_add_source(".config".to_string());
 
-        // Preview should be marked stale.
-        assert!(app.preview_screen.stale);
-        assert!(app.ignore_screen.preview_stale);
+        assert!(matches!(
+            app.preview_screen.load_state,
+            task::LoadState::Stale { .. }
+        ));
+        assert!(matches!(
+            app.ignore_screen.preview_state,
+            task::LoadState::Stale { .. }
+        ));
     }
 
     #[test]
@@ -2012,12 +2201,16 @@ mod tests {
                 },
             ],
         });
-        app.preview_screen.stale = false;
-
         app.handle_remove_source(0);
 
-        assert!(app.preview_screen.stale);
-        assert!(app.ignore_screen.preview_stale);
+        assert!(matches!(
+            app.preview_screen.load_state,
+            task::LoadState::Stale { .. }
+        ));
+        assert!(matches!(
+            app.ignore_screen.preview_state,
+            task::LoadState::Stale { .. }
+        ));
     }
 
     #[test]
@@ -2178,6 +2371,238 @@ mod tests {
             app.sources_screen.message.as_ref().unwrap().kind,
             screens::sources::MessageKind::Error,
         );
+    }
+
+    // --- TU04: slow work must not complete inline ---
+
+    #[test]
+    fn repository_validation_does_not_run_inline() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+        let config_dir = home.join(".config/dothoard");
+        let state_dir = home.join(".local/state/dothoard");
+        let runtime_dir = home.join(".run");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&state_dir).unwrap();
+        std::fs::create_dir_all(&runtime_dir).unwrap();
+
+        let mut app = test_app();
+        app.paths = Some(
+            crate::paths::AppPaths::resolve(crate::paths::PathInputs {
+                home: Some(home.to_path_buf()),
+                config_dir: Some(config_dir),
+                state_dir: Some(state_dir),
+                runtime_dir: Some(runtime_dir),
+                use_environment: false,
+            })
+            .unwrap(),
+        );
+        app.focus = Focus::Content;
+        app.active_screen = Screen::Repository;
+        app.repo_screen.mode = screens::repository::RepoMode::TextInput;
+        app.repo_screen.input = home.join("missing").display().to_string();
+
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert!(
+            app.repo_screen.validation.is_loading(),
+            "validation must be handed to a background worker"
+        );
+        let request_id = app.repo_screen.validation.loading_id().unwrap();
+        app.tasks
+            .sender
+            .send(task::TaskResult::RepositoryValidation {
+                request_id,
+                result: Err("not a repository".to_string()),
+            })
+            .unwrap();
+        app.poll_tasks();
+        assert_eq!(app.repo_screen.validation.error(), Some("not a repository"));
+    }
+
+    #[test]
+    fn screen_loads_complete_and_fail_from_controlled_results() {
+        let (mut app, _temp) = configured_test_app();
+
+        app.preview_screen.load_state = task::LoadState::Loaded(preview_data("old"));
+        app.start_backup_preview();
+        let preview_request = app.preview_screen.load_state.loading_id().unwrap();
+        assert_eq!(
+            app.preview_screen.load_state.data().unwrap().entries[0].path,
+            "old"
+        );
+        app.tasks
+            .sender
+            .send(task::TaskResult::BackupPreview {
+                request_id: preview_request,
+                result: Err("planner failed".to_string()),
+            })
+            .unwrap();
+        app.poll_tasks();
+        assert_eq!(
+            app.preview_screen.load_state.error(),
+            Some("planner failed")
+        );
+        assert_eq!(
+            app.preview_screen.load_state.data().unwrap().entries[0].path,
+            "old"
+        );
+
+        app.config.as_mut().unwrap().sources = vec![crate::config::SourceConfig {
+            path: ".config".to_string(),
+            ignore: vec![],
+        }];
+        app.start_ignore_preview(0);
+        let ignore_request = app.ignore_screen.preview_state.loading_id().unwrap();
+        app.tasks
+            .sender
+            .send(task::TaskResult::IgnorePreview {
+                request_id: ignore_request,
+                source_idx: 0,
+                result: Ok(vec![screens::ignore::PreviewEntry {
+                    path: "file".to_string(),
+                    ignored: false,
+                    matched_by: None,
+                    secret_warning: false,
+                }]),
+            })
+            .unwrap();
+        app.poll_tasks();
+        assert_eq!(app.ignore_screen.preview().unwrap()[0].path, "file");
+    }
+
+    #[test]
+    fn backup_preview_starts_on_first_content_entry() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let (mut app, _temp) = configured_test_app();
+        app.active_screen = Screen::Preview;
+
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert!(app.preview_screen.load_state.is_loading());
+        assert!(app.tasks.is_load_active(task::LoadTaskKind::BackupPreview));
+    }
+
+    #[test]
+    fn automation_inspection_starts_on_first_content_entry_and_suppresses_duplicates() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let (mut app, _temp) = configured_test_app();
+        app.active_screen = Screen::Automation;
+
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        let request_id = app
+            .automation_screen
+            .status_state
+            .loading_id()
+            .expect("initial inspection should start");
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE));
+        assert_eq!(
+            app.automation_screen.status_state.loading_id(),
+            Some(request_id)
+        );
+
+        app.tasks
+            .sender
+            .send(task::TaskResult::AutomationInspection {
+                request_id,
+                result: Ok("active".to_string()),
+            })
+            .unwrap();
+        app.poll_tasks();
+        assert_eq!(
+            app.automation_screen
+                .status_state
+                .data()
+                .map(String::as_str),
+            Some("active")
+        );
+    }
+
+    #[test]
+    fn switching_ignore_source_invalidates_loaded_or_loading_preview() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let (mut app, _temp) = configured_test_app();
+        app.config.as_mut().unwrap().sources = vec![
+            crate::config::SourceConfig {
+                path: "first".to_string(),
+                ignore: vec![],
+            },
+            crate::config::SourceConfig {
+                path: "second".to_string(),
+                ignore: vec![],
+            },
+        ];
+        app.active_screen = Screen::Ignore;
+        app.focus = Focus::Content;
+        app.start_ignore_preview(0);
+        let old_request = app.ignore_screen.preview_state.loading_id().unwrap();
+
+        app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+
+        assert_eq!(app.ignore_screen.source_idx, 1);
+        assert!(matches!(
+            app.ignore_screen.preview_state,
+            task::LoadState::Stale { .. }
+        ));
+        assert!(!app.tasks.is_load_active(task::LoadTaskKind::IgnorePreview));
+
+        app.start_ignore_preview(1);
+        assert_ne!(
+            app.ignore_screen.preview_state.loading_id(),
+            Some(old_request)
+        );
+    }
+
+    #[test]
+    fn invalidation_ignores_old_preview_result_and_accepts_replacement() {
+        let (mut app, _temp) = configured_test_app();
+        app.preview_screen.load_state = task::LoadState::Loaded(preview_data("baseline"));
+        app.start_backup_preview();
+        let old_request = app.preview_screen.load_state.loading_id().unwrap();
+
+        app.invalidate_backup_preview();
+        app.start_backup_preview();
+        let replacement = app.preview_screen.load_state.loading_id().unwrap();
+        assert_ne!(old_request, replacement);
+
+        app.tasks
+            .sender
+            .send(task::TaskResult::BackupPreview {
+                request_id: old_request,
+                result: Ok(preview_data("obsolete")),
+            })
+            .unwrap();
+        app.tasks
+            .sender
+            .send(task::TaskResult::BackupPreview {
+                request_id: replacement,
+                result: Ok(preview_data("current")),
+            })
+            .unwrap();
+        app.poll_tasks();
+
+        assert_eq!(
+            app.preview_screen.load_state.data().unwrap().entries[0].path,
+            "current"
+        );
+    }
+
+    #[test]
+    fn input_remains_responsive_while_screen_data_loads() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let (mut app, _temp) = configured_test_app();
+        app.active_screen = Screen::Preview;
+        app.focus = Focus::Content;
+        app.start_backup_preview();
+        assert!(app.preview_screen.load_state.is_loading());
+
+        app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+
+        assert_eq!(app.preview_screen.scroll, 1);
+        assert!(app.preview_screen.load_state.is_loading());
     }
 
     // --- F02: Repository browser initialization test ---
@@ -2379,8 +2804,10 @@ mod tests {
         let sources = &app.config.as_ref().unwrap().sources;
         assert_eq!(sources.len(), 2);
         assert!(sources.iter().any(|s| s.path == ".zshrc"));
-        // Previews should be stale.
-        assert!(app.preview_screen.stale);
+        assert!(matches!(
+            app.preview_screen.load_state,
+            task::LoadState::Stale { .. }
+        ));
     }
 
     #[test]
@@ -2475,8 +2902,10 @@ mod tests {
         assert!(!sources.iter().any(|s| s.path == ".zshrc"));
         // Selection reset.
         assert!(app.sources_screen.selection.is_none());
-        // Previews stale.
-        assert!(app.preview_screen.stale);
+        assert!(matches!(
+            app.preview_screen.load_state,
+            task::LoadState::Stale { .. }
+        ));
     }
 
     #[test]
