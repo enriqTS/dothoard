@@ -27,8 +27,8 @@ pub struct IgnoreScreen {
     pub preview_state: LoadState<Vec<PreviewEntry>>,
     /// Viewport for the file preview.
     pub(crate) preview_viewport: Viewport,
-    /// Feedback message.
-    pub message: Option<String>,
+    /// Feedback message promoted to the global status region.
+    pub message: Option<Message>,
 }
 
 /// Within List mode, which nested control has focus.
@@ -51,6 +51,19 @@ pub struct PreviewEntry {
     pub matched_by: Option<String>,
     /// Whether this file looks like a secret.
     pub secret_warning: bool,
+}
+
+/// Semantic category for ignore-editor feedback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MessageKind {
+    Success,
+    Error,
+}
+
+#[derive(Debug, Clone)]
+pub struct Message {
+    pub text: String,
+    pub kind: MessageKind,
 }
 
 /// The mode the ignore screen is in.
@@ -203,7 +216,10 @@ impl IgnoreScreen {
                 (_, KeyCode::Enter) => {
                     let pattern = self.input.clone();
                     if pattern.is_empty() {
-                        self.message = Some("Pattern cannot be empty".to_string());
+                        self.message = Some(Message {
+                            text: "Pattern cannot be empty".to_string(),
+                            kind: MessageKind::Error,
+                        });
                         Action::Consumed
                     } else {
                         Action::AddPattern(self.source_idx, pattern)

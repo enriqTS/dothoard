@@ -65,9 +65,7 @@ fn run_loop(terminal: &mut Term) -> io::Result<()> {
             AppEvent::Resize => {
                 // Ratatui handles resize automatically on the next draw.
             }
-            AppEvent::Tick => {
-                // Periodic refresh allows background task results to appear.
-            }
+            AppEvent::Tick => app.tick(),
         }
 
         if app.should_quit {

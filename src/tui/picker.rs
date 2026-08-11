@@ -119,19 +119,17 @@ pub fn handle_key(browser: &mut Browser, key: KeyEvent, viewport_height: usize) 
 /// `[ ]` for Unchecked. Pass `None` for browsers that don't need checkboxes
 /// (e.g., repository browser).
 pub fn draw(frame: &mut Frame, area: Rect, browser: &mut Browser, check_fn: Option<CheckFn>) {
-    // Layout: breadcrumb (1 line) + three panes + status (1 line).
+    // Keyboard help belongs to the authoritative application footer.
     let outer = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1), // Breadcrumb
             Constraint::Min(3),    // Panes
-            Constraint::Length(1), // Status
         ])
         .split(area);
 
     draw_breadcrumb(frame, outer[0], browser);
     draw_panes(frame, outer[1], browser, check_fn);
-    draw_status(frame, outer[2], browser);
 }
 
 /// Draw the breadcrumb/path header.
@@ -432,21 +430,6 @@ fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser) {
             frame.render_widget(msg, inner);
         }
     }
-}
-
-/// Draw the status/help bar at the bottom.
-fn draw_status(frame: &mut Frame, area: Rect, _browser: &Browser) {
-    let help = Line::from(vec![
-        Span::styled(" ↑↓", Style::default().fg(Color::Cyan)),
-        Span::raw(" navigate "),
-        Span::styled("←→", Style::default().fg(Color::Cyan)),
-        Span::raw(" open/back "),
-        Span::styled("Space", Style::default().fg(Color::Cyan)),
-        Span::raw(" select "),
-        Span::styled("Esc", Style::default().fg(Color::Cyan)),
-        Span::raw(" cancel"),
-    ]);
-    frame.render_widget(Paragraph::new(help), area);
 }
 
 /// Get a short icon character for an entry.

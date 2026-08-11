@@ -9,6 +9,7 @@ mod event;
 pub mod picker;
 pub mod screens;
 pub mod selection;
+mod status;
 pub mod task;
 mod terminal;
 mod text;
@@ -102,8 +103,8 @@ pub struct App {
     pub state: Option<crate::state::AppState>,
     /// Loaded configuration.
     pub config: Option<crate::config::Config>,
-    /// Status message displayed temporarily in the help bar.
-    pub status_message: Option<String>,
+    /// Transient status displayed independently from contextual help.
+    pub status_message: Option<status::StatusMessage>,
     /// Repository selection screen state.
     pub repo_screen: screens::repository::RepoScreen,
     /// Sources management screen state.
@@ -165,6 +166,68 @@ impl App {
         }
     }
 
+    fn publish_status(&mut self, message: status::StatusMessage) {
+        status::publish(&mut self.status_message, message);
+    }
+
+    fn success(&mut self, message: impl Into<String>) {
+        self.publish_status(status::StatusMessage::success(message));
+    }
+
+    fn warning(&mut self, message: impl Into<String>) {
+        self.publish_status(status::StatusMessage::warning(message));
+    }
+
+    fn error(&mut self, message: impl Into<String>) {
+        self.publish_status(status::StatusMessage::error(message));
+    }
+
+    fn running(&mut self, message: impl Into<String>) {
+        self.publish_status(status::StatusMessage::running(message));
+    }
+
+    /// Advance transient UI state on the periodic event-loop tick.
+    pub fn tick(&mut self) {
+        if self
+            .status_message
+            .as_mut()
+            .is_some_and(status::StatusMessage::tick)
+        {
+            self.status_message = None;
+        }
+    }
+
+    /// Move screen-local feedback into the authoritative status region.
+    fn promote_screen_messages(&mut self) {
+        if let Some(message) = self.sources_screen.message.take() {
+            let message = match message.kind {
+                screens::sources::MessageKind::Info => status::StatusMessage::success(message.text),
+                screens::sources::MessageKind::Warning => {
+                    status::StatusMessage::warning(message.text)
+                }
+                screens::sources::MessageKind::Error => status::StatusMessage::error(message.text),
+            };
+            self.publish_status(message);
+        }
+        if let Some(message) = self.ignore_screen.message.take() {
+            let message = match message.kind {
+                screens::ignore::MessageKind::Success => {
+                    status::StatusMessage::success(message.text)
+                }
+                screens::ignore::MessageKind::Error => status::StatusMessage::error(message.text),
+            };
+            self.publish_status(message);
+        }
+        if let Some(message) = self.automation_screen.message.take() {
+            let message = if message.success {
+                status::StatusMessage::success(message.text)
+            } else {
+                status::StatusMessage::error(message.text)
+            };
+            self.publish_status(message);
+        }
+    }
+
     /// Reload persistent state from disk (called after backup completes).
     pub fn reload_state(&mut self) {
         if let Some(ref paths) = self.paths {
@@ -179,35 +242,35 @@ impl App {
         while let Some(result) = self.tasks.poll() {
             match result {
                 task::TaskResult::Backup(r) => {
-                    self.status_message = if r.success {
-                        Some("Backup completed successfully.".to_string())
+                    if r.success {
+                        self.success("Backup completed successfully.");
                     } else {
-                        Some(format!(
+                        self.error(format!(
                             "Backup failed: {}",
                             r.error.as_deref().unwrap_or("unknown error")
-                        ))
-                    };
+                        ));
+                    }
                     self.last_backup = Some(r);
                     self.reload_state();
                     self.invalidate_backup_preview();
                 }
                 task::TaskResult::Check(r) => {
-                    self.status_message = if r.healthy {
-                        Some("All checks passed.".to_string())
+                    if r.healthy {
+                        self.success("All checks passed.");
                     } else {
-                        Some("Some checks reported issues.".to_string())
-                    };
+                        self.warning("Some checks reported issues.");
+                    }
                     self.last_check = Some(r);
                 }
                 task::TaskResult::Push(r) => {
-                    self.status_message = if r.success {
-                        Some("Push completed successfully.".to_string())
+                    if r.success {
+                        self.success("Push completed successfully.");
                     } else {
-                        Some(format!(
+                        self.error(format!(
                             "Push failed: {}",
                             r.error.as_deref().unwrap_or("unknown error")
-                        ))
-                    };
+                        ));
+                    }
                     self.reload_state();
                 }
                 task::TaskResult::RepositoryValidation { request_id, result } => {
@@ -534,7 +597,10 @@ impl App {
                 let _ = config.save(paths.config_file());
             }
             self.ignore_screen.mode = screens::ignore::Mode::List;
-            self.ignore_screen.message = Some(format!("Added pattern '{pattern}'."));
+            self.ignore_screen.message = Some(screens::ignore::Message {
+                text: format!("Added pattern '{pattern}'."),
+                kind: screens::ignore::MessageKind::Success,
+            });
         }
         self.invalidate_dependent_previews();
     }
@@ -546,7 +612,10 @@ impl App {
                 && pat_idx < source.ignore.len()
             {
                 let removed = source.ignore.remove(pat_idx);
-                self.ignore_screen.message = Some(format!("Removed pattern '{removed}'."));
+                self.ignore_screen.message = Some(screens::ignore::Message {
+                    text: format!("Removed pattern '{removed}'."),
+                    kind: screens::ignore::MessageKind::Success,
+                });
                 // Adjust selection.
                 if self.ignore_screen.pattern_idx >= source.ignore.len()
                     && !source.ignore.is_empty()
@@ -721,6 +790,7 @@ impl App {
             Focus::TabBar => self.handle_key_tab_bar(key),
             Focus::Content => self.handle_key_content(key),
         }
+        self.promote_screen_messages();
     }
 
     /// Handle keys when the tab bar has focus.
@@ -831,21 +901,20 @@ impl App {
             KeyCode::Char('b') if !self.tasks.is_busy() => {
                 if let Some(ref paths) = self.paths {
                     if self.tasks.spawn_backup(paths.clone()) {
-                        self.status_message = Some("Running backup...".to_string());
+                        self.running("Backup in progress...");
                     }
                 } else {
-                    self.status_message =
-                        Some("Cannot run backup: paths not resolved.".to_string());
+                    self.error("Cannot run backup: paths not resolved.");
                 }
                 true
             }
             KeyCode::Char('c') if !self.tasks.is_busy() => {
                 if let Some(ref paths) = self.paths {
                     if self.tasks.spawn_check(paths.clone()) {
-                        self.status_message = Some("Running check...".to_string());
+                        self.running("Check in progress...");
                     }
                 } else {
-                    self.status_message = Some("Cannot run check: paths not resolved.".to_string());
+                    self.error("Cannot run check: paths not resolved.");
                 }
                 true
             }
@@ -857,12 +926,11 @@ impl App {
         let action = self.repo_screen.namespace_action;
         let requested = self.repo_screen.namespace_input.clone();
         let Some(paths) = self.paths.clone() else {
-            self.status_message = Some("Cannot manage namespace: paths not resolved.".into());
+            self.error("Cannot manage namespace: paths not resolved.");
             return;
         };
         let Some(mut config) = self.config.clone() else {
-            self.status_message =
-                Some("Select a repository first, then choose its namespace.".into());
+            self.warning("Select a repository first, then choose its namespace.");
             self.repo_screen.mode = screens::repository::RepoMode::Browser;
             return;
         };
@@ -918,9 +986,9 @@ impl App {
                 self.invalidate_repository_validation();
                 self.invalidate_dependent_previews();
                 self.invalidate_automation_status();
-                self.status_message = Some(format!("Active namespace: {requested}"));
+                self.success(format!("Active namespace: {requested}"));
             }
-            Err(e) => self.status_message = Some(format!("Namespace operation failed: {e}")),
+            Err(e) => self.error(format!("Namespace operation failed: {e}")),
         }
     }
 
@@ -1000,11 +1068,10 @@ impl App {
                             }
                             self.invalidate_dependent_previews();
                             self.invalidate_automation_status();
-                            self.status_message =
-                                Some("Repository configured successfully.".to_string());
+                            self.success("Repository configured successfully.");
                         }
                         Err(e) => {
-                            self.status_message = Some(format!("Error: {e}"));
+                            self.error(e.to_string());
                             self.repo_screen.confirm_state =
                                 screens::repository::ConfirmState::None;
                         }
@@ -1117,26 +1184,25 @@ impl App {
             }
             screens::preview::Action::RunBackup => {
                 if self.tasks.is_busy() {
-                    self.status_message = Some("A task is already running.".to_string());
+                    self.warning("A task is already running.");
                 } else if let Some(ref paths) = self.paths {
                     if self.tasks.spawn_backup(paths.clone()) {
-                        self.status_message = Some("Running backup...".to_string());
+                        self.running("Backup in progress...");
                     }
                 } else {
-                    self.status_message =
-                        Some("Cannot run backup: paths not resolved.".to_string());
+                    self.error("Cannot run backup: paths not resolved.");
                 }
                 true
             }
             screens::preview::Action::Push => {
                 if self.tasks.is_busy() {
-                    self.status_message = Some("A task is already running.".to_string());
+                    self.warning("A task is already running.");
                 } else if let Some(ref paths) = self.paths {
                     if self.tasks.spawn_push(paths.clone()) {
-                        self.status_message = Some("Pushing to remote...".to_string());
+                        self.running("Push in progress...");
                     }
                 } else {
-                    self.status_message = Some("Cannot push: paths not resolved.".to_string());
+                    self.error("Cannot push: paths not resolved.");
                 }
                 true
             }
@@ -1262,6 +1328,38 @@ mod tests {
                 detail: None,
             }],
         }
+    }
+
+    #[test]
+    fn app_tick_expires_transient_status_but_not_running_progress() {
+        let mut app = test_app();
+        app.success("saved");
+        for _ in 0..16 {
+            app.tick();
+        }
+        assert!(app.status_message.is_none());
+
+        app.running("working");
+        for _ in 0..100 {
+            app.tick();
+        }
+        assert!(app.status_message.is_some());
+    }
+
+    #[test]
+    fn ignore_validation_failure_promotes_error_status() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+        let mut app = test_app();
+        app.focus = Focus::Content;
+        app.active_screen = Screen::Ignore;
+        app.ignore_screen.mode = screens::ignore::Mode::AddInput;
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        let status = app.status_message.expect("validation status");
+        assert_eq!(status.kind, status::StatusKind::Error);
+        assert!(status.text.contains("cannot be empty"));
+        assert!(app.ignore_screen.message.is_none());
     }
 
     #[test]
@@ -1492,7 +1590,9 @@ mod tests {
         let result = app.last_backup.as_ref().unwrap();
         assert!(result.success);
         assert_eq!(result.commit.as_deref(), Some("deadbeef"));
-        assert!(app.status_message.as_ref().unwrap().contains("success"));
+        let status = app.status_message.as_ref().unwrap();
+        assert!(status.contains("success"));
+        assert_eq!(status.kind, status::StatusKind::Success);
     }
 
     #[test]

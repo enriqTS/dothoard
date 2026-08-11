@@ -18,13 +18,15 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         .constraints([
             Constraint::Length(3), // Tab bar
             Constraint::Min(0),    // Screen content
-            Constraint::Length(1), // Status/help bar
+            Constraint::Length(1), // Transient status/progress
+            Constraint::Length(1), // Contextual help
         ])
         .split(frame.area());
 
     draw_tabs(frame, chunks[0], app);
     draw_screen(frame, chunks[1], app);
-    draw_help_bar(frame, chunks[2], app);
+    draw_status_bar(frame, chunks[2], app);
+    draw_help_bar(frame, chunks[3], app);
 }
 
 /// Draw the tab bar at the top.
@@ -100,24 +102,83 @@ fn content_border_style(app: &App) -> Style {
     }
 }
 
-/// Draw the help/status bar at the bottom.
+/// Draw transient feedback and progress independently from keyboard help.
+fn draw_status_bar(frame: &mut Frame, area: Rect, app: &App) {
+    use super::status::{StatusKind, StatusMessage};
+
+    let fallback = if let Some(message) = app.sources_screen.message.as_ref() {
+        let kind = match message.kind {
+            crate::tui::screens::sources::MessageKind::Info => StatusKind::Success,
+            crate::tui::screens::sources::MessageKind::Warning => StatusKind::Warning,
+            crate::tui::screens::sources::MessageKind::Error => StatusKind::Error,
+        };
+        Some(StatusMessage::new(kind, &message.text))
+    } else if let Some(message) = app.ignore_screen.message.as_ref() {
+        Some(StatusMessage::new(
+            match message.kind {
+                crate::tui::screens::ignore::MessageKind::Success => StatusKind::Success,
+                crate::tui::screens::ignore::MessageKind::Error => StatusKind::Error,
+            },
+            &message.text,
+        ))
+    } else if let Some(message) = app.automation_screen.message.as_ref() {
+        Some(StatusMessage::new(
+            if message.success {
+                StatusKind::Success
+            } else {
+                StatusKind::Error
+            },
+            &message.text,
+        ))
+    } else if app.tasks.is_busy() {
+        let operation = app.tasks.active_task().map_or("Task", |kind| match kind {
+            super::task::TaskKind::Backup => "Backup",
+            super::task::TaskKind::Check => "Check",
+            super::task::TaskKind::Push => "Push",
+        });
+        Some(StatusMessage::running(format!(
+            "{operation} in progress..."
+        )))
+    } else if app.repo_screen.validation.is_loading() {
+        Some(StatusMessage::running("Checking repository..."))
+    } else if app.preview_screen.load_state.is_loading() {
+        Some(StatusMessage::running("Generating backup preview..."))
+    } else if app.ignore_screen.preview_state.is_loading() {
+        Some(StatusMessage::running("Generating ignore preview..."))
+    } else if app.automation_screen.status_state.is_loading() {
+        Some(StatusMessage::running("Checking automation..."))
+    } else {
+        None
+    };
+
+    if let Some(message) = app.status_message.as_ref().or(fallback.as_ref()) {
+        let color = match message.kind {
+            StatusKind::Success => Color::Green,
+            StatusKind::Running => Color::Cyan,
+            StatusKind::Warning => Color::Yellow,
+            StatusKind::Error => Color::Red,
+        };
+        let rendered = format!(" {}: {}", message.kind.label(), message.text);
+        let rendered = text::truncate(&rendered, area.width as usize);
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                rendered,
+                Style::default().fg(color),
+            ))),
+            area,
+        );
+    }
+}
+
+/// Draw the authoritative mode-aware shortcut footer.
 fn draw_help_bar(frame: &mut Frame, area: Rect, app: &App) {
     use super::Focus;
 
-    let line = if let Some(ref msg) = app.status_message {
-        Line::from(vec![
-            Span::styled("  ", Style::default()),
-            Span::styled(msg.as_str(), Style::default().fg(Color::Yellow)),
-        ])
-    } else {
-        match app.focus {
-            Focus::TabBar => help_bar_tab_focus(),
-            Focus::Content => help_bar_content_focus(app),
-        }
+    let line = match app.focus {
+        Focus::TabBar => help_bar_tab_focus(),
+        Focus::Content => help_bar_content_focus(app),
     };
-
-    let paragraph = Paragraph::new(line);
-    frame.render_widget(paragraph, area);
+    frame.render_widget(Paragraph::new(line), area);
 }
 
 /// Help bar when the tab bar has focus.
@@ -137,30 +198,28 @@ fn help_bar_tab_focus() -> Line<'static> {
 /// Help bar when content has focus.
 fn help_bar_content_focus(app: &App) -> Line<'static> {
     match app.active_screen {
-        Screen::Dashboard => Line::from(vec![
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
-            Span::raw(" tabs  "),
-            Span::styled("b", Style::default().fg(Color::Cyan)),
-            Span::raw(" backup  "),
-            Span::styled("c", Style::default().fg(Color::Cyan)),
-            Span::raw(" check  "),
-            Span::styled("q", Style::default().fg(Color::Cyan)),
-            Span::raw(" quit"),
-        ]),
+        Screen::Dashboard => {
+            let mut spans = vec![
+                Span::styled("Tab", Style::default().fg(Color::Cyan)),
+                Span::raw(" tabs  "),
+            ];
+            if !app.tasks.is_busy() {
+                spans.extend([
+                    Span::styled("b", Style::default().fg(Color::Cyan)),
+                    Span::raw(" backup  "),
+                    Span::styled("c", Style::default().fg(Color::Cyan)),
+                    Span::raw(" check  "),
+                ]);
+            }
+            spans.extend([
+                Span::styled("q", Style::default().fg(Color::Cyan)),
+                Span::raw(" quit"),
+            ]);
+            Line::from(spans)
+        }
         Screen::Repository => help_bar_repository(app),
         Screen::Sources => help_bar_sources(app),
-        Screen::Ignore => Line::from(vec![
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
-            Span::raw(" tabs  "),
-            Span::styled("a", Style::default().fg(Color::Cyan)),
-            Span::raw(" add  "),
-            Span::styled("d", Style::default().fg(Color::Cyan)),
-            Span::raw(" delete  "),
-            Span::styled("p", Style::default().fg(Color::Cyan)),
-            Span::raw(" preview  "),
-            Span::styled("←→/hl", Style::default().fg(Color::Cyan)),
-            Span::raw(" source"),
-        ]),
+        Screen::Ignore => help_bar_ignore(app),
         Screen::Preview => Line::from(vec![
             Span::styled("Tab", Style::default().fg(Color::Cyan)),
             Span::raw(" tabs  "),
@@ -173,16 +232,30 @@ fn help_bar_content_focus(app: &App) -> Line<'static> {
             Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
             Span::raw(" scroll"),
         ]),
-        Screen::Automation => Line::from(vec![
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
-            Span::raw(" tabs  "),
-            Span::styled("r", Style::default().fg(Color::Cyan)),
-            Span::raw(" refresh  "),
-            Span::styled("i", Style::default().fg(Color::Cyan)),
-            Span::raw(" install  "),
-            Span::styled("x", Style::default().fg(Color::Cyan)),
-            Span::raw(" remove"),
-        ]),
+        Screen::Automation => {
+            use crate::tui::screens::automation::ConfirmAction;
+            if app.automation_screen.confirm == ConfirmAction::None {
+                Line::from(vec![
+                    Span::styled("Tab", Style::default().fg(Color::Cyan)),
+                    Span::raw(" tabs  "),
+                    Span::styled("r", Style::default().fg(Color::Cyan)),
+                    Span::raw(" refresh  "),
+                    Span::styled("i", Style::default().fg(Color::Cyan)),
+                    Span::raw(" install  "),
+                    Span::styled("x", Style::default().fg(Color::Cyan)),
+                    Span::raw(" remove"),
+                ])
+            } else {
+                Line::from(vec![
+                    Span::styled("Tab", Style::default().fg(Color::Cyan)),
+                    Span::raw(" tabs  "),
+                    Span::styled("y", Style::default().fg(Color::Cyan)),
+                    Span::raw(" confirm  "),
+                    Span::styled("n/Esc", Style::default().fg(Color::Cyan)),
+                    Span::raw(" cancel"),
+                ])
+            }
+        }
         Screen::History => help_bar_history(app),
     }
 }
@@ -195,6 +268,8 @@ fn help_bar_repository(app: &App) -> Line<'static> {
         || app.repo_screen.confirm_state == ConfirmState::AskAttach
     {
         return Line::from(vec![
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(" tabs  "),
             Span::styled("y", Style::default().fg(Color::Cyan)),
             Span::raw(" confirm  "),
             Span::styled("n/Esc", Style::default().fg(Color::Cyan)),
@@ -203,23 +278,50 @@ fn help_bar_repository(app: &App) -> Line<'static> {
     }
 
     match app.repo_screen.mode {
-        RepoMode::Browser => Line::from(vec![
+        RepoMode::Browser => {
+            let mut spans = vec![
+                Span::styled("Tab", Style::default().fg(Color::Cyan)),
+                Span::raw(" tabs  "),
+                Span::styled("Space", Style::default().fg(Color::Cyan)),
+                Span::raw(" select  "),
+                Span::styled("n", Style::default().fg(Color::Cyan)),
+                Span::raw(" namespace  "),
+            ];
+            if app.config.is_some() {
+                spans.extend([
+                    Span::styled("r", Style::default().fg(Color::Cyan)),
+                    Span::raw(" rename  "),
+                    Span::styled("d", Style::default().fg(Color::Cyan)),
+                    Span::raw(" delete  "),
+                ]);
+            }
+            spans.extend([
+                Span::styled("↑↓←→", Style::default().fg(Color::Cyan)),
+                Span::raw(" navigate  "),
+                Span::styled(":/", Style::default().fg(Color::Cyan)),
+                Span::raw(" text input"),
+            ]);
+            Line::from(spans)
+        }
+        RepoMode::NamespaceInput if app.repo_screen.namespace_confirmation.is_some() => {
+            Line::from(vec![
+                Span::styled("Tab", Style::default().fg(Color::Cyan)),
+                Span::raw(" tabs  "),
+                Span::styled("y", Style::default().fg(Color::Cyan)),
+                Span::raw(" confirm  "),
+                Span::styled("n/Esc", Style::default().fg(Color::Cyan)),
+                Span::raw(" cancel"),
+            ])
+        }
+        RepoMode::NamespaceInput => Line::from(vec![
             Span::styled("Tab", Style::default().fg(Color::Cyan)),
             Span::raw(" tabs  "),
-            Span::styled("Space", Style::default().fg(Color::Cyan)),
-            Span::raw(" select  "),
-            Span::styled("↑↓←→", Style::default().fg(Color::Cyan)),
-            Span::raw(" navigate  "),
-            Span::styled(":/", Style::default().fg(Color::Cyan)),
-            Span::raw(" text input"),
-        ]),
-        RepoMode::NamespaceInput => Line::from(vec![
             Span::styled("Enter", Style::default().fg(Color::Cyan)),
-            Span::raw(" submit  "),
-            Span::styled("y/n", Style::default().fg(Color::Cyan)),
-            Span::raw(" confirm/cancel  "),
+            Span::raw(" review  "),
             Span::styled("Esc", Style::default().fg(Color::Cyan)),
-            Span::raw(" back"),
+            Span::raw(" cancel  "),
+            Span::styled("Ctrl+U", Style::default().fg(Color::Cyan)),
+            Span::raw(" clear"),
         ]),
         RepoMode::TextInput => Line::from(vec![
             Span::styled("Tab", Style::default().fg(Color::Cyan)),
@@ -239,16 +341,28 @@ fn help_bar_sources(app: &App) -> Line<'static> {
     use crate::tui::screens::sources::Mode;
 
     match app.sources_screen.mode {
-        Mode::List => Line::from(vec![
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
-            Span::raw(" tabs  "),
-            Span::styled("a", Style::default().fg(Color::Cyan)),
-            Span::raw(" add  "),
-            Span::styled("d", Style::default().fg(Color::Cyan)),
-            Span::raw(" delete  "),
-            Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
-            Span::raw(" navigate"),
-        ]),
+        Mode::List => {
+            let has_sources = app
+                .config
+                .as_ref()
+                .is_some_and(|config| !config.sources.is_empty());
+            let mut spans = vec![
+                Span::styled("Tab", Style::default().fg(Color::Cyan)),
+                Span::raw(" tabs  "),
+                Span::styled("a", Style::default().fg(Color::Cyan)),
+                Span::raw(" add"),
+            ];
+            if has_sources {
+                spans.extend([
+                    Span::raw("  "),
+                    Span::styled("d", Style::default().fg(Color::Cyan)),
+                    Span::raw(" delete  "),
+                    Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
+                    Span::raw(" navigate"),
+                ]);
+            }
+            Line::from(spans)
+        }
         Mode::Browse => Line::from(vec![
             Span::styled("Tab", Style::default().fg(Color::Cyan)),
             Span::raw(" tabs  "),
@@ -272,12 +386,16 @@ fn help_bar_sources(app: &App) -> Line<'static> {
             Span::raw(" clear"),
         ]),
         Mode::ConfirmDelete => Line::from(vec![
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(" tabs  "),
             Span::styled("y", Style::default().fg(Color::Cyan)),
             Span::raw(" confirm  "),
             Span::styled("n/Esc", Style::default().fg(Color::Cyan)),
             Span::raw(" cancel"),
         ]),
         Mode::PendingChanges => Line::from(vec![
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(" tabs  "),
             Span::styled("a", Style::default().fg(Color::Cyan)),
             Span::raw(" apply  "),
             Span::styled("d", Style::default().fg(Color::Cyan)),
@@ -286,11 +404,81 @@ fn help_bar_sources(app: &App) -> Line<'static> {
             Span::raw(" continue editing"),
         ]),
         Mode::ConfirmApply => Line::from(vec![
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(" tabs  "),
             Span::styled("y", Style::default().fg(Color::Cyan)),
             Span::raw(" remove and apply  "),
             Span::styled("n/Esc", Style::default().fg(Color::Cyan)),
             Span::raw(" back to choices"),
         ]),
+    }
+}
+
+/// Context-sensitive help for the Ignore screen.
+fn help_bar_ignore(app: &App) -> Line<'static> {
+    use crate::tui::screens::ignore::Mode;
+
+    match app.ignore_screen.mode {
+        Mode::AddInput => Line::from(vec![
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(" tabs  "),
+            Span::styled("Enter", Style::default().fg(Color::Cyan)),
+            Span::raw(" add  "),
+            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::raw(" cancel  "),
+            Span::styled("Ctrl+U", Style::default().fg(Color::Cyan)),
+            Span::raw(" clear"),
+        ]),
+        Mode::Preview => Line::from(vec![
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(" tabs  "),
+            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::raw(" back  "),
+            Span::styled("r", Style::default().fg(Color::Cyan)),
+            Span::raw(" refresh  "),
+            Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
+            Span::raw(" scroll  "),
+            Span::styled("PgUp/PgDn", Style::default().fg(Color::Cyan)),
+            Span::raw(" page"),
+        ]),
+        Mode::List => {
+            let has_sources = app
+                .config
+                .as_ref()
+                .is_some_and(|config| !config.sources.is_empty());
+            if !has_sources {
+                return Line::from(vec![
+                    Span::styled("Tab", Style::default().fg(Color::Cyan)),
+                    Span::raw(" tabs"),
+                ]);
+            }
+            let has_patterns = app
+                .config
+                .as_ref()
+                .and_then(|config| config.sources.get(app.ignore_screen.source_idx))
+                .is_some_and(|source| !source.ignore.is_empty());
+            let mut spans = vec![
+                Span::styled("Tab", Style::default().fg(Color::Cyan)),
+                Span::raw(" tabs  "),
+                Span::styled("a", Style::default().fg(Color::Cyan)),
+                Span::raw(" add  "),
+            ];
+            if has_patterns {
+                spans.extend([
+                    Span::styled("d", Style::default().fg(Color::Cyan)),
+                    Span::raw(" delete  "),
+                ]);
+            }
+            spans.extend([
+                Span::styled("p", Style::default().fg(Color::Cyan)),
+                Span::raw(" preview  "),
+                Span::styled("←→/hl", Style::default().fg(Color::Cyan)),
+                Span::raw(" source  "),
+                Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
+                Span::raw(" focus/item"),
+            ]);
+            Line::from(spans)
+        }
     }
 }
 
@@ -300,6 +488,8 @@ fn help_bar_history(app: &App) -> Line<'static> {
 
     match app.history_screen.mode {
         Mode::LogView => Line::from(vec![
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(" tabs  "),
             Span::styled("Esc", Style::default().fg(Color::Cyan)),
             Span::raw(" back  "),
             Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
@@ -307,16 +497,29 @@ fn help_bar_history(app: &App) -> Line<'static> {
             Span::styled("PgUp/PgDn", Style::default().fg(Color::Cyan)),
             Span::raw(" page"),
         ]),
-        Mode::History => Line::from(vec![
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
-            Span::raw(" tabs  "),
-            Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
-            Span::raw(" navigate  "),
-            Span::styled("Enter", Style::default().fg(Color::Cyan)),
-            Span::raw(" view logs  "),
-            Span::styled("q", Style::default().fg(Color::Cyan)),
-            Span::raw(" quit"),
-        ]),
+        Mode::History => {
+            let has_history = app
+                .state
+                .as_ref()
+                .is_some_and(|state| !state.history.is_empty());
+            let mut spans = vec![
+                Span::styled("Tab", Style::default().fg(Color::Cyan)),
+                Span::raw(" tabs  "),
+            ];
+            if has_history {
+                spans.extend([
+                    Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
+                    Span::raw(" navigate  "),
+                    Span::styled("Enter", Style::default().fg(Color::Cyan)),
+                    Span::raw(" view logs  "),
+                ]);
+            }
+            spans.extend([
+                Span::styled("q", Style::default().fg(Color::Cyan)),
+                Span::raw(" quit"),
+            ]);
+            Line::from(spans)
+        }
     }
 }
 
@@ -694,16 +897,6 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &mut App) {
         }
     }
 
-    // Help at bottom of detail.
-    detail_lines.push(Line::from(""));
-    detail_lines.push(Line::from(vec![
-        Span::raw(" "),
-        Span::styled("↑↓/jk", Style::default().fg(Color::DarkGray)),
-        Span::styled(" navigate  ", Style::default().fg(Color::DarkGray)),
-        Span::styled("Enter", Style::default().fg(Color::DarkGray)),
-        Span::styled(" view logs", Style::default().fg(Color::DarkGray)),
-    ]));
-
     let detail_paragraph = Paragraph::new(detail_lines);
     frame.render_widget(detail_paragraph, columns[1]);
 }
@@ -713,7 +906,7 @@ fn draw_log_view(frame: &mut Frame, area: Rect, app: &mut App) {
     let mut lines: Vec<Line> = Vec::new();
 
     lines.push(Line::from(Span::styled(
-        " Log View (Esc to return):",
+        " Log View:",
         Style::default()
             .fg(Color::Cyan)
             .add_modifier(Modifier::BOLD),
@@ -744,7 +937,7 @@ fn draw_log_view(frame: &mut Frame, area: Rect, app: &mut App) {
 
         if show_range {
             lines.push(dim_line(format!(
-                "  [{}-{} of {}] ↑↓/jk to scroll",
+                "  [{}-{} of {}]",
                 visible_range.start + 1,
                 visible_range.end,
                 app.history_screen.log_lines.len()
@@ -798,7 +991,7 @@ fn draw_automation(frame: &mut Frame, area: Rect, app: &App) {
         }
         LoadState::Loaded(status) => lines.push(field_line("  Status", status.clone())),
         LoadState::Stale { previous } => {
-            lines.push(dim_line("  Status is stale. Press 'r' to refresh."));
+            lines.push(dim_line("  Automation status is stale."));
             if let Some(status) = previous {
                 lines.push(field_line("  Previous", status.clone()));
             }
@@ -835,7 +1028,7 @@ fn draw_automation(frame: &mut Frame, area: Rect, app: &App) {
             lines.push(Line::from(vec![
                 Span::raw("  "),
                 Span::styled(
-                    "Install and enable the timer? (y/n)",
+                    "Install and enable the timer?",
                     Style::default()
                         .fg(Color::Yellow)
                         .add_modifier(Modifier::BOLD),
@@ -846,7 +1039,7 @@ fn draw_automation(frame: &mut Frame, area: Rect, app: &App) {
             lines.push(Line::from(vec![
                 Span::raw("  "),
                 Span::styled(
-                    "Remove the timer? (y/n)",
+                    "Remove the timer?",
                     Style::default()
                         .fg(Color::Yellow)
                         .add_modifier(Modifier::BOLD),
@@ -854,34 +1047,6 @@ fn draw_automation(frame: &mut Frame, area: Rect, app: &App) {
             ]));
         }
         ConfirmAction::None => {}
-    }
-
-    // Feedback message.
-    if let Some(ref msg) = app.automation_screen.message {
-        lines.push(Line::from(""));
-        let color = if msg.success {
-            Color::Green
-        } else {
-            Color::Red
-        };
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled(msg.text.clone(), Style::default().fg(color)),
-        ]));
-    }
-
-    // Help.
-    if app.automation_screen.confirm == ConfirmAction::None {
-        lines.push(Line::from(""));
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled("r", Style::default().fg(Color::DarkGray)),
-            Span::styled(" refresh  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("i", Style::default().fg(Color::DarkGray)),
-            Span::styled(" install  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("x", Style::default().fg(Color::DarkGray)),
-            Span::styled(" remove", Style::default().fg(Color::DarkGray)),
-        ]));
     }
 
     let paragraph = Paragraph::new(lines);
@@ -909,10 +1074,10 @@ fn draw_preview(frame: &mut Frame, area: Rect, app: &App) {
             Style::default().fg(Color::Yellow),
         ))),
         LoadState::Stale { .. } => {
-            lines.push(dim_line("  Preview is stale. Press 'r' to refresh."));
+            lines.push(dim_line("  Preview is stale."));
         }
         LoadState::Failed { error, .. } => lines.push(Line::from(Span::styled(
-            format!("  Preview failed: {error} (press 'r' to retry)"),
+            format!("  Preview failed: {error}"),
             Style::default().fg(Color::Red),
         ))),
         LoadState::NotLoaded | LoadState::Loaded(_) => {}
@@ -923,7 +1088,7 @@ fn draw_preview(frame: &mut Frame, area: Rect, app: &App) {
         let message = if app.preview_screen.load_state.is_loading() {
             "  Waiting for the backup planner."
         } else {
-            "  Preview not loaded. Press 'r' to generate."
+            "  Preview has not been generated."
         };
         lines.push(dim_line(message));
         lines.push(Line::from(""));
@@ -996,25 +1161,13 @@ fn draw_preview(frame: &mut Frame, area: Rect, app: &App) {
         if data.entries.len() > visible_height {
             lines.push(Line::from(""));
             lines.push(dim_line(format!(
-                "  [{}-{} of {}] ↑↓/jk to scroll",
+                "  [{}-{} of {}]",
                 scroll + 1,
                 (scroll + visible_height).min(data.entries.len()),
                 data.entries.len()
             )));
         }
     }
-
-    // Help.
-    lines.push(Line::from(""));
-    lines.push(Line::from(vec![
-        Span::raw("  "),
-        Span::styled("r", Style::default().fg(Color::DarkGray)),
-        Span::styled(" refresh  ", Style::default().fg(Color::DarkGray)),
-        Span::styled("b", Style::default().fg(Color::DarkGray)),
-        Span::styled(" backup  ", Style::default().fg(Color::DarkGray)),
-        Span::styled("↑↓/jk", Style::default().fg(Color::DarkGray)),
-        Span::styled(" scroll", Style::default().fg(Color::DarkGray)),
-    ]));
 
     let paragraph = Paragraph::new(lines);
     frame.render_widget(paragraph, inner);
@@ -1067,7 +1220,7 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
     if app.ignore_screen.mode == Mode::Preview {
         lines.push(Line::from(source_tabs));
         lines.push(Line::from(Span::styled(
-            " File Preview (Esc to close):",
+            " File Preview:",
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
@@ -1079,9 +1232,7 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
                 "  Generating ignore preview...",
                 Style::default().fg(Color::Yellow),
             ))),
-            LoadState::Stale { .. } => {
-                lines.push(dim_line("  Preview is stale. Press 'r' to refresh."))
-            }
+            LoadState::Stale { .. } => lines.push(dim_line("  Preview is stale.")),
             LoadState::Failed { error, .. } => lines.push(Line::from(Span::styled(
                 format!("  Preview failed: {error}"),
                 Style::default().fg(Color::Red),
@@ -1089,10 +1240,7 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
             LoadState::NotLoaded | LoadState::Loaded(_) => {}
         }
 
-        let feedback_rows = usize::from(app.ignore_screen.message.is_some()) * 2;
-        let available_rows = (inner.height as usize)
-            .saturating_sub(lines.len())
-            .saturating_sub(feedback_rows);
+        let available_rows = (inner.height as usize).saturating_sub(lines.len());
         let preview_len = app.ignore_screen.preview().map_or(0, <[_]>::len);
 
         if preview_len == 0 {
@@ -1144,20 +1292,12 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
             }
             if show_range {
                 lines.push(dim_line(format!(
-                    "  [{}-{} of {}] ↑↓/jk scroll",
+                    "  [{}-{} of {}]",
                     visible_range.start + 1,
                     visible_range.end,
                     preview_len
                 )));
             }
-        }
-
-        if let Some(ref msg) = app.ignore_screen.message {
-            lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled(
-                format!("  {msg}"),
-                Style::default().fg(Color::Green),
-            )));
         }
 
         frame.render_widget(Paragraph::new(lines), inner);
@@ -1171,7 +1311,7 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
     // Current source's patterns.
     let current_source = &sources[app.ignore_screen.source_idx];
     if current_source.ignore.is_empty() {
-        lines.push(dim_line("  No ignore patterns. Press 'a' to add."));
+        lines.push(dim_line("  No ignore patterns."));
     } else {
         lines.push(Line::from(Span::styled(
             "  Patterns:",
@@ -1207,40 +1347,13 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
         lines.push(Line::from(Span::raw(input_display)));
     }
 
-    // Feedback message.
-    if let Some(ref msg) = app.ignore_screen.message {
-        lines.push(Line::from(""));
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled(msg.clone(), Style::default().fg(Color::Green)),
-        ]));
-    }
-
-    // Help.
-    if app.ignore_screen.mode == Mode::List {
-        lines.push(Line::from(""));
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled("a", Style::default().fg(Color::DarkGray)),
-            Span::styled(" add  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("d", Style::default().fg(Color::DarkGray)),
-            Span::styled(" delete  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("p", Style::default().fg(Color::DarkGray)),
-            Span::styled(" preview  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("←→/hl", Style::default().fg(Color::DarkGray)),
-            Span::styled(" source  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("↑↓/jk", Style::default().fg(Color::DarkGray)),
-            Span::styled(" pattern", Style::default().fg(Color::DarkGray)),
-        ]));
-    }
-
     let paragraph = Paragraph::new(lines);
     frame.render_widget(paragraph, inner);
 }
 
 /// Draw the sources management screen.
 fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
-    use crate::tui::screens::sources::{MessageKind, Mode};
+    use crate::tui::screens::sources::Mode;
 
     let block = Block::default()
         .borders(Borders::ALL)
@@ -1256,7 +1369,7 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Min(5),    // Browser
-                Constraint::Length(3), // Status/message area
+                Constraint::Length(1), // Selection summary
             ])
             .split(inner);
 
@@ -1275,39 +1388,21 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
             frame.render_widget(msg, chunks[0]);
         }
 
-        // Status area.
-        let mut status_lines: Vec<Line> = Vec::new();
-        if let Some(ref msg) = app.sources_screen.message {
-            let color = match msg.kind {
-                MessageKind::Info => Color::Green,
-                MessageKind::Warning => Color::Yellow,
-                MessageKind::Error => Color::Red,
-            };
-            status_lines.push(Line::from(vec![
-                Span::raw(" "),
-                Span::styled(msg.text.clone(), Style::default().fg(color)),
-            ]));
-        } else if let Some(ref sel) = app.sources_screen.selection {
-            let (selected, excluded) = sel.summary();
-            let summary = if excluded > 0 {
-                format!(" {selected} sources, {excluded} excluded")
-            } else {
-                format!(" {selected} sources selected")
-            };
-            status_lines.push(Line::from(vec![
-                Span::styled(summary, Style::default().fg(Color::Cyan)),
-                Span::styled(
-                    "  │ Space: toggle │ Esc: review │ :/ text",
-                    Style::default().fg(Color::DarkGray),
-                ),
-            ]));
-        } else {
-            status_lines.push(Line::from(Span::styled(
-                " Space: toggle │ Esc: review │ :/ text input │ ↑↓←→ navigate",
-                Style::default().fg(Color::DarkGray),
-            )));
-        }
-        let paragraph = Paragraph::new(status_lines);
+        let summary = app.sources_screen.selection.as_ref().map_or_else(
+            || " Selection not initialized".to_string(),
+            |selection| {
+                let (selected, excluded) = selection.summary();
+                if excluded > 0 {
+                    format!(" {selected} sources, {excluded} excluded")
+                } else {
+                    format!(" {selected} sources selected")
+                }
+            },
+        );
+        let paragraph = Paragraph::new(Line::from(Span::styled(
+            summary,
+            Style::default().fg(Color::Cyan),
+        )));
         frame.render_widget(paragraph, chunks[1]);
         return;
     }
@@ -1324,7 +1419,7 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
         lines.push(Line::from(""));
         lines.push(dim_line("  No sources configured."));
         lines.push(Line::from(""));
-        lines.push(dim_line("  Press 'a' to add a source path."));
+        lines.push(dim_line("  Add a source to begin backing up files."));
     } else {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
@@ -1385,7 +1480,7 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
         lines.push(Line::from(vec![
             Span::raw("  "),
             Span::styled(
-                format!("Delete '{path}'? (y/n)"),
+                format!("Remove source '{path}'?"),
                 Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
@@ -1399,7 +1494,7 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
         lines.push(Line::from(vec![
             Span::raw("  "),
             Span::styled(
-                "Pending source changes: [a]pply, [d]iscard, or [c]ontinue editing?",
+                "Pending source changes require a decision.",
                 Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
@@ -1426,7 +1521,7 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
             lines.push(Line::from(vec![
                 Span::raw("  "),
                 Span::styled(
-                    format!("Remove sources and apply changes ({summary})? (y/n)"),
+                    format!("Remove sources and apply changes ({summary})?"),
                     Style::default()
                         .fg(Color::Yellow)
                         .add_modifier(Modifier::BOLD),
@@ -1451,41 +1546,13 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
             lines.push(Line::from(vec![
                 Span::raw("  "),
                 Span::styled(
-                    "Apply changes? (y/n)",
+                    "Apply changes?",
                     Style::default()
                         .fg(Color::Yellow)
                         .add_modifier(Modifier::BOLD),
                 ),
             ]));
         }
-    }
-
-    // Show feedback message.
-    if let Some(ref msg) = app.sources_screen.message {
-        lines.push(Line::from(""));
-        let color = match msg.kind {
-            MessageKind::Info => Color::Green,
-            MessageKind::Warning => Color::Yellow,
-            MessageKind::Error => Color::Red,
-        };
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled(msg.text.clone(), Style::default().fg(color)),
-        ]));
-    }
-
-    // Help line at bottom of content.
-    if app.sources_screen.mode == Mode::List {
-        lines.push(Line::from(""));
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled("a", Style::default().fg(Color::DarkGray)),
-            Span::styled(" add  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("d", Style::default().fg(Color::DarkGray)),
-            Span::styled(" delete  ", Style::default().fg(Color::DarkGray)),
-            Span::styled("↑↓/jk", Style::default().fg(Color::DarkGray)),
-            Span::styled(" navigate", Style::default().fg(Color::DarkGray)),
-        ]));
     }
 
     let paragraph = Paragraph::new(lines);
@@ -1534,7 +1601,6 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
                     Span::raw(" "),
                     Span::styled("Namespace: ", Style::default().fg(Color::Cyan)),
                     Span::styled(config.namespace.clone(), Style::default().fg(Color::White)),
-                    Span::raw("  (n select/create, r rename, d delete)"),
                 ]));
             } else {
                 lines.push(Line::from(vec![
@@ -1544,7 +1610,6 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
                         app.repo_screen.namespace_input.clone(),
                         Style::default().fg(Color::White),
                     ),
-                    Span::raw("  (n edit)"),
                 ]));
             }
 
@@ -1576,10 +1641,9 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
                 LoadState::Stale { .. } => lines.push(dim_line(
                     " Repository validation is stale. Select or validate again.",
                 )),
-                LoadState::NotLoaded => lines.push(Line::from(Span::styled(
-                    " Space: select directory │ :/  text input │ ↑↓←→ navigate",
-                    Style::default().fg(Color::DarkGray),
-                ))),
+                LoadState::NotLoaded => {
+                    lines.push(dim_line(" Select an existing Git worktree to validate it."))
+                }
             }
 
             // Confirmation dialog overlay.
@@ -1796,7 +1860,7 @@ fn draw_confirm_line(
             lines.push(Line::from(vec![
                 Span::raw(" "),
                 Span::styled(
-                    "Initialize this repository? (y/n)",
+                    "Initialize this repository?",
                     Style::default()
                         .fg(Color::Yellow)
                         .add_modifier(Modifier::BOLD),
@@ -1807,7 +1871,7 @@ fn draw_confirm_line(
             lines.push(Line::from(vec![
                 Span::raw(" "),
                 Span::styled(
-                    "Attach to this repository? (y/n)",
+                    "Attach to this repository?",
                     Style::default()
                         .fg(Color::Yellow)
                         .add_modifier(Modifier::BOLD),
@@ -2020,26 +2084,65 @@ mod tests {
         assert!(content.contains("Running backup"));
     }
 
-    /// Verify status message appears in help bar.
+    /// Status feedback and contextual help remain visible at the same time.
     #[test]
-    fn help_bar_shows_status_message() {
+    fn status_message_coexists_with_help_footer() {
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
 
         let mut app = app_on(Screen::Dashboard);
-        app.status_message = Some("Test status message".to_string());
+        app.focus = crate::tui::Focus::Content;
+        app.status_message = Some(super::super::status::StatusMessage::warning(
+            "Test status message",
+        ));
 
         terminal
             .draw(|frame| draw(frame, &mut app))
             .expect("draw should not fail");
 
-        let buffer = terminal.backend().buffer().clone();
-        let content: String = buffer
-            .content()
-            .iter()
-            .map(|cell| cell.symbol().chars().next().unwrap_or(' '))
-            .collect();
-        assert!(content.contains("Test status message"));
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("Warning: Test status message"));
+        assert!(content.contains("backup"));
+        assert!(content.contains("check"));
+    }
+
+    #[test]
+    fn narrow_status_is_truncated_without_hiding_help() {
+        let backend = TestBackend::new(30, 10);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = app_on(Screen::Dashboard);
+        app.focus = crate::tui::Focus::Content;
+        app.status_message = Some(super::super::status::StatusMessage::error(
+            "a very long failure message that cannot fit",
+        ));
+
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("Error: a very long"));
+        assert!(content.contains("Tab"));
+    }
+
+    #[test]
+    fn ignore_footer_changes_for_input_and_preview_modes() {
+        let backend = TestBackend::new(100, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = app_on(Screen::Ignore);
+        app.focus = crate::tui::Focus::Content;
+
+        app.ignore_screen.mode = crate::tui::screens::ignore::Mode::AddInput;
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        let input = buffer_text(terminal.backend());
+        assert!(input.contains("Enter"));
+        assert!(input.contains("cancel"));
+        assert!(!input.contains("preview  "));
+
+        app.ignore_screen.mode = crate::tui::screens::ignore::Mode::Preview;
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        let preview = buffer_text(terminal.backend());
+        assert!(preview.contains("refresh"));
+        assert!(preview.contains("scroll"));
+        assert!(!preview.contains(" add  "));
     }
 
     /// Verify rendering in a very small terminal doesn't panic.
@@ -2523,6 +2626,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
 
         let mut app = app_on(Screen::Automation);
+        app.focus = crate::tui::Focus::Content;
         app.automation_screen.confirm = crate::tui::screens::automation::ConfirmAction::Install;
 
         terminal
@@ -2531,7 +2635,8 @@ mod tests {
 
         let content = buffer_text(terminal.backend());
         assert!(content.contains("Install"));
-        assert!(content.contains("y/n"));
+        assert!(content.contains("confirm"));
+        assert!(content.contains("cancel"));
     }
 
     /// Verify history screen renders with entries.
@@ -2913,6 +3018,12 @@ mod tests {
         app.focus = crate::tui::Focus::Content;
         app.active_screen = Screen::Sources;
         app.sources_screen.mode = crate::tui::screens::sources::Mode::List;
+        let mut config = crate::config::Config::new("~/repo", "desktop");
+        config.sources.push(crate::config::SourceConfig {
+            path: ".config".to_string(),
+            ignore: Vec::new(),
+        });
+        app.config = Some(config);
 
         terminal
             .draw(|frame| draw(frame, &mut app))
@@ -3012,7 +3123,14 @@ mod tests {
             content.contains("Remove sources and apply"),
             "should explain the removal confirmation"
         );
-        assert!(content.contains("y/n"), "should show y/n options");
+        assert!(
+            content.contains("remove and apply"),
+            "footer should show confirm action"
+        );
+        assert!(
+            content.contains("back to choices"),
+            "footer should show cancel action"
+        );
         assert!(content.contains(".zshrc"), "should show removal detail");
     }
 
@@ -3079,9 +3197,10 @@ mod tests {
         terminal.draw(|frame| draw(frame, &mut app)).unwrap();
 
         let content = buffer_text(terminal.backend());
-        assert!(content.contains("[a]pply"));
-        assert!(content.contains("[d]iscard"));
-        assert!(content.contains("[c]ontinue editing"));
+        assert!(content.contains("Pending source changes require a decision."));
+        assert!(content.contains("apply"));
+        assert!(content.contains("discard"));
+        assert!(content.contains("continue editing"));
     }
 
     /// Verify sources browse renders at various sizes without panic.
