@@ -20,6 +20,8 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Durable Decisions
 
+- `PLAN.md` is curated as the current product behavior and active objective;
+  completed implementation steps and historical context do not remain there.
 - License: GPL-3.0-or-later.
 - MSRV: 1.85 (Rust 2024 edition).
 - The application is a Rust binary with a Ratatui interface and a short-lived
