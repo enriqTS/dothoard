@@ -525,7 +525,7 @@ fn format_time(ts: &chrono::DateTime<chrono::Utc>) -> String {
 }
 
 /// Draw the history screen with recent runs and detail for the selected entry.
-fn draw_history(frame: &mut Frame, area: Rect, app: &App) {
+fn draw_history(frame: &mut Frame, area: Rect, app: &mut App) {
     use crate::tui::screens::history::{HistoryScreen, Mode};
 
     let block = Block::default()
@@ -545,6 +545,7 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &App) {
     let mut lines: Vec<Line> = Vec::new();
 
     if history.is_empty() {
+        app.history_screen.set_list_viewport_height(0, 0);
         lines.push(Line::from(""));
         lines.push(dim_line("  No backup history available."));
         lines.push(Line::from(""));
@@ -576,8 +577,17 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &App) {
     )));
     list_lines.push(Line::from(""));
 
-    let visible = columns[0].height.saturating_sub(3) as usize;
-    for (i, record) in history.iter().enumerate().take(visible) {
+    let available_rows = columns[0].height.saturating_sub(2) as usize;
+    let show_range = history.len() > available_rows && available_rows > 1;
+    let visible_rows = available_rows.saturating_sub(usize::from(show_range));
+    app.history_screen
+        .set_list_viewport_height(visible_rows, history.len());
+    let visible_range = app
+        .history_screen
+        .list_viewport
+        .visible_range(history.len());
+    for i in visible_range.clone() {
+        let record = &history[i];
         let entry = HistoryScreen::format_entry(record);
         let marker = if i == app.history_screen.selected {
             "▶ "
@@ -605,6 +615,15 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &App) {
             Span::raw(" "),
             Span::styled(entry.outcome.clone(), Style::default().fg(outcome_color)),
         ]));
+    }
+
+    if show_range {
+        list_lines.push(dim_line(format!(
+            " [{}-{} of {}]",
+            visible_range.start + 1,
+            visible_range.end,
+            history.len()
+        )));
     }
 
     let list_paragraph = Paragraph::new(list_lines);
@@ -682,7 +701,7 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 /// Draw the log view for a selected history entry.
-fn draw_log_view(frame: &mut Frame, area: Rect, app: &App) {
+fn draw_log_view(frame: &mut Frame, area: Rect, app: &mut App) {
     let mut lines: Vec<Line> = Vec::new();
 
     lines.push(Line::from(Span::styled(
@@ -700,34 +719,26 @@ fn draw_log_view(frame: &mut Frame, area: Rect, app: &App) {
             "  Logs may have been rotated or the log file is not available.",
         ));
     } else {
-        // Calculate visible lines based on scroll offset.
-        let visible_height = area.height.saturating_sub(3) as usize;
-        let scroll = app.history_screen.scroll.min(
-            app.history_screen
-                .log_lines
-                .len()
-                .saturating_sub(visible_height),
-        );
-
-        for line in app
+        let available_rows = area.height.saturating_sub(2) as usize;
+        let show_range = app.history_screen.log_lines.len() > available_rows && available_rows > 1;
+        let visible_rows = available_rows.saturating_sub(usize::from(show_range));
+        app.history_screen.set_log_viewport_height(visible_rows);
+        let visible_range = app
             .history_screen
-            .log_lines
-            .iter()
-            .skip(scroll)
-            .take(visible_height)
-        {
+            .log_viewport
+            .visible_range(app.history_screen.log_lines.len());
+
+        for line in &app.history_screen.log_lines[visible_range.clone()] {
             // Truncate very long lines to prevent wrapping issues.
             let display_line = text::truncate(line, 200);
             lines.push(Line::from(Span::raw(display_line)));
         }
 
-        // Scroll indicator.
-        if app.history_screen.log_lines.len() > visible_height {
-            lines.push(Line::from(""));
+        if show_range {
             lines.push(dim_line(format!(
                 "  [{}-{} of {}] ↑↓/jk to scroll",
-                scroll + 1,
-                (scroll + visible_height).min(app.history_screen.log_lines.len()),
+                visible_range.start + 1,
+                visible_range.end,
                 app.history_screen.log_lines.len()
             )));
         }
@@ -973,7 +984,7 @@ fn draw_preview(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 /// Draw the ignore rule editor screen.
-fn draw_ignore(frame: &mut Frame, area: Rect, app: &App) {
+fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
     use crate::tui::screens::ignore::Mode;
 
     let block = Block::default()
@@ -1001,7 +1012,6 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &App) {
     }
 
     // Source selector.
-    lines.push(Line::from(""));
     let source_tabs: Vec<Span> = sources
         .iter()
         .enumerate()
@@ -1016,6 +1026,85 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &App) {
             vec![Span::styled(format!(" {} ", s.path), style), Span::raw("|")]
         })
         .collect();
+
+    if app.ignore_screen.mode == Mode::Preview {
+        lines.push(Line::from(source_tabs));
+        lines.push(Line::from(Span::styled(
+            " File Preview (Esc to close):",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )));
+
+        let feedback_rows = usize::from(app.ignore_screen.message.is_some()) * 2;
+        let available_rows = (inner.height as usize)
+            .saturating_sub(lines.len())
+            .saturating_sub(feedback_rows);
+
+        if app.ignore_screen.preview.is_empty() {
+            app.ignore_screen.set_preview_viewport_height(0);
+            lines.push(dim_line("  No files found."));
+        } else {
+            let show_range = app.ignore_screen.preview.len() > available_rows && available_rows > 1;
+            let visible_rows = available_rows.saturating_sub(usize::from(show_range));
+            app.ignore_screen.set_preview_viewport_height(visible_rows);
+            let visible_range = app
+                .ignore_screen
+                .preview_viewport
+                .visible_range(app.ignore_screen.preview.len());
+
+            for entry in &app.ignore_screen.preview[visible_range.clone()] {
+                let mut spans = vec![Span::raw("  ")];
+
+                if entry.ignored {
+                    spans.push(Span::styled("✗ ", Style::default().fg(Color::Red)));
+                    spans.push(Span::styled(
+                        entry.path.clone(),
+                        Style::default().fg(Color::DarkGray),
+                    ));
+                    if let Some(ref pat) = entry.matched_by {
+                        spans.push(Span::styled(
+                            format!("  ({pat})"),
+                            Style::default().fg(Color::DarkGray),
+                        ));
+                    }
+                } else {
+                    spans.push(Span::styled("✓ ", Style::default().fg(Color::Green)));
+                    spans.push(Span::raw(entry.path.clone()));
+                }
+
+                if entry.secret_warning {
+                    spans.push(Span::styled(
+                        "  ⚠ secret",
+                        Style::default().fg(Color::Yellow),
+                    ));
+                }
+
+                lines.push(Line::from(spans));
+            }
+            if show_range {
+                lines.push(dim_line(format!(
+                    "  [{}-{} of {}] ↑↓/jk scroll",
+                    visible_range.start + 1,
+                    visible_range.end,
+                    app.ignore_screen.preview.len()
+                )));
+            }
+        }
+
+        if let Some(ref msg) = app.ignore_screen.message {
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                format!("  {msg}"),
+                Style::default().fg(Color::Green),
+            )));
+        }
+
+        frame.render_widget(Paragraph::new(lines), inner);
+        return;
+    }
+
+    lines.push(Line::from(""));
     lines.push(Line::from(source_tabs));
     lines.push(Line::from(""));
 
@@ -1056,58 +1145,6 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &App) {
         )));
         let input_display = format!("  > {}", app.ignore_screen.input);
         lines.push(Line::from(Span::raw(input_display)));
-    }
-
-    // Preview mode.
-    if app.ignore_screen.mode == Mode::Preview {
-        lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
-            "  File Preview (Esc to close):",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )));
-        lines.push(Line::from(""));
-
-        if app.ignore_screen.preview.is_empty() {
-            lines.push(dim_line("    No files found."));
-        } else {
-            for entry in app.ignore_screen.preview.iter().take(20) {
-                let mut spans = vec![Span::raw("    ")];
-
-                if entry.ignored {
-                    spans.push(Span::styled("✗ ", Style::default().fg(Color::Red)));
-                    spans.push(Span::styled(
-                        entry.path.clone(),
-                        Style::default().fg(Color::DarkGray),
-                    ));
-                    if let Some(ref pat) = entry.matched_by {
-                        spans.push(Span::styled(
-                            format!("  ({})", pat),
-                            Style::default().fg(Color::DarkGray),
-                        ));
-                    }
-                } else {
-                    spans.push(Span::styled("✓ ", Style::default().fg(Color::Green)));
-                    spans.push(Span::raw(entry.path.clone()));
-                }
-
-                if entry.secret_warning {
-                    spans.push(Span::styled(
-                        "  ⚠ secret",
-                        Style::default().fg(Color::Yellow),
-                    ));
-                }
-
-                lines.push(Line::from(spans));
-            }
-            if app.ignore_screen.preview.len() > 20 {
-                lines.push(dim_line(format!(
-                    "    ...and {} more files",
-                    app.ignore_screen.preview.len() - 20
-                )));
-            }
-        }
     }
 
     // Feedback message.
@@ -2176,6 +2213,87 @@ mod tests {
         assert!(content.contains("Preview") || content.contains("config.fish"));
     }
 
+    #[test]
+    fn ignore_preview_renders_scrolled_range_from_actual_height() {
+        let backend = TestBackend::new(80, 16);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = app_on(Screen::Ignore);
+        app.config = Some(crate::config::Config {
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![crate::config::SourceConfig {
+                path: ".config/fish".to_string(),
+                ignore: vec!["*.log".to_string()],
+            }],
+        });
+        app.ignore_screen.mode = crate::tui::screens::ignore::Mode::Preview;
+        app.ignore_screen.preview = (0..30)
+            .map(|i| crate::tui::screens::ignore::PreviewEntry {
+                path: format!("file-{i:02}"),
+                ignored: false,
+                matched_by: None,
+                secret_warning: false,
+            })
+            .collect();
+
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        let first_page = buffer_text(terminal.backend());
+        assert!(first_page.contains("file-00"));
+        assert!(first_page.contains("of 30"));
+
+        app.ignore_screen
+            .preview_viewport
+            .end(app.ignore_screen.preview.len());
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("file-29"));
+        assert!(content.contains("of 30"));
+        assert!(!content.contains("file-00"));
+    }
+
+    #[test]
+    fn ignore_preview_clamps_on_resize() {
+        let backend = TestBackend::new(100, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = app_on(Screen::Ignore);
+        app.config = Some(crate::config::Config::new("~/repo", "test-machine"));
+        app.config.as_mut().unwrap().sources = vec![crate::config::SourceConfig {
+            path: ".config/fish".to_string(),
+            ignore: vec![],
+        }];
+        app.ignore_screen.mode = crate::tui::screens::ignore::Mode::Preview;
+        app.ignore_screen.preview = (0..20)
+            .map(|i| crate::tui::screens::ignore::PreviewEntry {
+                path: format!("item-{i:02}"),
+                ignored: false,
+                matched_by: None,
+                secret_warning: false,
+            })
+            .collect();
+
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        app.ignore_screen
+            .preview_viewport
+            .end(app.ignore_screen.preview.len());
+        let active_row = app.ignore_screen.preview_viewport.visible_range(20).start;
+        terminal.backend_mut().resize(60, 13);
+        terminal.autoresize().unwrap();
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+
+        let range = app
+            .ignore_screen
+            .preview_viewport
+            .visible_range(app.ignore_screen.preview.len());
+        assert_eq!(range.start, active_row);
+        assert!(range.start < range.end);
+        assert!(range.end <= 20);
+    }
+
     /// Verify preview screen renders empty state.
     #[test]
     fn preview_screen_renders_stale() {
@@ -2313,6 +2431,77 @@ mod tests {
         let content = buffer_text(terminal.backend());
         assert!(content.contains("History"));
         assert!(content.contains("Success"));
+    }
+
+    #[test]
+    fn history_long_list_keeps_last_selection_visible() {
+        use chrono::{Duration, TimeZone, Utc};
+
+        let backend = TestBackend::new(90, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = app_on(Screen::History);
+        let started = Utc.with_ymd_and_hms(2026, 7, 21, 14, 0, 0).unwrap();
+        let history = (0..20)
+            .map(|i| crate::state::RunRecord {
+                namespace: "desktop".to_string(),
+                started_at: started - Duration::minutes(i),
+                finished_at: started - Duration::minutes(i) + Duration::seconds(1),
+                outcome: if i == 19 {
+                    crate::state::RunOutcome::Failed
+                } else {
+                    crate::state::RunOutcome::Success
+                },
+                commit: None,
+                message: None,
+                log_file: None,
+            })
+            .collect();
+        app.state = Some(crate::state::AppState {
+            history,
+            ..crate::state::AppState::default()
+        });
+        app.history_screen.selected = 19;
+
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("Failed"));
+        assert!(content.contains("of 20"));
+        assert_eq!(app.history_screen.list_viewport.visible_range(20).end, 20);
+    }
+
+    #[test]
+    fn history_viewport_recalculates_after_resize() {
+        use chrono::{Duration, TimeZone, Utc};
+
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = app_on(Screen::History);
+        let started = Utc.with_ymd_and_hms(2026, 7, 21, 14, 0, 0).unwrap();
+        app.state = Some(crate::state::AppState {
+            history: (0..20)
+                .map(|i| crate::state::RunRecord {
+                    namespace: String::new(),
+                    started_at: started - Duration::minutes(i),
+                    finished_at: started - Duration::minutes(i) + Duration::seconds(1),
+                    outcome: crate::state::RunOutcome::Success,
+                    commit: None,
+                    message: None,
+                    log_file: None,
+                })
+                .collect(),
+            ..crate::state::AppState::default()
+        });
+        app.history_screen.selected = 19;
+
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        let wide_height = app.history_screen.list_viewport.height();
+        terminal.backend_mut().resize(60, 12);
+        terminal.autoresize().unwrap();
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+
+        assert!(app.history_screen.list_viewport.height() < wide_height);
+        assert_eq!(app.history_screen.list_viewport.visible_range(20).end, 20);
     }
 
     /// Verify history screen renders empty state.

@@ -7,6 +7,7 @@
 use std::path::Path;
 
 use crate::state::{RunOutcome, RunRecord};
+use crate::tui::viewport::Viewport;
 
 /// The display mode for the history screen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,8 +23,10 @@ pub enum Mode {
 pub struct HistoryScreen {
     /// Index of the currently selected run in the history list.
     pub selected: usize,
-    /// Scroll offset for long detail views.
-    pub scroll: usize,
+    /// Viewport for the history list.
+    pub(crate) list_viewport: Viewport,
+    /// Viewport for the selected run's log.
+    pub(crate) log_viewport: Viewport,
     /// Current display mode.
     pub mode: Mode,
     /// Cached log lines for the current log view.
@@ -40,7 +43,8 @@ impl HistoryScreen {
     pub fn new() -> Self {
         Self {
             selected: 0,
-            scroll: 0,
+            list_viewport: Viewport::default(),
+            log_viewport: Viewport::default(),
             mode: Mode::History,
             log_lines: Vec::new(),
         }
@@ -58,14 +62,15 @@ impl HistoryScreen {
             Self::filter_logs_by_timestamp(&log_path, record.started_at, record.finished_at)
         };
         self.mode = Mode::LogView;
-        self.scroll = 0;
+        self.log_viewport.home();
+        self.log_viewport.clamp(self.log_lines.len());
     }
 
     /// Exit log view mode and return to history list.
     pub fn exit_log_view(&mut self) {
         self.mode = Mode::History;
         self.log_lines.clear();
-        self.scroll = 0;
+        self.log_viewport.home();
     }
 
     /// Read all lines from a log file.
@@ -121,8 +126,31 @@ impl HistoryScreen {
         filtered
     }
 
+    /// Update the list viewport from the actual render area.
+    pub(crate) fn set_list_viewport_height(&mut self, height: usize, history_len: usize) {
+        self.list_viewport.set_height(height, history_len);
+        self.clamp_history(history_len);
+    }
+
+    /// Update the log viewport from the actual render area.
+    pub(crate) fn set_log_viewport_height(&mut self, height: usize) {
+        self.log_viewport.set_height(height, self.log_lines.len());
+    }
+
+    /// Clamp selection and viewport after history is reloaded or shrinks.
+    pub(crate) fn clamp_history(&mut self, history_len: usize) {
+        if history_len == 0 {
+            self.selected = 0;
+        } else {
+            self.selected = self.selected.min(history_len - 1);
+        }
+        self.list_viewport
+            .ensure_visible(self.selected, history_len);
+    }
+
     /// Handle a key event.
     pub fn handle_key(&mut self, key: crossterm::event::KeyEvent, history_len: usize) -> Action {
+        self.clamp_history(history_len);
         match self.mode {
             Mode::LogView => self.handle_key_log_view(key),
             Mode::History => self.handle_key_history(key, history_len),
@@ -139,26 +167,28 @@ impl HistoryScreen {
                 Action::Consumed
             }
             KeyCode::Up | KeyCode::Char('k') => {
-                if self.scroll > 0 {
-                    self.scroll -= 1;
-                }
+                self.log_viewport.scroll_up(1);
                 Action::Consumed
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                // Allow scrolling past end - actual bounds checked during rendering
-                self.scroll += 1;
+                self.log_viewport.scroll_down(1, self.log_lines.len());
                 Action::Consumed
             }
             KeyCode::PageUp => {
-                self.scroll = self.scroll.saturating_sub(10);
+                self.log_viewport.scroll_up(self.log_viewport.page_size());
                 Action::Consumed
             }
             KeyCode::PageDown => {
-                self.scroll += 10;
+                self.log_viewport
+                    .scroll_down(self.log_viewport.page_size(), self.log_lines.len());
                 Action::Consumed
             }
             KeyCode::Home => {
-                self.scroll = 0;
+                self.log_viewport.home();
+                Action::Consumed
+            }
+            KeyCode::End => {
+                self.log_viewport.end(self.log_lines.len());
                 Action::Consumed
             }
             _ => Action::NotConsumed,
@@ -180,7 +210,8 @@ impl HistoryScreen {
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.selected > 0 {
                     self.selected -= 1;
-                    self.scroll = 0;
+                    self.list_viewport
+                        .ensure_visible(self.selected, history_len);
                     Action::Consumed
                 } else {
                     // At upper boundary — let parent handle focus return.
@@ -190,20 +221,39 @@ impl HistoryScreen {
             KeyCode::Down | KeyCode::Char('j') => {
                 if history_len > 0 && self.selected < history_len - 1 {
                     self.selected += 1;
-                    self.scroll = 0;
+                    self.list_viewport
+                        .ensure_visible(self.selected, history_len);
                 }
                 Action::Consumed
             }
             KeyCode::Home => {
                 self.selected = 0;
-                self.scroll = 0;
+                self.list_viewport.home();
                 Action::Consumed
             }
             KeyCode::End => {
                 if history_len > 0 {
                     self.selected = history_len - 1;
                 }
-                self.scroll = 0;
+                self.list_viewport
+                    .ensure_visible(self.selected, history_len);
+                Action::Consumed
+            }
+            KeyCode::PageUp => {
+                self.selected = self.selected.saturating_sub(self.list_viewport.page_size());
+                self.list_viewport
+                    .ensure_visible(self.selected, history_len);
+                Action::Consumed
+            }
+            KeyCode::PageDown => {
+                if history_len > 0 {
+                    self.selected = self
+                        .selected
+                        .saturating_add(self.list_viewport.page_size())
+                        .min(history_len - 1);
+                }
+                self.list_viewport
+                    .ensure_visible(self.selected, history_len);
                 Action::Consumed
             }
             _ => Action::NotConsumed,
@@ -331,6 +381,75 @@ mod tests {
     }
 
     #[test]
+    fn one_row_history_has_stable_selection_and_viewport() {
+        let mut screen = HistoryScreen::new();
+        screen.set_list_viewport_height(4, 1);
+        screen.handle_key(key(KeyCode::End), 1);
+        screen.handle_key(key(KeyCode::Down), 1);
+
+        assert_eq!(screen.selected, 0);
+        assert_eq!(screen.list_viewport.visible_range(1), 0..1);
+    }
+
+    #[test]
+    fn long_list_navigation_keeps_selection_visible() {
+        let mut screen = HistoryScreen::new();
+        screen.set_list_viewport_height(3, 10);
+
+        for _ in 0..5 {
+            screen.handle_key(key(KeyCode::Down), 10);
+        }
+
+        assert_eq!(screen.selected, 5);
+        assert_eq!(screen.list_viewport.visible_range(10), 3..6);
+    }
+
+    #[test]
+    fn history_page_navigation_uses_rendered_viewport_height() {
+        let mut screen = HistoryScreen::new();
+        screen.set_list_viewport_height(4, 12);
+
+        screen.handle_key(key(KeyCode::PageDown), 12);
+        assert_eq!(screen.selected, 4);
+        assert_eq!(screen.list_viewport.visible_range(12), 1..5);
+
+        screen.handle_key(key(KeyCode::End), 12);
+        assert_eq!(screen.selected, 11);
+        assert_eq!(screen.list_viewport.visible_range(12), 8..12);
+
+        screen.handle_key(key(KeyCode::PageUp), 12);
+        assert_eq!(screen.selected, 7);
+        assert_eq!(screen.list_viewport.visible_range(12), 7..11);
+    }
+
+    #[test]
+    fn history_viewport_clamps_after_data_shrinks() {
+        let mut screen = HistoryScreen::new();
+        screen.set_list_viewport_height(3, 10);
+        screen.selected = 9;
+        screen.clamp_history(10);
+
+        screen.clamp_history(2);
+
+        assert_eq!(screen.selected, 1);
+        assert_eq!(screen.list_viewport.visible_range(2), 0..2);
+    }
+
+    #[test]
+    fn list_viewport_survives_tab_focus_escape() {
+        let mut screen = HistoryScreen::new();
+        screen.set_list_viewport_height(3, 10);
+        screen.selected = 7;
+        screen.clamp_history(10);
+        let range = screen.list_viewport.visible_range(10);
+
+        let action = screen.handle_key(key(KeyCode::Tab), 10);
+
+        assert_eq!(action, Action::NotConsumed);
+        assert_eq!(screen.list_viewport.visible_range(10), range);
+    }
+
+    #[test]
     fn enter_returns_view_logs_action() {
         let mut screen = HistoryScreen::new();
         let result = screen.handle_key(key(KeyCode::Enter), 5);
@@ -342,14 +461,14 @@ mod tests {
         let mut screen = HistoryScreen::new();
         screen.mode = Mode::LogView;
         screen.log_lines = vec!["line1".to_string()];
-        screen.scroll = 5;
+        screen.log_viewport.scroll_down(5, 10);
 
         let result = screen.handle_key(key(KeyCode::Esc), 5);
 
         assert_eq!(result, Action::Consumed);
         assert!(matches!(screen.mode, Mode::History));
         assert!(screen.log_lines.is_empty());
-        assert_eq!(screen.scroll, 0);
+        assert_eq!(screen.log_viewport.offset(), 0);
     }
 
     #[test]
@@ -357,42 +476,45 @@ mod tests {
         let mut screen = HistoryScreen::new();
         screen.mode = Mode::LogView;
         screen.log_lines = vec!["line1".to_string(), "line2".to_string()];
-        screen.scroll = 1;
+        screen.log_viewport.scroll_down(1, screen.log_lines.len());
 
         // Scroll up
         screen.handle_key(key(KeyCode::Up), 5);
-        assert_eq!(screen.scroll, 0);
+        assert_eq!(screen.log_viewport.offset(), 0);
 
         // Scroll up at 0 stays at 0
         screen.handle_key(key(KeyCode::Up), 5);
-        assert_eq!(screen.scroll, 0);
+        assert_eq!(screen.log_viewport.offset(), 0);
 
         // Scroll down
         screen.handle_key(key(KeyCode::Down), 5);
-        assert_eq!(screen.scroll, 1);
+        assert_eq!(screen.log_viewport.offset(), 1);
     }
 
     #[test]
     fn log_view_page_up_down() {
         let mut screen = HistoryScreen::new();
         screen.mode = Mode::LogView;
-        screen.scroll = 25;
+        screen.log_lines = (0..50).map(|i| format!("line {i}")).collect();
+        screen.set_log_viewport_height(10);
+        screen.log_viewport.scroll_down(25, screen.log_lines.len());
 
         screen.handle_key(key(KeyCode::PageUp), 5);
-        assert_eq!(screen.scroll, 15);
+        assert_eq!(screen.log_viewport.offset(), 15);
 
         screen.handle_key(key(KeyCode::PageDown), 5);
-        assert_eq!(screen.scroll, 25);
+        assert_eq!(screen.log_viewport.offset(), 25);
     }
 
     #[test]
     fn log_view_home_resets_scroll() {
         let mut screen = HistoryScreen::new();
         screen.mode = Mode::LogView;
-        screen.scroll = 50;
+        screen.log_lines = (0..60).map(|i| format!("line {i}")).collect();
+        screen.log_viewport.scroll_down(50, screen.log_lines.len());
 
         screen.handle_key(key(KeyCode::Home), 5);
-        assert_eq!(screen.scroll, 0);
+        assert_eq!(screen.log_viewport.offset(), 0);
     }
 
     #[test]
@@ -408,7 +530,7 @@ mod tests {
 
         assert!(matches!(screen.mode, Mode::LogView));
         assert!(screen.log_lines.is_empty()); // No log file exists, so empty
-        assert_eq!(screen.scroll, 0);
+        assert_eq!(screen.log_viewport.offset(), 0);
     }
 
     #[test]

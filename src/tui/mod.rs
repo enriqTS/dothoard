@@ -13,6 +13,7 @@ pub mod task;
 mod terminal;
 mod text;
 mod ui;
+mod viewport;
 
 pub use terminal::run;
 
@@ -168,6 +169,8 @@ impl App {
     pub fn reload_state(&mut self) {
         if let Some(ref paths) = self.paths {
             self.state = crate::state::AppState::load(paths.state_dir()).ok();
+            let history_len = self.state.as_ref().map_or(0, |state| state.history.len());
+            self.history_screen.clamp_history(history_len);
         }
     }
 
@@ -484,11 +487,12 @@ impl App {
             && let Some(source) = config.sources.get(src_idx)
             && let Some(ref paths) = self.paths
         {
-            self.ignore_screen.preview = screens::ignore::IgnoreScreen::generate_preview(
+            let preview = screens::ignore::IgnoreScreen::generate_preview(
                 &source.path,
                 &source.ignore,
                 paths.home(),
             );
+            self.ignore_screen.replace_preview(preview);
             self.ignore_screen.preview_stale = false;
         }
     }

@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use crate::tui::text;
+use crate::tui::{text, viewport::Viewport};
 
 /// The state of the ignore editor screen.
 #[derive(Debug)]
@@ -25,6 +25,8 @@ pub struct IgnoreScreen {
     pub cursor: usize,
     /// Preview of matched files for the current patterns.
     pub preview: Vec<PreviewEntry>,
+    /// Viewport for the file preview.
+    pub(crate) preview_viewport: Viewport,
     /// Whether the preview is stale and needs refresh.
     pub preview_stale: bool,
     /// Feedback message.
@@ -80,9 +82,21 @@ impl IgnoreScreen {
             input: String::new(),
             cursor: 0,
             preview: Vec::new(),
+            preview_viewport: Viewport::default(),
             preview_stale: true,
             message: None,
         }
+    }
+
+    /// Replace preview data while preserving and clamping its viewport.
+    pub(crate) fn replace_preview(&mut self, preview: Vec<PreviewEntry>) {
+        self.preview = preview;
+        self.preview_viewport.clamp(self.preview.len());
+    }
+
+    /// Update the preview viewport from the actual render area.
+    pub(crate) fn set_preview_viewport_height(&mut self, height: usize) {
+        self.preview_viewport.set_height(height, self.preview.len());
     }
 
     /// Handle a key event for this screen.
@@ -132,6 +146,7 @@ impl IgnoreScreen {
                         self.source_idx -= 1;
                         self.pattern_idx = 0;
                         self.list_focus = ListFocus::SourceSelector;
+                        self.preview_viewport.home();
                         self.preview_stale = true;
                     }
                     Action::Consumed
@@ -141,6 +156,7 @@ impl IgnoreScreen {
                         self.source_idx += 1;
                         self.pattern_idx = 0;
                         self.list_focus = ListFocus::SourceSelector;
+                        self.preview_viewport.home();
                         self.preview_stale = true;
                     }
                     Action::Consumed
@@ -245,11 +261,31 @@ impl IgnoreScreen {
                 }
                 // Scroll preview.
                 (_, KeyCode::Up) | (_, KeyCode::Char('k')) => {
-                    // Scrolling would be handled by a scroll offset but
-                    // for now we just consume the event.
+                    self.preview_viewport.scroll_up(1);
                     Action::Consumed
                 }
-                (_, KeyCode::Down) | (_, KeyCode::Char('j')) => Action::Consumed,
+                (_, KeyCode::Down) | (_, KeyCode::Char('j')) => {
+                    self.preview_viewport.scroll_down(1, self.preview.len());
+                    Action::Consumed
+                }
+                (_, KeyCode::PageUp) => {
+                    self.preview_viewport
+                        .scroll_up(self.preview_viewport.page_size());
+                    Action::Consumed
+                }
+                (_, KeyCode::PageDown) => {
+                    self.preview_viewport
+                        .scroll_down(self.preview_viewport.page_size(), self.preview.len());
+                    Action::Consumed
+                }
+                (_, KeyCode::Home) => {
+                    self.preview_viewport.home();
+                    Action::Consumed
+                }
+                (_, KeyCode::End) => {
+                    self.preview_viewport.end(self.preview.len());
+                    Action::Consumed
+                }
                 _ => Action::Consumed,
             },
         }
@@ -486,6 +522,90 @@ mod tests {
         screen.mode = Mode::Preview;
         screen.handle_key(key(KeyCode::Esc), 0, 1);
         assert_eq!(screen.mode, Mode::List);
+    }
+
+    #[test]
+    fn one_row_preview_does_not_scroll_out_of_view() {
+        let mut screen = IgnoreScreen::new();
+        screen.mode = Mode::Preview;
+        screen.preview = vec![PreviewEntry {
+            path: "only-file".to_string(),
+            ignored: false,
+            matched_by: None,
+            secret_warning: false,
+        }];
+        screen.set_preview_viewport_height(4);
+
+        screen.handle_key(key(KeyCode::End), 0, 1);
+        screen.handle_key(key(KeyCode::Down), 0, 1);
+
+        assert_eq!(screen.preview_viewport.visible_range(1), 0..1);
+    }
+
+    #[test]
+    fn preview_scrolls_with_arrows_pages_home_and_end() {
+        let mut screen = IgnoreScreen::new();
+        screen.mode = Mode::Preview;
+        screen.preview = (0..12)
+            .map(|i| PreviewEntry {
+                path: format!("file-{i}"),
+                ignored: false,
+                matched_by: None,
+                secret_warning: false,
+            })
+            .collect();
+        screen.set_preview_viewport_height(4);
+
+        screen.handle_key(key(KeyCode::Down), 0, 1);
+        assert_eq!(screen.preview_viewport.offset(), 1);
+        screen.handle_key(key(KeyCode::PageDown), 0, 1);
+        assert_eq!(screen.preview_viewport.offset(), 5);
+        screen.handle_key(key(KeyCode::End), 0, 1);
+        assert_eq!(screen.preview_viewport.visible_range(12), 8..12);
+        screen.handle_key(key(KeyCode::PageUp), 0, 1);
+        assert_eq!(screen.preview_viewport.offset(), 4);
+        screen.handle_key(key(KeyCode::Home), 0, 1);
+        assert_eq!(screen.preview_viewport.offset(), 0);
+    }
+
+    #[test]
+    fn preview_viewport_clamps_after_refresh_shrinks_data() {
+        let mut screen = IgnoreScreen::new();
+        screen.preview = (0..10)
+            .map(|i| PreviewEntry {
+                path: format!("file-{i}"),
+                ignored: false,
+                matched_by: None,
+                secret_warning: false,
+            })
+            .collect();
+        screen.set_preview_viewport_height(3);
+        screen.preview_viewport.end(screen.preview.len());
+
+        screen.replace_preview(screen.preview[..2].to_vec());
+
+        assert_eq!(screen.preview_viewport.visible_range(2), 0..2);
+    }
+
+    #[test]
+    fn preview_viewport_survives_tab_focus_escape() {
+        let mut screen = IgnoreScreen::new();
+        screen.mode = Mode::Preview;
+        screen.preview = (0..8)
+            .map(|i| PreviewEntry {
+                path: format!("file-{i}"),
+                ignored: false,
+                matched_by: None,
+                secret_warning: false,
+            })
+            .collect();
+        screen.set_preview_viewport_height(3);
+        screen.handle_key(key(KeyCode::PageDown), 0, 1);
+
+        let action = screen.handle_key(key(KeyCode::Tab), 0, 1);
+
+        assert_eq!(action, Action::NotConsumed);
+        assert_eq!(screen.preview_viewport.offset(), 3);
     }
 
     #[test]
