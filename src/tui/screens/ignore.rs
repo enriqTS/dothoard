@@ -6,6 +6,8 @@
 
 use std::path::Path;
 
+use crate::tui::text;
+
 /// The state of the ignore editor screen.
 #[derive(Debug)]
 pub struct IgnoreScreen {
@@ -200,27 +202,23 @@ impl IgnoreScreen {
 
                 // Text editing.
                 (_, KeyCode::Char(c)) => {
-                    self.input.insert(self.cursor, c);
-                    self.cursor += c.len_utf8();
+                    text::insert_char(&mut self.input, &mut self.cursor, c);
                     Action::Consumed
                 }
                 (_, KeyCode::Backspace) => {
-                    if self.cursor > 0 {
-                        self.cursor -= 1;
-                        self.input.remove(self.cursor);
-                    }
+                    text::backspace(&mut self.input, &mut self.cursor);
+                    Action::Consumed
+                }
+                (_, KeyCode::Delete) => {
+                    text::delete(&mut self.input, &mut self.cursor);
                     Action::Consumed
                 }
                 (_, KeyCode::Left) => {
-                    if self.cursor > 0 {
-                        self.cursor -= 1;
-                    }
+                    text::move_left(&self.input, &mut self.cursor);
                     Action::Consumed
                 }
                 (_, KeyCode::Right) => {
-                    if self.cursor < self.input.len() {
-                        self.cursor += 1;
-                    }
+                    text::move_right(&self.input, &mut self.cursor);
                     Action::Consumed
                 }
                 (_, KeyCode::Home) => {
@@ -432,6 +430,20 @@ mod tests {
         let action = screen.handle_key(key(KeyCode::Char('a')), 0, 1);
         assert_eq!(action, Action::Consumed);
         assert_eq!(screen.mode, Mode::AddInput);
+    }
+
+    #[test]
+    fn add_input_handles_multibyte_characters() {
+        let mut screen = IgnoreScreen::new();
+        screen.mode = Mode::AddInput;
+        screen.handle_key(key(KeyCode::Char('界')), 0, 1);
+        screen.handle_key(key(KeyCode::Char('é')), 0, 1);
+        screen.handle_key(key(KeyCode::Left), 0, 1);
+        screen.handle_key(key(KeyCode::Backspace), 0, 1);
+        assert_eq!(screen.input, "é");
+        assert_eq!(screen.cursor, 0);
+        screen.handle_key(key(KeyCode::Delete), 0, 1);
+        assert!(screen.input.is_empty());
     }
 
     #[test]

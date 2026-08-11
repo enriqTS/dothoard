@@ -11,6 +11,7 @@ pub mod screens;
 pub mod selection;
 pub mod task;
 mod terminal;
+mod text;
 mod ui;
 
 pub use terminal::run;

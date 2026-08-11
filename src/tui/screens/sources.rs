@@ -10,6 +10,7 @@ use crate::config::SourceConfig;
 use crate::paths;
 use crate::tui::browser::{Browser, BrowserConfig, EntryKind};
 use crate::tui::selection::{SelectionDiff, SourceSelection};
+use crate::tui::text;
 
 /// The state of the sources management screen.
 #[derive(Debug)]
@@ -193,33 +194,23 @@ impl SourcesScreen {
 
                 // Text editing.
                 (_, KeyCode::Char(c)) => {
-                    self.input.insert(self.cursor, c);
-                    self.cursor += c.len_utf8();
+                    text::insert_char(&mut self.input, &mut self.cursor, c);
                     Action::Consumed
                 }
                 (_, KeyCode::Backspace) => {
-                    if self.cursor > 0 {
-                        self.cursor -= 1;
-                        self.input.remove(self.cursor);
-                    }
+                    text::backspace(&mut self.input, &mut self.cursor);
                     Action::Consumed
                 }
                 (_, KeyCode::Delete) => {
-                    if self.cursor < self.input.len() {
-                        self.input.remove(self.cursor);
-                    }
+                    text::delete(&mut self.input, &mut self.cursor);
                     Action::Consumed
                 }
                 (_, KeyCode::Left) => {
-                    if self.cursor > 0 {
-                        self.cursor -= 1;
-                    }
+                    text::move_left(&self.input, &mut self.cursor);
                     Action::Consumed
                 }
                 (_, KeyCode::Right) => {
-                    if self.cursor < self.input.len() {
-                        self.cursor += 1;
-                    }
+                    text::move_right(&self.input, &mut self.cursor);
                     Action::Consumed
                 }
                 (_, KeyCode::Home) => {
@@ -496,6 +487,20 @@ mod tests {
         screen.handle_key(key(KeyCode::Char('c')), 0);
         screen.handle_key(key(KeyCode::Char('o')), 0);
         assert_eq!(screen.input, ".co");
+    }
+
+    #[test]
+    fn add_input_handles_multibyte_characters() {
+        let mut screen = SourcesScreen::new();
+        screen.mode = Mode::AddInput;
+        screen.handle_key(key(KeyCode::Char('界')), 0);
+        screen.handle_key(key(KeyCode::Char('é')), 0);
+        screen.handle_key(key(KeyCode::Left), 0);
+        screen.handle_key(key(KeyCode::Backspace), 0);
+        assert_eq!(screen.input, "é");
+        assert_eq!(screen.cursor, 0);
+        screen.handle_key(key(KeyCode::Delete), 0);
+        assert!(screen.input.is_empty());
     }
 
     #[test]

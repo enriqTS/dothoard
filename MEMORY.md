@@ -14,9 +14,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - **Milestone 13 complete**: MN01–MN09 implement namespace schemas, ownership,
   namespace-scoped backup/Git behavior, lifecycle operations, TUI namespace
   selection/create/rename/delete controls, and multi-machine documentation.
-- **Milestone 14 planned**: TU01–TU14 define the post-namespace TUI usability
-  and visual design work. **TU01 is next**: add regression tests and make text
-  editing and display-width truncation Unicode-safe.
+- **Milestone 14 in progress**: TU01–TU14 define the post-namespace TUI
+  usability and visual design work. **TU01 is active**: add regression tests
+  and make text editing and display-width truncation Unicode-safe.
 
 ## Durable Decisions
 
@@ -109,6 +109,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- TU01 implementation is pending verification because this environment has no
+  `cargo`, `rustc`, or `rustfmt`; `git diff --check` is clean. Do not mark TU01
+  complete until the full serialized Rust baseline passes.
 - `cargo fmt --check` — clean
 - `cargo clippy --all-targets --all-features -- -D warnings` — clean
 - `cargo test --all-targets --all-features -- --test-threads=1` — 839 unit tests passed

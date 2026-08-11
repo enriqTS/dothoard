@@ -9,7 +9,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Tabs};
 
-use super::{App, Screen};
+use super::{App, Screen, text};
 
 /// Draw the complete UI for one frame.
 pub fn draw(frame: &mut Frame, app: &mut App) {
@@ -386,11 +386,7 @@ fn draw_dashboard_status(frame: &mut Frame, area: Rect, app: &App) {
     lines.push(section_header("Commit"));
     if let Some(ref state) = app.state {
         if let Some(ref sha) = state.last_commit {
-            let short = if sha.len() > 8 {
-                sha[..8].to_string()
-            } else {
-                sha.clone()
-            };
+            let short = text::prefix(sha, 8);
             lines.push(field_line("  Last SHA", short));
         } else {
             lines.push(dim_line("  No commits yet"));
@@ -476,12 +472,7 @@ fn draw_dashboard_info(frame: &mut Frame, area: Rect, app: &App) {
     lines.push(section_header("Latest Error"));
     if let Some(ref state) = app.state {
         if let Some(ref err) = state.latest_error {
-            // Truncate long errors for display.
-            let display = if err.len() > 60 {
-                format!("{}...", &err[..57])
-            } else {
-                err.clone()
-            };
+            let display = text::truncate(err, 60);
             lines.push(Line::from(vec![
                 Span::raw("  "),
                 Span::styled(display, Style::default().fg(Color::Red)),
@@ -648,11 +639,7 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &App) {
         detail_lines.push(field_line(" Duration", entry.duration));
 
         if let Some(ref sha) = entry.commit {
-            let short = if sha.len() > 8 {
-                sha[..8].to_string()
-            } else {
-                sha.clone()
-            };
+            let short = text::prefix(sha, 8);
             detail_lines.push(field_line(" Commit", short));
         }
 
@@ -662,14 +649,13 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &App) {
                 " Message:",
                 Style::default().fg(Color::DarkGray),
             )));
-            // Wrap long messages.
+            // Wrap long messages without splitting UTF-8 characters.
             let max_width = columns[1].width.saturating_sub(3) as usize;
-            for chunk in msg.as_bytes().chunks(max_width.max(20)) {
-                let text = String::from_utf8_lossy(chunk);
+            for message_line in text::wrap(msg, max_width) {
                 detail_lines.push(Line::from(vec![
                     Span::raw(" "),
                     Span::styled(
-                        text.to_string(),
+                        message_line,
                         Style::default().fg(if entry.is_error {
                             Color::Red
                         } else {
@@ -731,11 +717,7 @@ fn draw_log_view(frame: &mut Frame, area: Rect, app: &App) {
             .take(visible_height)
         {
             // Truncate very long lines to prevent wrapping issues.
-            let display_line = if line.len() > 200 {
-                format!("{}...", &line[..197])
-            } else {
-                line.clone()
-            };
+            let display_line = text::truncate(line, 200);
             lines.push(Line::from(Span::raw(display_line)));
         }
 
@@ -1548,8 +1530,10 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
             let input_display = format!("  > {}", app.repo_screen.input);
             lines.push(Line::from(Span::raw(input_display)));
 
-            // Cursor position indicator.
-            let cursor_line = format!("  {}^", " ".repeat(app.repo_screen.cursor + 1));
+            // Cursor position indicator uses terminal cells rather than bytes.
+            let cursor_width =
+                text::width_before_cursor(&app.repo_screen.input, app.repo_screen.cursor);
+            let cursor_line = format!("  {}^", " ".repeat(cursor_width + 1));
             lines.push(Line::from(Span::styled(
                 cursor_line,
                 Style::default().fg(Color::DarkGray),
@@ -1811,6 +1795,20 @@ mod tests {
         assert!(content.contains("Commit"));
     }
 
+    #[test]
+    fn dashboard_renders_unicode_commit_and_error_safely() {
+        let backend = TestBackend::new(50, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = app_with_state();
+        let state = app.state.as_mut().unwrap();
+        state.last_commit = Some("界🙂éabcdef".to_string());
+        state.latest_error = Some("界🙂e\u{301}".repeat(30));
+
+        terminal
+            .draw(|frame| draw(frame, &mut app))
+            .expect("Unicode values should render without slicing panics");
+    }
+
     /// Verify dashboard renders without state (no config, no state).
     #[test]
     fn dashboard_renders_without_state() {
@@ -1955,6 +1953,43 @@ mod tests {
         let content = buffer_text(terminal.backend());
         assert!(content.contains("Repository"));
         assert!(content.contains("my-repo"));
+    }
+
+    #[test]
+    fn repository_input_cursor_uses_unicode_display_width() {
+        let backend = TestBackend::new(40, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = app_on(Screen::Repository);
+        app.repo_screen = crate::tui::screens::repository::RepoScreen::with_path("界e\u{301}");
+        app.repo_screen.mode = crate::tui::screens::repository::RepoMode::TextInput;
+
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+
+        let width = terminal.backend().buffer().area.width as usize;
+        let caret_column = terminal
+            .backend()
+            .buffer()
+            .content()
+            .chunks(width)
+            .find_map(|row| row.iter().position(|cell| cell.symbol() == "^"))
+            .expect("cursor indicator should be rendered");
+        assert_eq!(caret_column, 6);
+    }
+
+    #[test]
+    fn source_and_ignore_screens_render_unicode_values_narrowly() {
+        let backend = TestBackend::new(32, 12);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = app_with_state();
+        app.config.as_mut().unwrap().sources = vec![crate::config::SourceConfig {
+            path: "配置/界e\u{301}".to_string(),
+            ignore: vec!["*🙂界é*".to_string()],
+        }];
+
+        for screen in [Screen::Sources, Screen::Ignore] {
+            app.active_screen = screen;
+            terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        }
     }
 
     /// Verify repository screen shows validation error.

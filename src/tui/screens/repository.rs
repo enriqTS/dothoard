@@ -7,6 +7,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::tui::browser::{Browser, BrowserConfig};
+use crate::tui::text;
 
 /// The interaction mode for repository selection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -277,21 +278,20 @@ impl RepoScreen {
                 });
                 KeyResult::Consumed
             }
-            (_, KeyCode::Backspace) if self.namespace_cursor > 0 => {
-                self.namespace_cursor -= 1;
-                self.namespace_input.remove(self.namespace_cursor);
+            (_, KeyCode::Backspace) => {
+                text::backspace(&mut self.namespace_input, &mut self.namespace_cursor);
                 KeyResult::Consumed
             }
-            (_, KeyCode::Delete) if self.namespace_cursor < self.namespace_input.len() => {
-                self.namespace_input.remove(self.namespace_cursor);
+            (_, KeyCode::Delete) => {
+                text::delete(&mut self.namespace_input, &mut self.namespace_cursor);
                 KeyResult::Consumed
             }
-            (_, KeyCode::Left) if self.namespace_cursor > 0 => {
-                self.namespace_cursor -= 1;
+            (_, KeyCode::Left) => {
+                text::move_left(&self.namespace_input, &mut self.namespace_cursor);
                 KeyResult::Consumed
             }
-            (_, KeyCode::Right) if self.namespace_cursor < self.namespace_input.len() => {
-                self.namespace_cursor += 1;
+            (_, KeyCode::Right) => {
+                text::move_right(&self.namespace_input, &mut self.namespace_cursor);
                 KeyResult::Consumed
             }
             (_, KeyCode::Home) => {
@@ -303,8 +303,7 @@ impl RepoScreen {
                 KeyResult::Consumed
             }
             (_, KeyCode::Char(c)) => {
-                self.namespace_input.insert(self.namespace_cursor, c);
-                self.namespace_cursor += c.len_utf8();
+                text::insert_char(&mut self.namespace_input, &mut self.namespace_cursor, c);
                 KeyResult::Consumed
             }
             _ => KeyResult::Consumed,
@@ -423,36 +422,28 @@ impl RepoScreen {
 
             // Text editing.
             (_, KeyCode::Char(c)) => {
-                self.input.insert(self.cursor, c);
-                self.cursor += c.len_utf8();
+                text::insert_char(&mut self.input, &mut self.cursor, c);
                 self.validation = None;
                 KeyResult::Consumed
             }
             (_, KeyCode::Backspace) => {
-                if self.cursor > 0 {
-                    self.cursor -= 1;
-                    self.input.remove(self.cursor);
+                if text::backspace(&mut self.input, &mut self.cursor) {
                     self.validation = None;
                 }
                 KeyResult::Consumed
             }
             (_, KeyCode::Delete) => {
-                if self.cursor < self.input.len() {
-                    self.input.remove(self.cursor);
+                if text::delete(&mut self.input, &mut self.cursor) {
                     self.validation = None;
                 }
                 KeyResult::Consumed
             }
             (_, KeyCode::Left) => {
-                if self.cursor > 0 {
-                    self.cursor -= 1;
-                }
+                text::move_left(&self.input, &mut self.cursor);
                 KeyResult::Consumed
             }
             (_, KeyCode::Right) => {
-                if self.cursor < self.input.len() {
-                    self.cursor += 1;
-                }
+                text::move_right(&self.input, &mut self.cursor);
                 KeyResult::Consumed
             }
             (_, KeyCode::Home) => {
@@ -624,6 +615,21 @@ mod tests {
         screen.handle_key(key(KeyCode::Char('p')));
         assert_eq!(screen.input, "/tmp");
         assert_eq!(screen.cursor, 4);
+    }
+
+    #[test]
+    fn repository_text_input_handles_multibyte_characters() {
+        let mut screen = RepoScreen::new();
+        screen.mode = RepoMode::TextInput;
+        screen.handle_key(key(KeyCode::Char('界')));
+        screen.handle_key(key(KeyCode::Char('é')));
+        screen.handle_key(key(KeyCode::Left));
+        screen.handle_key(key(KeyCode::Backspace));
+        assert_eq!(screen.input, "é");
+        assert_eq!(screen.cursor, 0);
+        screen.handle_key(key(KeyCode::Delete));
+        assert!(screen.input.is_empty());
+        assert_eq!(screen.cursor, 0);
     }
 
     #[test]
@@ -812,6 +818,18 @@ mod tests {
             KeyResult::Consumed
         );
         assert!(screen.namespace_confirmation.is_none());
+    }
+
+    #[test]
+    fn namespace_input_handles_multibyte_characters_without_panicking() {
+        let mut screen = RepoScreen::new();
+        screen.begin_namespace(NamespaceAction::SelectOrCreate, "é界");
+        screen.handle_key(key(KeyCode::Left));
+        screen.handle_key(key(KeyCode::Backspace));
+        assert_eq!(screen.namespace_input, "界");
+        assert_eq!(screen.namespace_cursor, 0);
+        screen.handle_key(key(KeyCode::Delete));
+        assert!(screen.namespace_input.is_empty());
     }
 
     #[test]

@@ -17,6 +17,7 @@ use ratatui::{
 
 use super::browser::{Browser, DirListing, EntryKind, Selection, SelectionError};
 use super::selection::CheckState;
+use super::text;
 
 /// Type alias for the optional check-state callback.
 ///
@@ -136,10 +137,11 @@ pub fn draw(frame: &mut Frame, area: Rect, browser: &mut Browser, check_fn: Opti
 /// Draw the breadcrumb/path header.
 fn draw_breadcrumb(frame: &mut Frame, area: Rect, browser: &Browser) {
     let path_str = browser.current_dir().to_string_lossy();
+    let path_display = text::truncate(&path_str, area.width.saturating_sub(1) as usize);
     let line = Line::from(vec![
         Span::styled(" ", Style::default()),
         Span::styled(
-            path_str.to_string(),
+            path_display,
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
@@ -479,13 +481,7 @@ fn entry_style(kind: EntryKind, selected: bool) -> Style {
 
 /// Truncate a name to fit within a given width.
 fn truncate_name(name: &str, max_width: usize) -> String {
-    if name.len() <= max_width {
-        name.to_string()
-    } else if max_width > 3 {
-        format!("{}...", &name[..max_width - 3])
-    } else {
-        name[..max_width].to_string()
-    }
+    text::truncate(name, max_width)
 }
 
 /// Format a file size in human-readable form.
@@ -787,6 +783,24 @@ mod tests {
     }
 
     #[test]
+    fn renders_unicode_entry_and_breadcrumb_in_narrow_terminal() {
+        let tmp = TempDir::new().unwrap();
+        let unicode_dir = tmp.path().join("配置界e\u{301}");
+        std::fs::create_dir(&unicode_dir).unwrap();
+        std::fs::write(unicode_dir.join("🙂界é-long-name.conf"), "x").unwrap();
+        let mut browser = Browser::new(BrowserConfig {
+            root: tmp.path().to_path_buf(),
+            start: unicode_dir,
+        });
+
+        let backend = TestBackend::new(16, 7);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| draw(frame, frame.area(), &mut browser, None))
+            .unwrap();
+    }
+
+    #[test]
     fn renders_without_panic_medium_terminal() {
         let tmp = setup_test_dir();
         let mut browser = Browser::new(BrowserConfig {
@@ -939,6 +953,12 @@ mod tests {
     #[test]
     fn truncate_name_long() {
         assert_eq!(truncate_name("hello_world", 8), "hello...");
+    }
+
+    #[test]
+    fn truncate_name_uses_terminal_width_for_unicode() {
+        assert_eq!(truncate_name("界界界", 5), "界...");
+        assert_eq!(truncate_name("e\u{301}界", 3), "e\u{301}界");
     }
 
     #[test]
