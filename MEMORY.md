@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-07-28
+Last updated: 2026-08-11
 
 This file is the concise resume point for ongoing work. Product details belong
 in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
@@ -14,6 +14,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - **Milestone 13 complete**: MN01–MN09 implement namespace schemas, ownership,
   namespace-scoped backup/Git behavior, lifecycle operations, TUI namespace
   selection/create/rename/delete controls, and multi-machine documentation.
+- The next product objective is the post-namespace TUI usability and visual
+  design work now specified in `PLAN.md`. Convert it into ordered development
+  tasks before implementation; begin with UTF-8 safety and broken viewports.
 
 ## Durable Decisions
 

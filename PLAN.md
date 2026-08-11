@@ -772,8 +772,6 @@ detection. They must not install or enable real user units.
 - Per-login startup integration beyond user-manager startup.
 - Repository creation and cloning.
 - Paths outside `$HOME` and privileged files.
-- Multiple-machine namespace implementation and namespace management in the
-  TUI.
 - Git history rewriting for leaked secrets.
 - A continuously running filesystem watcher.
 - Multiple backup profiles.
@@ -831,3 +829,177 @@ reads something like "sync failed: git push origin main failed with exit code
 screen. When the user presses Enter on a selected run, the TUI reads the log
 file, filters lines by the run's timestamp range, and displays them in a
 scrollable view. Escape returns to the history list.
+
+## Post-Namespace TUI Usability and Visual Design
+
+The backend feature set is sufficient for the current release. The next product
+focus is making the TUI easier to understand, safer to operate, and visually
+coherent without weakening backend safety or adding unrelated functionality.
+The existing seven screens and keyboard-first operation may remain, but the
+interface must communicate location, focus, mode, status, and available actions
+consistently.
+
+### Interaction Safety and Consistency
+
+Correct interaction defects before visual polish:
+
+- Text editing and displayed-path truncation must respect UTF-8 character
+  boundaries and terminal display width. Unicode input and filenames must not
+  panic, corrupt input, or produce invalid cursor positions.
+- Every scrollable list or preview must keep its active selection visible and
+  expose a real viewport. This includes History and Ignore Preview.
+- `Esc` means back or cancel at the current interaction level. It must not quit
+  unexpectedly or silently apply pending changes. `q` and `Ctrl+C` remain the
+  explicit quit actions outside text-entry modes.
+- Applying source-selection changes remains an explicit action. Leaving the
+  source browser must clearly distinguish applying changes, discarding them,
+  and returning to editing; removals continue to require confirmation.
+- Repository validation, filesystem previews, and other potentially slow work
+  must not make the interface appear frozen. Long operations use the existing
+  background-task model and show a visible working state.
+- Empty states must disable invalid actions and offer a valid next step rather
+  than entering unusable modes.
+
+### Focus, Modes, and Navigation
+
+The active keyboard context must be apparent without consulting documentation:
+
+- Distinguish tab-bar focus, content focus, the focused nested control, and the
+  selected item through more than color alone.
+- Show a concise mode indicator where applicable, such as `Browsing`,
+  `Editing`, `Previewing`, `Confirming`, or `Running`.
+- Keep Arrow and Vim navigation aliases, but present one consistent navigation
+  model across screens.
+- `Tab` continues to provide a reliable route to the tab bar. Contextual help
+  must accurately describe the current focus and mode.
+- Repository, Sources, Ignore, Preview, Automation, and History must use
+  consistent keys for equivalent actions such as refresh, confirm, cancel,
+  scrolling, and returning.
+
+### Help, Status, and Progress
+
+Keyboard help and operation feedback serve different purposes and must not
+replace one another:
+
+- Keep one authoritative, mode-aware shortcut bar at the bottom of the screen.
+  Remove duplicated in-screen shortcut lines that consume content space or can
+  disagree with the footer.
+- Display transient success, warning, error, and progress messages in a
+  separate status region. Messages should expire or be dismissible without
+  hiding keyboard guidance.
+- Background work must show its operation and state, for example
+  `Checking repository`, `Generating preview`, or `Backing up`.
+- Success, warning, and failure must include words or symbols in addition to
+  color. Errors remain actionable and preserve access to full details and logs.
+
+### Dashboard Hierarchy
+
+The Dashboard is the primary health summary, not merely a configuration dump.
+It must make these answers immediately visible:
+
+1. Whether backups are healthy.
+2. When the last successful backup occurred.
+3. Whether commits are waiting to be pushed.
+4. Whether automation is installed and active.
+5. What action, if any, the user should take next.
+
+Use prominent status summaries for backup health, remote synchronization, and
+automation. Repository, namespace, source count, and schedule are secondary
+information. Display the latest check result, including the first actionable
+issue, rather than storing it invisibly. Long errors and paths must wrap or
+truncate safely with a route to their complete value.
+
+### Dialogs and Text Input
+
+Destructive or ownership-sensitive operations use visually distinct modal
+dialogs rather than confirmation text appended to ordinary content:
+
+- Dim or otherwise de-emphasize the background while a dialog owns input.
+- State the action, affected repository path or object, and consequence.
+- Present explicit confirm and cancel choices and preserve existing safety
+  confirmations for namespace deletion, namespace rename, source removal, and
+  automation changes.
+- Render all text inputs with a consistent visible cursor, label, validation
+  state, and cancellation behavior.
+
+### Screen-Specific Improvements
+
+- **Repository:** Show the active namespace, available namespaces, and
+  ownership state as visible controls. Create, select, rename, and delete must
+  be discoverable without memorizing hidden keys. Preserve all namespace
+  ownership and sibling-isolation rules.
+- **Sources:** Make selection state and pending changes clear. Applying,
+  discarding, and confirming removals must be unambiguous.
+- **Ignore Rules:** Visually distinguish focus between the source selector and
+  pattern list. Preview all matches through a scrollable viewport and show the
+  active rule context.
+- **Backup Preview:** Replace unexplained symbolic totals with labeled Added,
+  Changed, Deleted, Ignored, and Warning counts. Retain a scroll position and
+  expose exact staged paths and warning details.
+- **Automation:** Load status on first entry when possible and distinguish
+  unavailable, loading, installed, active, stale, and failed states.
+- **History:** Keep the selected run visible, include its namespace, and retain
+  access to detailed errors and filtered logs.
+- **Empty states:** Explain why the screen is empty and name the next available
+  action, such as adding sources, generating a preview, installing automation,
+  or running the first backup.
+
+### Visual System and Responsive Layout
+
+Create a small shared visual system instead of styling each screen ad hoc:
+
+- Define reusable styles for focused controls, selections, headings, labels,
+  muted text, success, warnings, errors, and dialogs.
+- Avoid low-contrast `DarkGray` for essential text and avoid color-only status
+  semantics. Selection and focus should also use borders, markers, bold text,
+  or reverse video.
+- Label filesystem-browser panes as Parent, Files, and Preview, and visibly
+  identify the active pane. Provide an ASCII-safe icon option or use symbols
+  whose cell width is predictable across supported terminals.
+- Add compact layouts for narrow terminals: stack Dashboard and History panes,
+  compact or scroll the seven-tab header, and preserve important actions before
+  secondary details.
+- Truncate breadcrumbs, paths, names, and messages by terminal cell width, not
+  byte count. Complete values must remain available in a detail view.
+
+### Loading and Refresh Behavior
+
+Screens distinguish `not loaded`, `loading`, `loaded`, `stale`, and `failed`.
+Preview and Automation should load on first entry when configuration permits;
+`r` remains available for an explicit refresh. Configuration or namespace
+changes continue to mark dependent data stale and must display that state
+clearly rather than presenting old data as current.
+
+### Documentation and Verification
+
+Update the README with a concise keyboard guide and first-run TUI workflow.
+Interaction and rendering tests must cover:
+
+- UTF-8 editing, cursor movement, and display-width-safe truncation.
+- Consistent Escape, cancel, apply, and quit behavior in every mode.
+- History and Ignore Preview viewport tracking.
+- Status messages coexisting with contextual help.
+- Visible nested focus, modal ownership, and input cursors.
+- Empty, loading, stale, success, warning, and failure states.
+- Long paths and representative wide, medium, narrow, and short terminals.
+- Namespace visibility in Repository and History.
+- Style-sensitive focus and selection assertions, not only rendered text.
+
+The complete formatting, Clippy, and serialized test baseline must pass after
+each implementation slice. Visual changes should additionally receive a manual
+smoke test in a real terminal using both a dark and a light-compatible terminal
+palette.
+
+### Delivery Order
+
+Implement the usability work in this order:
+
+1. UTF-8 safety, History viewport tracking, and Ignore Preview scrolling.
+2. Consistent back, cancel, apply, and quit behavior.
+3. Persistent contextual help with separate transient status and progress.
+4. Shared focus styles, mode indicators, modal dialogs, and text inputs.
+5. Dashboard hierarchy and actionable empty/loading states.
+6. Discoverable namespace controls and namespace-aware History.
+7. Responsive layouts, browser labels, contrast, icons, and final visual polish.
+8. README updates, complete automated verification, and real-terminal visual
+   acceptance.
