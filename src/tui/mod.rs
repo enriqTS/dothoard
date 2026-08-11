@@ -317,10 +317,11 @@ impl App {
         self.sources_screen.mode = screens::sources::Mode::List;
     }
 
-    /// Handle the ApplySelection action from the browser (Esc pressed).
+    /// Review changes when leaving the source browser.
     ///
-    /// Computes the diff and either applies immediately (no removals) or
-    /// transitions to ConfirmApply mode.
+    /// An unchanged session closes immediately. Changed sessions always stop
+    /// at an explicit apply/discard/continue choice before configuration can
+    /// be mutated.
     fn handle_apply_selection(&mut self) {
         let sources = self
             .config
@@ -332,26 +333,43 @@ impl App {
             let diff = sel.diff_against_config(sources);
             if diff.additions.is_empty() && diff.removals.is_empty() && diff.ignore_rules.is_empty()
             {
-                // No changes — just close the browser.
                 self.sources_screen.mode = screens::sources::Mode::List;
+                self.sources_screen.selection = None;
+                self.sources_screen.pending_diff = None;
                 self.sources_screen.message = None;
-            } else if diff.removals.is_empty() {
-                // No removals — apply immediately without confirmation.
-                self.sources_screen.pending_diff = Some(diff);
-                self.execute_selection_diff();
             } else {
-                // Removals present — ask for confirmation.
                 self.sources_screen.pending_diff = Some(diff);
-                self.sources_screen.mode = screens::sources::Mode::ConfirmApply;
+                self.sources_screen.mode = screens::sources::Mode::PendingChanges;
                 self.sources_screen.message = None;
             }
         } else {
-            // No selection state — just close.
             self.sources_screen.mode = screens::sources::Mode::List;
         }
     }
 
-    /// Handle ConfirmApply action (user pressed 'y' in the confirm dialog).
+    /// Continue an explicit apply request, preserving removal confirmation.
+    fn handle_choose_apply(&mut self) {
+        match self.sources_screen.pending_diff.as_ref() {
+            Some(diff) if !diff.removals.is_empty() => {
+                self.sources_screen.mode = screens::sources::Mode::ConfirmApply;
+            }
+            Some(_) => self.execute_selection_diff(),
+            None => self.sources_screen.mode = screens::sources::Mode::Browse,
+        }
+    }
+
+    /// Discard all edits from the current source-browser session.
+    fn handle_discard_selection(&mut self) {
+        self.sources_screen.selection = None;
+        self.sources_screen.pending_diff = None;
+        self.sources_screen.mode = screens::sources::Mode::List;
+        self.sources_screen.message = Some(screens::sources::Message {
+            text: "Source changes discarded.".to_string(),
+            kind: screens::sources::MessageKind::Info,
+        });
+    }
+
+    /// Handle ConfirmApply action (user pressed 'y' in the removal dialog).
     fn handle_confirm_apply(&mut self) {
         self.execute_selection_diff();
     }
@@ -521,13 +539,41 @@ impl App {
         }
     }
 
+    /// Whether the current content mode owns text and confirmation shortcuts.
+    fn content_owns_quit_shortcuts(&self) -> bool {
+        use screens::automation::ConfirmAction;
+        use screens::repository::{ConfirmState, RepoMode};
+        use screens::sources::Mode as SourcesMode;
+
+        match self.active_screen {
+            Screen::Repository => {
+                self.repo_screen.mode != RepoMode::Browser
+                    || self.repo_screen.confirm_state == ConfirmState::AskInitialize
+                    || self.repo_screen.confirm_state == ConfirmState::AskAttach
+                    || self.repo_screen.namespace_confirmation.is_some()
+            }
+            Screen::Sources => matches!(
+                self.sources_screen.mode,
+                SourcesMode::AddInput
+                    | SourcesMode::ConfirmDelete
+                    | SourcesMode::PendingChanges
+                    | SourcesMode::ConfirmApply
+            ),
+            Screen::Ignore => self.ignore_screen.mode == screens::ignore::Mode::AddInput,
+            Screen::Automation => self.automation_screen.confirm != ConfirmAction::None,
+            Screen::Dashboard | Screen::Preview | Screen::History => false,
+        }
+    }
+
     /// Handle a key event and update application state.
     pub fn handle_key(&mut self, key: crossterm::event::KeyEvent) {
         use crossterm::event::{KeyCode, KeyModifiers};
 
-        // Ctrl+C is always a global exit regardless of focus.
+        // Ctrl+C quits only when no text entry or confirmation owns input.
         if key.modifiers == KeyModifiers::CONTROL && key.code == KeyCode::Char('c') {
-            self.should_quit = true;
+            if self.focus == Focus::TabBar || !self.content_owns_quit_shortcuts() {
+                self.should_quit = true;
+            }
             return;
         }
 
@@ -595,14 +641,14 @@ impl App {
         // Delegate to screen-specific handlers.
         let consumed = self.dispatch_to_screen(key);
 
-        // If the screen did not consume the key, check for content-level
-        // boundary escape: Up/k at the top returns to tab bar.
+        // If the screen did not consume the key, Up/k and Esc back out to
+        // the tab bar. Only q is an explicit content-level quit action.
         if !consumed {
             match key.code {
-                KeyCode::Up | KeyCode::Char('k') => {
+                KeyCode::Up | KeyCode::Char('k') | KeyCode::Esc => {
                     self.focus = Focus::TabBar;
                 }
-                KeyCode::Char('q') | KeyCode::Esc => {
+                KeyCode::Char('q') => {
                     self.should_quit = true;
                 }
                 _ => {}
@@ -866,6 +912,14 @@ impl App {
             }
             screens::sources::Action::ApplySelection => {
                 self.handle_apply_selection();
+                true
+            }
+            screens::sources::Action::ChooseApply => {
+                self.handle_choose_apply();
+                true
+            }
+            screens::sources::Action::DiscardSelection => {
+                self.handle_discard_selection();
                 true
             }
             screens::sources::Action::ConfirmApply => {
@@ -1357,13 +1411,134 @@ mod tests {
     }
 
     #[test]
-    fn esc_from_content_quits_when_not_consumed() {
+    fn esc_from_top_level_content_returns_to_tab_bar_without_quitting() {
         use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
         let mut app = test_app();
         app.focus = Focus::Content;
         app.active_screen = Screen::Dashboard;
         app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-        assert!(app.should_quit);
+        assert_eq!(app.focus, Focus::TabBar);
+        assert!(!app.should_quit);
+    }
+
+    #[test]
+    fn repository_browser_esc_returns_to_tab_bar_without_quitting() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = test_app();
+        app.focus = Focus::Content;
+        app.active_screen = Screen::Repository;
+
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+        assert_eq!(app.focus, Focus::TabBar);
+        assert_eq!(app.repo_screen.mode, screens::repository::RepoMode::Browser);
+        assert!(!app.should_quit);
+    }
+
+    #[test]
+    fn ctrl_c_is_owned_by_text_input_and_confirmation_modes() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+
+        let mut cases = Vec::new();
+
+        let mut repository_text = test_app();
+        repository_text.active_screen = Screen::Repository;
+        repository_text.repo_screen.mode = screens::repository::RepoMode::TextInput;
+        cases.push(repository_text);
+
+        let mut repository_confirm = test_app();
+        repository_confirm.active_screen = Screen::Repository;
+        repository_confirm.repo_screen.confirm_state =
+            screens::repository::ConfirmState::AskInitialize;
+        cases.push(repository_confirm);
+
+        let mut source_input = test_app();
+        source_input.active_screen = Screen::Sources;
+        source_input.sources_screen.mode = screens::sources::Mode::AddInput;
+        cases.push(source_input);
+
+        let mut source_pending = test_app();
+        source_pending.active_screen = Screen::Sources;
+        source_pending.sources_screen.mode = screens::sources::Mode::PendingChanges;
+        cases.push(source_pending);
+
+        let mut ignore_input = test_app();
+        ignore_input.active_screen = Screen::Ignore;
+        ignore_input.ignore_screen.mode = screens::ignore::Mode::AddInput;
+        cases.push(ignore_input);
+
+        let mut automation_confirm = test_app();
+        automation_confirm.active_screen = Screen::Automation;
+        automation_confirm.automation_screen.confirm = screens::automation::ConfirmAction::Install;
+        cases.push(automation_confirm);
+
+        for mut app in cases {
+            app.focus = Focus::Content;
+            app.handle_key(ctrl_c);
+            assert!(!app.should_quit);
+        }
+    }
+
+    #[test]
+    fn q_is_literal_in_text_input_consumed_by_modals_and_quits_elsewhere() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let q = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
+
+        let mut input = test_app();
+        input.focus = Focus::Content;
+        input.active_screen = Screen::Repository;
+        input.repo_screen.mode = screens::repository::RepoMode::TextInput;
+        input.handle_key(q);
+        assert_eq!(input.repo_screen.input, "q");
+        assert!(!input.should_quit);
+
+        let mut modal = test_app();
+        modal.focus = Focus::Content;
+        modal.active_screen = Screen::Sources;
+        modal.sources_screen.mode = screens::sources::Mode::PendingChanges;
+        modal.handle_key(q);
+        assert!(!modal.should_quit);
+        assert_eq!(
+            modal.sources_screen.mode,
+            screens::sources::Mode::PendingChanges
+        );
+
+        let mut preview = test_app();
+        preview.focus = Focus::Content;
+        preview.active_screen = Screen::Ignore;
+        preview.ignore_screen.mode = screens::ignore::Mode::Preview;
+        preview.handle_key(q);
+        assert!(preview.should_quit);
+    }
+
+    #[test]
+    fn tab_and_shift_tab_leave_pending_choice_without_resolving_it() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+        for key in [
+            KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE),
+            KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT),
+        ] {
+            let mut app = test_app();
+            app.focus = Focus::Content;
+            app.active_screen = Screen::Sources;
+            app.sources_screen.mode = screens::sources::Mode::PendingChanges;
+            app.sources_screen.pending_diff = Some(crate::tui::selection::SelectionDiff {
+                additions: vec![".bashrc".to_string()],
+                removals: vec![],
+                ignore_rules: std::collections::HashMap::new(),
+            });
+
+            app.handle_key(key);
+
+            assert_eq!(app.focus, Focus::TabBar);
+            assert_eq!(
+                app.sources_screen.mode,
+                screens::sources::Mode::PendingChanges
+            );
+            assert!(app.sources_screen.pending_diff.is_some());
+        }
     }
 
     #[test]
@@ -2048,7 +2223,7 @@ mod tests {
         assert!(app.repo_screen.browser.is_some());
     }
 
-    // --- MS05: Apply-on-Esc integration tests ---
+    // --- TU03: explicit source apply/discard integration tests ---
 
     #[test]
     fn apply_selection_no_changes_returns_to_list() {
@@ -2080,7 +2255,91 @@ mod tests {
     }
 
     #[test]
-    fn apply_selection_additions_only_applies_immediately() {
+    fn escaping_changed_source_browser_does_not_apply_additions() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+        let mut app = test_app();
+        app.focus = Focus::Content;
+        app.active_screen = Screen::Sources;
+        app.config = Some(crate::config::Config {
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![],
+        });
+        app.sources_screen.mode = screens::sources::Mode::Browse;
+        app.sources_screen
+            .ensure_selection(&[], std::path::Path::new("/home/user"));
+        app.sources_screen
+            .selection
+            .as_mut()
+            .unwrap()
+            .toggle(std::path::Path::new("/home/user/.bashrc"), false);
+
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+        assert!(app.config.as_ref().unwrap().sources.is_empty());
+        assert!(!app.should_quit);
+    }
+
+    #[test]
+    fn pending_source_changes_can_continue_or_discard_without_mutating_config() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+        let mut app = test_app();
+        app.focus = Focus::Content;
+        app.active_screen = Screen::Sources;
+        app.config = Some(crate::config::Config {
+            version: crate::config::Config::CURRENT_VERSION,
+            namespace: "test-machine".to_string(),
+            repository: "~/repo".to_string(),
+            remote: "origin".to_string(),
+            interval_minutes: 5,
+            network_timeout_seconds: 120,
+            sources: vec![crate::config::SourceConfig {
+                path: ".config".to_string(),
+                ignore: vec![],
+            }],
+        });
+        app.sources_screen.mode = screens::sources::Mode::Browse;
+        app.sources_screen.ensure_selection(
+            app.config.as_ref().unwrap().sources.as_slice(),
+            std::path::Path::new("/home/user"),
+        );
+        let selection = app.sources_screen.selection.as_mut().unwrap();
+        selection.toggle(std::path::Path::new("/home/user/.bashrc"), false);
+        selection.toggle(std::path::Path::new("/home/user/.config/secrets"), true);
+
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(
+            app.sources_screen.mode,
+            screens::sources::Mode::PendingChanges
+        );
+        let diff = app.sources_screen.pending_diff.as_ref().unwrap();
+        assert_eq!(diff.additions, vec![".bashrc"]);
+        assert_eq!(
+            diff.ignore_rules.get(".config").unwrap(),
+            &vec!["/secrets/".to_string()]
+        );
+
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert_eq!(app.sources_screen.mode, screens::sources::Mode::Browse);
+        assert!(app.sources_screen.selection.is_some());
+        assert_eq!(app.config.as_ref().unwrap().sources.len(), 1);
+
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
+        assert_eq!(app.sources_screen.mode, screens::sources::Mode::List);
+        assert!(app.sources_screen.selection.is_none());
+        assert_eq!(app.config.as_ref().unwrap().sources.len(), 1);
+        assert!(app.config.as_ref().unwrap().sources[0].ignore.is_empty());
+    }
+
+    #[test]
+    fn apply_selection_additions_require_explicit_choice() {
         let mut app = test_app();
         app.config = Some(crate::config::Config {
             version: crate::config::Config::CURRENT_VERSION,
@@ -2109,9 +2368,14 @@ mod tests {
 
         app.handle_apply_selection();
 
-        // No removals → applied immediately, returns to list.
+        assert_eq!(
+            app.sources_screen.mode,
+            screens::sources::Mode::PendingChanges
+        );
+        assert_eq!(app.config.as_ref().unwrap().sources.len(), 1);
+
+        app.handle_choose_apply();
         assert_eq!(app.sources_screen.mode, screens::sources::Mode::List);
-        // Config should now have 2 sources.
         let sources = &app.config.as_ref().unwrap().sources;
         assert_eq!(sources.len(), 2);
         assert!(sources.iter().any(|s| s.path == ".zshrc"));
@@ -2120,7 +2384,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_selection_with_removals_enters_confirm() {
+    fn apply_selection_with_removals_requires_choice_then_confirmation() {
         let mut app = test_app();
         app.config = Some(crate::config::Config {
             version: crate::config::Config::CURRENT_VERSION,
@@ -2155,12 +2419,16 @@ mod tests {
 
         app.handle_apply_selection();
 
-        // Removals present → enters ConfirmApply mode.
+        assert_eq!(
+            app.sources_screen.mode,
+            screens::sources::Mode::PendingChanges
+        );
+        assert!(app.sources_screen.pending_diff.is_some());
+        app.handle_choose_apply();
         assert_eq!(
             app.sources_screen.mode,
             screens::sources::Mode::ConfirmApply
         );
-        assert!(app.sources_screen.pending_diff.is_some());
         let diff = app.sources_screen.pending_diff.as_ref().unwrap();
         assert_eq!(diff.removals, vec![".zshrc"]);
     }
@@ -2281,8 +2549,9 @@ mod tests {
             true,
         );
 
-        // Apply (no removals, should apply immediately).
+        // Review and explicitly apply.
         app.handle_apply_selection();
+        app.handle_choose_apply();
 
         assert_eq!(app.sources_screen.mode, screens::sources::Mode::List);
         let source = &app.config.as_ref().unwrap().sources[0];
@@ -2326,8 +2595,13 @@ mod tests {
             .unwrap()
             .toggle(std::path::Path::new("/home/user/.zshrc"), false);
 
-        // Apply should enter confirm mode because there are removals.
+        // Choose apply, then confirm because there are removals.
         app.handle_apply_selection();
+        assert_eq!(
+            app.sources_screen.mode,
+            screens::sources::Mode::PendingChanges
+        );
+        app.handle_choose_apply();
         assert_eq!(
             app.sources_screen.mode,
             screens::sources::Mode::ConfirmApply
@@ -2364,13 +2638,14 @@ mod tests {
         app.sources_screen
             .ensure_selection(app.config.as_ref().unwrap().sources.as_slice(), home);
 
-        // Add .zshrc and apply.
+        // Add .zshrc and explicitly apply.
         app.sources_screen
             .selection
             .as_mut()
             .unwrap()
             .toggle(std::path::Path::new("/home/user/.zshrc"), false);
         app.handle_apply_selection();
+        app.handle_choose_apply();
 
         // Selection is reset after apply.
         assert!(app.sources_screen.selection.is_none());
@@ -2448,6 +2723,7 @@ mod tests {
             .toggle(std::path::Path::new("/home/user/.config"), true);
 
         app.handle_apply_selection();
+        app.handle_choose_apply();
 
         // After apply, selection is None (reset for next session entry).
         assert!(app.sources_screen.selection.is_none());

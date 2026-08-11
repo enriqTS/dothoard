@@ -254,11 +254,12 @@ impl IgnoreScreen {
                 (KeyModifiers::NONE, KeyCode::Tab) | (KeyModifiers::SHIFT, KeyCode::BackTab) => {
                     Action::NotConsumed
                 }
-                // Return to list.
-                (_, KeyCode::Esc) | (_, KeyCode::Char('p')) | (_, KeyCode::Char('q')) => {
+                // Return to list. q remains the explicit application quit key.
+                (_, KeyCode::Esc) | (_, KeyCode::Char('p')) => {
                     self.mode = Mode::List;
                     Action::Consumed
                 }
+                (_, KeyCode::Char('q')) => Action::NotConsumed,
                 // Scroll preview.
                 (_, KeyCode::Up) | (_, KeyCode::Char('k')) => {
                     self.preview_viewport.scroll_up(1);

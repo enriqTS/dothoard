@@ -577,7 +577,7 @@ regression test that demonstrates the current failure.
   changes, clamp it after data refresh or shrinkage, and test empty, one-row,
   long-list, resize, first-row, and last-row cases.
 
-- [ ] **TU03 - Standardize back, cancel, apply, and quit behavior.** Make `Esc`
+- [x] **TU03 - Standardize back, cancel, apply, and quit behavior.** Make `Esc`
   back out one interaction level and prevent Repository browser Escape from
   quitting the application. Reserve `q` and `Ctrl+C` for explicit quit outside
   text entry and modal ownership. When leaving a changed Sources browser,

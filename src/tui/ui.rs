@@ -257,7 +257,7 @@ fn help_bar_sources(app: &App) -> Line<'static> {
             Span::styled("↑↓←→", Style::default().fg(Color::Cyan)),
             Span::raw(" navigate  "),
             Span::styled("Esc", Style::default().fg(Color::Cyan)),
-            Span::raw(" apply  "),
+            Span::raw(" review changes  "),
             Span::styled(":/", Style::default().fg(Color::Cyan)),
             Span::raw(" text"),
         ]),
@@ -267,7 +267,7 @@ fn help_bar_sources(app: &App) -> Line<'static> {
             Span::styled("Enter", Style::default().fg(Color::Cyan)),
             Span::raw(" add  "),
             Span::styled("Esc", Style::default().fg(Color::Cyan)),
-            Span::raw(" cancel  "),
+            Span::raw(" browser  "),
             Span::styled("Ctrl+U", Style::default().fg(Color::Cyan)),
             Span::raw(" clear"),
         ]),
@@ -277,11 +277,19 @@ fn help_bar_sources(app: &App) -> Line<'static> {
             Span::styled("n/Esc", Style::default().fg(Color::Cyan)),
             Span::raw(" cancel"),
         ]),
+        Mode::PendingChanges => Line::from(vec![
+            Span::styled("a", Style::default().fg(Color::Cyan)),
+            Span::raw(" apply  "),
+            Span::styled("d", Style::default().fg(Color::Cyan)),
+            Span::raw(" discard  "),
+            Span::styled("c/Esc", Style::default().fg(Color::Cyan)),
+            Span::raw(" continue editing"),
+        ]),
         Mode::ConfirmApply => Line::from(vec![
             Span::styled("y", Style::default().fg(Color::Cyan)),
-            Span::raw(" apply  "),
+            Span::raw(" remove and apply  "),
             Span::styled("n/Esc", Style::default().fg(Color::Cyan)),
-            Span::raw(" back to browser"),
+            Span::raw(" back to choices"),
         ]),
     }
 }
@@ -1237,13 +1245,13 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
             status_lines.push(Line::from(vec![
                 Span::styled(summary, Style::default().fg(Color::Cyan)),
                 Span::styled(
-                    "  │ Space: toggle │ Esc: apply │ :/ text",
+                    "  │ Space: toggle │ Esc: review │ :/ text",
                     Style::default().fg(Color::DarkGray),
                 ),
             ]));
         } else {
             status_lines.push(Line::from(Span::styled(
-                " Space: toggle │ Esc: apply │ :/ text input │ ↑↓←→ navigate",
+                " Space: toggle │ Esc: review │ :/ text input │ ↑↓←→ navigate",
                 Style::default().fg(Color::DarkGray),
             )));
         }
@@ -1333,7 +1341,21 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
         ]));
     }
 
-    // Show confirm apply dialog with change summary.
+    // Show the explicit pending-change choice before any apply occurs.
+    if app.sources_screen.mode == Mode::PendingChanges {
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                "Pending source changes: [a]pply, [d]iscard, or [c]ontinue editing?",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]));
+    }
+
+    // Show removal confirmation after the user explicitly chooses apply.
     if app.sources_screen.mode == Mode::ConfirmApply {
         lines.push(Line::from(""));
         if let Some(ref diff) = app.sources_screen.pending_diff {
@@ -1352,7 +1374,7 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
             lines.push(Line::from(vec![
                 Span::raw("  "),
                 Span::styled(
-                    format!("Apply changes ({summary})? (y/n)"),
+                    format!("Remove sources and apply changes ({summary})? (y/n)"),
                     Style::default()
                         .fg(Color::Yellow)
                         .add_modifier(Modifier::BOLD),
@@ -2748,7 +2770,10 @@ mod tests {
 
         let content = buffer_text(terminal.backend());
         assert!(content.contains("Space"), "should mention Space for toggle");
-        assert!(content.contains("apply"), "should mention apply for Esc");
+        assert!(
+            content.contains("review changes"),
+            "should make Esc review rather than apply changes"
+        );
     }
 
     /// Verify help bar shows list hints for sources in list mode.
@@ -2856,7 +2881,10 @@ mod tests {
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
-        assert!(content.contains("Apply"), "should show Apply prompt");
+        assert!(
+            content.contains("Remove sources and apply"),
+            "should explain the removal confirmation"
+        );
         assert!(content.contains("y/n"), "should show y/n options");
         assert!(content.contains(".zshrc"), "should show removal detail");
     }
@@ -2906,11 +2934,27 @@ mod tests {
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
-        assert!(content.contains("apply"), "should mention apply");
+        assert!(content.contains("remove and apply"), "should mention apply");
         assert!(
-            content.contains("back to browser"),
-            "should mention back to browser"
+            content.contains("back to choices"),
+            "should return to the pending-change choice"
         );
+    }
+
+    #[test]
+    fn sources_pending_changes_renders_all_three_explicit_choices() {
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = app_on(Screen::Sources);
+        app.focus = crate::tui::Focus::Content;
+        app.sources_screen.mode = crate::tui::screens::sources::Mode::PendingChanges;
+
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("[a]pply"));
+        assert!(content.contains("[d]iscard"));
+        assert!(content.contains("[c]ontinue editing"));
     }
 
     /// Verify sources browse renders at various sizes without panic.

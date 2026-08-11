@@ -15,9 +15,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   namespace-scoped backup/Git behavior, lifecycle operations, TUI namespace
   selection/create/rename/delete controls, and multi-machine documentation.
 - **Milestone 14 in progress**: TU01–TU14 define the post-namespace TUI
-  usability and visual design work. **TU01 and TU02 are complete**: Unicode
-  text handling and History/Ignore Preview viewports are reliable. **TU03 is
-  active**: standardize back, cancel, apply, and quit behavior.
+  usability and visual design work. **TU01–TU03 are complete**: Unicode text
+  handling, reliable History/Ignore Preview viewports, and consistent
+  back/cancel/apply/quit behavior are implemented. **TU04 is active**: move
+  slow TUI reads and validation onto the task/event architecture.
 
 ## Durable Decisions
 
@@ -89,6 +90,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Tab and Shift+Tab always return to tab bar even from modal/input states
   (Repository text input, Sources add/confirm, Ignore add/preview). Screen
   state is preserved across focus transitions.
+- Esc backs out one content interaction level and only quits from tab-bar
+  focus. `q` and Ctrl+C explicitly quit outside text input and confirmation
+  ownership. Changed source-browser sessions require an apply/discard/continue
+  choice; removals retain a separate confirmation.
 - Repository and source paths use a shared three-pane filesystem browser;
   Enter opens directories and Space selects an entry.
 - Source browsing is rooted at `$HOME`, shows hidden entries, and never enters
@@ -113,6 +118,12 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- TU03 verified with Rust 1.97.1:
+  - `cargo fmt --check` — clean
+  - `cargo clippy --all-targets --all-features -- -D warnings` — clean
+  - `cargo test --all-targets --all-features -- --test-threads=1` — clean
+  - 881 library tests, 18 acceptance tests, 1 bootstrap test, 15 Git workflow
+    tests, 49 hardening tests, 21 mirror tests, and 14 orchestration tests pass.
 - TU02 verified with Rust 1.97.1:
   - `cargo fmt --check` — clean
   - `cargo clippy --all-targets --all-features -- -D warnings` — clean

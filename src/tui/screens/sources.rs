@@ -44,7 +44,9 @@ pub enum Mode {
     AddInput,
     /// Confirming deletion of the selected source.
     ConfirmDelete,
-    /// Confirming apply of multi-selection changes (when removals exist).
+    /// Choosing whether to apply, discard, or continue editing pending changes.
+    PendingChanges,
+    /// Confirming source removals before applying multi-selection changes.
     ConfirmApply,
 }
 
@@ -170,9 +172,9 @@ impl SourcesScreen {
                     }
                 }
 
-                // Cancel adding.
+                // Cancel manual entry and return to the source browser.
                 (_, KeyCode::Esc) => {
-                    self.mode = Mode::List;
+                    self.mode = Mode::Browse;
                     self.message = None;
                     Action::Consumed
                 }
@@ -241,6 +243,22 @@ impl SourcesScreen {
                 _ => Action::Consumed,
             },
 
+            Mode::PendingChanges => match (key.modifiers, key.code) {
+                // Tab/Shift+Tab escape to the tab bar without resolving changes.
+                (KeyModifiers::NONE, KeyCode::Tab) | (KeyModifiers::SHIFT, KeyCode::BackTab) => {
+                    Action::NotConsumed
+                }
+                (_, KeyCode::Char('a')) | (_, KeyCode::Char('A')) => Action::ChooseApply,
+                (_, KeyCode::Char('d')) | (_, KeyCode::Char('D')) => Action::DiscardSelection,
+                (_, KeyCode::Char('c')) | (_, KeyCode::Char('C')) | (_, KeyCode::Esc) => {
+                    self.mode = Mode::Browse;
+                    self.pending_diff = None;
+                    self.message = None;
+                    Action::Consumed
+                }
+                _ => Action::Consumed,
+            },
+
             Mode::ConfirmApply => match (key.modifiers, key.code) {
                 // Tab/Shift+Tab escape to tab bar.
                 (KeyModifiers::NONE, KeyCode::Tab) | (KeyModifiers::SHIFT, KeyCode::BackTab) => {
@@ -251,9 +269,9 @@ impl SourcesScreen {
                     Action::ConfirmApply
                 }
                 (_, KeyCode::Char('n')) | (_, KeyCode::Char('N')) | (_, KeyCode::Esc) => {
-                    // Cancel: return to browser with selection intact.
-                    self.mode = Mode::Browse;
-                    self.pending_diff = None;
+                    // Cancel only the removal confirmation; the explicit
+                    // apply/discard/continue choice remains available.
+                    self.mode = Mode::PendingChanges;
                     self.message = None;
                     Action::Consumed
                 }
@@ -271,7 +289,7 @@ impl SourcesScreen {
             (KeyModifiers::NONE, KeyCode::Tab) | (KeyModifiers::SHIFT, KeyCode::BackTab) => {
                 Action::NotConsumed
             }
-            // Escape triggers apply (multi-select workflow).
+            // Escape leaves the editing level and reviews pending changes.
             (_, KeyCode::Esc) => Action::ApplySelection,
             // ':' or '/' switches to text input mode for manual path entry.
             (_, KeyCode::Char(':')) | (_, KeyCode::Char('/')) => {
@@ -415,9 +433,13 @@ pub enum Action {
     AddSource(String),
     /// Remove the source at this index.
     RemoveSource(usize),
-    /// Apply the multi-selection diff (Esc from browser triggers this).
+    /// Review the multi-selection diff when leaving the browser.
     ApplySelection,
-    /// Confirm and execute the pending multi-selection diff.
+    /// Choose apply from the pending-changes prompt.
+    ChooseApply,
+    /// Discard the pending multi-selection edits.
+    DiscardSelection,
+    /// Confirm and execute a pending diff that removes sources.
     ConfirmApply,
 }
 
@@ -514,12 +536,12 @@ mod tests {
     }
 
     #[test]
-    fn esc_in_add_mode_returns_to_list() {
+    fn esc_in_add_mode_returns_to_browser() {
         let mut screen = SourcesScreen::new();
         screen.mode = Mode::AddInput;
         screen.input = "partial".to_string();
         screen.handle_key(key(KeyCode::Esc), 0);
-        assert_eq!(screen.mode, Mode::List);
+        assert_eq!(screen.mode, Mode::Browse);
     }
 
     #[test]
@@ -857,20 +879,40 @@ mod tests {
     }
 
     #[test]
-    fn confirm_apply_n_returns_to_browse() {
+    fn confirm_apply_n_returns_to_pending_choices() {
         let mut screen = SourcesScreen::new();
         screen.mode = Mode::ConfirmApply;
         let action = screen.handle_key(key(KeyCode::Char('n')), 0);
         assert_eq!(action, Action::Consumed);
-        assert_eq!(screen.mode, Mode::Browse);
+        assert_eq!(screen.mode, Mode::PendingChanges);
     }
 
     #[test]
-    fn confirm_apply_esc_returns_to_browse() {
+    fn confirm_apply_esc_returns_to_pending_choices() {
         let mut screen = SourcesScreen::new();
         screen.mode = Mode::ConfirmApply;
         let action = screen.handle_key(key(KeyCode::Esc), 0);
         assert_eq!(action, Action::Consumed);
+        assert_eq!(screen.mode, Mode::PendingChanges);
+    }
+
+    #[test]
+    fn pending_changes_has_distinct_apply_discard_and_continue_actions() {
+        let mut screen = SourcesScreen::new();
+        screen.mode = Mode::PendingChanges;
+        assert_eq!(
+            screen.handle_key(key(KeyCode::Char('a')), 0),
+            Action::ChooseApply
+        );
+
+        screen.mode = Mode::PendingChanges;
+        assert_eq!(
+            screen.handle_key(key(KeyCode::Char('d')), 0),
+            Action::DiscardSelection
+        );
+
+        screen.mode = Mode::PendingChanges;
+        assert_eq!(screen.handle_key(key(KeyCode::Esc), 0), Action::Consumed);
         assert_eq!(screen.mode, Mode::Browse);
     }
 
