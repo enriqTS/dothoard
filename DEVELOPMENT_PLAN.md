@@ -549,6 +549,161 @@ namespace. Users can create, select, rename, and delete namespaces safely in
 the TUI, while root-level V1 data remains unmanaged and untouched. The full
 quality suite passes.
 
+## 14. TUI Usability and Visual Design
+
+Refine the existing TUI according to `PLAN.md` "Current Objective: TUI
+Usability and Visual Design". This milestone changes presentation and
+interaction behavior, not backup, ownership, Git publication, or namespace
+safety. Complete tasks in order. Every defect correction begins with a
+regression test that demonstrates the current failure.
+
+- [ ] **TU01 - Make text editing and truncation Unicode-safe.** Add failing
+  regression tests for multibyte repository paths, source paths, ignore
+  patterns, namespace input, picker entries, breadcrumbs, dashboard values,
+  and errors. Replace byte-by-byte cursor movement, insertion, deletion, and
+  string slicing with shared UTF-8-boundary-safe helpers. Truncate by terminal
+  display cells and handle wide and combining characters without panic. Keep
+  filesystem-native paths until the existing configuration UTF-8 boundary;
+  non-UTF-8 entries remain navigable but unselectable. Reuse Ratatui APIs or add
+  only the smallest necessary width dependency. Verify all text-input modes and
+  narrow picker rendering.
+
+- [ ] **TU02 - Implement reliable list and preview viewports.** Add explicit
+  viewport state for History and Ignore Preview, calculate visible rows from
+  the actual render area, and keep the selected or active row visible during
+  Up/Down, Vim navigation, Home/End, and PageUp/PageDown. Replace Ignore
+  Preview's fixed first-20 rendering and no-op scroll handling with a real
+  viewport and range indicator. Preserve viewport state across tab-focus
+  changes, clamp it after data refresh or shrinkage, and test empty, one-row,
+  long-list, resize, first-row, and last-row cases.
+
+- [ ] **TU03 - Standardize back, cancel, apply, and quit behavior.** Make `Esc`
+  back out one interaction level and prevent Repository browser Escape from
+  quitting the application. Reserve `q` and `Ctrl+C` for explicit quit outside
+  text entry and modal ownership. When leaving a changed Sources browser,
+  present an explicit pending-changes choice to apply, discard, or continue
+  editing; never silently apply changes. Preserve removal confirmation and
+  distinguish cancellation from discard. Define a complete key-transition
+  matrix for every screen mode and add interaction tests for Esc, `q`, Tab,
+  Shift+Tab, confirmations, unchanged source sessions, and pending additions,
+  removals, and ignore rules.
+
+- [ ] **TU04 - Move slow TUI reads and validation off the render thread.** Use
+  the existing task/event architecture for repository validation, backup
+  preview generation, Ignore Preview generation, and initial automation
+  inspection. Introduce typed per-screen `NotLoaded`, `Loading`, `Loaded`,
+  `Stale`, and `Failed` states rather than overlapping booleans and optional
+  strings. Prevent duplicate conflicting tasks, preserve the last usable data
+  while a refresh runs where safe, and ignore stale results after repository,
+  namespace, or source changes. Test task start, completion, failure,
+  cancellation-by-invalidation, and continued input/render responsiveness with
+  controlled backends rather than real external state.
+
+- [ ] **TU05 - Separate contextual help from status and progress.** Establish
+  one authoritative, mode-aware shortcut footer and remove duplicated in-body
+  key hints. Add a separate status region for transient success, warning,
+  error, and running messages so feedback never hides shortcuts. Define message
+  priority, expiry or dismissal, and behavior for narrow terminals. Ensure all
+  screen modes advertise only actions they currently accept, including Ignore
+  input/preview, Sources pending changes, Repository namespace actions, and
+  confirmations. Add rendering and timer/event tests for help/status
+  coexistence and message lifecycle.
+
+- [ ] **TU06 - Introduce a shared visual theme and explicit focus language.**
+  Centralize styles for screen borders, headings, labels, muted text, focused
+  controls, selections, success, warning, error, progress, and disabled states.
+  Make tab-bar focus, content focus, nested-control focus, and selected rows
+  distinguishable without relying on color alone. Add visible mode labels such
+  as Browsing, Editing, Previewing, Confirming, and Running where they clarify
+  input ownership. Replace essential low-contrast text and add style-sensitive
+  buffer assertions for dark, light-compatible, color-reduced, focused, and
+  unfocused states.
+
+- [ ] **TU07 - Build consistent modal and text-input presentation.** Create
+  reusable centered modal rendering with background de-emphasis, title,
+  affected object or path, consequence, validation/error area, and explicit
+  confirm/cancel actions. Adopt it for namespace create/select/rename/delete,
+  repository initialize/attach, source apply/removal, and automation changes
+  without weakening existing confirmations. Render all text inputs with the
+  shared Unicode-safe editor, visible cursor, label, validation state, and
+  consistent submit/cancel behavior. Test input ownership, modal precedence,
+  resize behavior, long affected paths, and narrow/short terminals.
+
+- [ ] **TU08 - Redesign the Dashboard around health and next actions.** Make
+  backup health, last successful backup, pending push state, and automation
+  health the primary summaries. Keep repository, active namespace, source
+  count, schedule, and timeout secondary. Render the latest check result and
+  its first actionable issue, including running and unavailable states. Add a
+  clear recommended next action for unconfigured, unhealthy, pending-push, and
+  healthy states. Replace unsafe path/error truncation, provide access to full
+  details, stack content on narrow terminals, and test all health combinations.
+
+- [ ] **TU09 - Make namespace management visible and history namespace-aware.**
+  Add a Repository namespace control that lists discovered namespaces,
+  identifies the active namespace, and shows ownership state. Expose create,
+  select, rename, and delete actions visibly while continuing to call the
+  existing safety-sensitive backend lifecycle operations. Do not infer
+  ownership or adopt ambiguous content in the UI. Include namespace identity
+  in History rows, details, and log context; clamp selection after namespace or
+  state changes. Test new, owned, invalid, ambiguous, active, sibling,
+  collision, and narrow-layout presentations.
+
+- [ ] **TU10 - Clarify Sources, Ignore, Preview, and browser presentation.** Show
+  pending source additions, removals, and generated ignore rules before apply.
+  Make Ignore's source-selector and pattern-list focus visually distinct and
+  show the active rule context in preview. Replace symbolic Preview totals with
+  labeled Added, Changed, Deleted, Ignored, and Warning counts while retaining
+  exact managed paths and warning details. Label picker panes Parent, Files,
+  and Preview; mark the active pane; make picker instructions caller-specific;
+  and use predictable-width symbols or an ASCII-safe fallback. Add focused,
+  empty, populated, warning, and long-path rendering tests.
+
+- [ ] **TU11 - Add actionable empty, loading, stale, and failure states.** Audit
+  all seven screens and ensure each non-content state explains why data is
+  absent, identifies the next valid action, and disables actions without a
+  valid target. Load Preview and Automation on first entry when configuration
+  permits, retain explicit refresh, and mark dependent data visibly stale after
+  repository, namespace, source, or ignore changes. Ensure errors offer retry
+  or detail access without discarding the last safe data. Test first run,
+  missing config, no sources, no history, unavailable automation, stale
+  previews, loading, failure, retry, and recovery.
+
+- [ ] **TU12 - Complete responsive layout behavior.** Define supported wide,
+  medium, narrow, and short-terminal breakpoints for the global shell and every
+  screen. Stack Dashboard and History panes when columns become unusable;
+  compact or scroll the seven-tab header; preserve the active tab, primary
+  status, focused control, modal actions, and footer before secondary details.
+  Apply display-width-safe wrapping and truncation to breadcrumbs, tabs, paths,
+  messages, and dialog content. Add geometry- and style-aware rendering tests
+  at representative dimensions rather than relying only on text-presence or
+  no-panic assertions.
+
+- [ ] **TU13 - Document and visually accept the refined interaction model.**
+  Update `README.md` with a concise keyboard reference, focus explanation,
+  source apply/discard workflow, namespace management workflow, and first-run
+  path from repository selection through automation. Manually smoke-test all
+  screens in a real terminal with dark and light-compatible palettes, keyboard
+  and Vim aliases, Unicode filenames, long paths, resize events, and narrow
+  layouts. Record only durable findings and resolve visual or interaction
+  defects before the milestone gate.
+
+- [ ] **TU14 - Run complete TUI usability acceptance.** Add end-to-end
+  interaction tests for the first-run workflow, routine preview/backup flow,
+  namespace switching, source editing, ignore preview, automation, History and
+  logs, task failures, and recovery. Re-run the complete formatting, Clippy,
+  serialized test, filesystem, Git, orchestration, and TUI baseline. Confirm
+  that this milestone changes no managed-path, ownership, staging, publication,
+  or noninteractive-process safety boundary.
+
+**Milestone gate:** Unicode input and long filenames cannot crash rendering or
+editing; every list keeps its active item visible; back, apply, cancel, and quit
+behavior is consistent; slow work never freezes the event loop; help remains
+visible beside status; focus and modal ownership are visually explicit; the
+Dashboard presents health and next actions; namespaces are discoverable and
+appear in History; all screens remain usable at supported terminal sizes; the
+README and real-terminal smoke test match the implementation; and the complete
+quality suite passes without weakening backend safety.
+
 ## Execution Order
 
 ```text
@@ -567,6 +722,7 @@ Bootstrap
   -> TUI Bug Fixes
   -> Multi-Select Source Browser
   -> Multiple-Machine Namespaces
+  -> TUI Usability and Visual Design
 ```
 
 The explicit naming prerequisite avoids introducing installed paths and unit

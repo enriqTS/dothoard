@@ -14,9 +14,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - **Milestone 13 complete**: MN01–MN09 implement namespace schemas, ownership,
   namespace-scoped backup/Git behavior, lifecycle operations, TUI namespace
   selection/create/rename/delete controls, and multi-machine documentation.
-- The next product objective is the post-namespace TUI usability and visual
-  design work now specified in `PLAN.md`. Convert it into ordered development
-  tasks before implementation; begin with UTF-8 safety and broken viewports.
+- **Milestone 14 planned**: TU01–TU14 define the post-namespace TUI usability
+  and visual design work. **TU01 is next**: add regression tests and make text
+  editing and display-width truncation Unicode-safe.
 
 ## Durable Decisions
 
