@@ -557,7 +557,7 @@ interaction behavior, not backup, ownership, Git publication, or namespace
 safety. Complete tasks in order. Every defect correction begins with a
 regression test that demonstrates the current failure.
 
-- [ ] **TU01 - Make text editing and truncation Unicode-safe.** Add failing
+- [x] **TU01 - Make text editing and truncation Unicode-safe.** Add failing
   regression tests for multibyte repository paths, source paths, ignore
   patterns, namespace input, picker entries, breadcrumbs, dashboard values,
   and errors. Replace byte-by-byte cursor movement, insertion, deletion, and
