@@ -109,9 +109,12 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
-- TU01 implementation is pending verification because this environment has no
-  `cargo`, `rustc`, or `rustfmt`; `git diff --check` is clean. Do not mark TU01
-  complete until the full serialized Rust baseline passes.
+- TU01 implementation is pending verification. `cargo fmt --check` and
+  `git diff --check` pass, but this environment has Rust 1.85.0 without Clippy.
+  The locked `darling`, `ignore`, and `instability` versions require Rust 1.88
+  or newer, so tests cannot compile here. Do not mark TU01 complete until the
+  full serialized Rust baseline passes with a newer toolchain that includes
+  Rustfmt and Clippy.
 - `cargo fmt --check` — clean
 - `cargo clippy --all-targets --all-features -- -D warnings` — clean
 - `cargo test --all-targets --all-features -- --test-threads=1` — 839 unit tests passed
