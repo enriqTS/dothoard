@@ -1973,7 +1973,8 @@ mod tests {
             .chunks(width)
             .find_map(|row| row.iter().position(|cell| cell.symbol() == "^"))
             .expect("cursor indicator should be rendered");
-        assert_eq!(caret_column, 6);
+        // One border cell plus the six-cell cursor offset inside the panel.
+        assert_eq!(caret_column, 7);
     }
 
     #[test]
