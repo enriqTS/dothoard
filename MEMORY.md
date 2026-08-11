@@ -15,9 +15,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   namespace-scoped backup/Git behavior, lifecycle operations, TUI namespace
   selection/create/rename/delete controls, and multi-machine documentation.
 - **Milestone 14 in progress**: TU01–TU14 define the post-namespace TUI
-  usability and visual design work. **TU01 is complete**: text editing and
-  display-width truncation are Unicode-safe. **TU02 is active**: implement
-  reliable History and Ignore Preview viewports.
+  usability and visual design work. **TU01 and TU02 are complete**: Unicode
+  text handling and History/Ignore Preview viewports are reliable. **TU03 is
+  active**: standardize back, cancel, apply, and quit behavior.
 
 ## Durable Decisions
 
@@ -102,6 +102,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Source/repository changes mark preview and ignore previews stale and clamp
   dependent screen selections (sources list, ignore source index).
 - Release profile: lto=true, strip=true, codegen-units=1.
+- History lists, History logs, and Ignore Preview use shared viewport state
+  whose page size comes from the most recently rendered area. Selection and
+  offsets are clamped after resize, refresh, and data shrinkage.
 - Namespace names are explicit user-selected portable ASCII path components:
   letters, digits, `.`, `_`, and `-` only; empty names, path separators,
   `.`/`..`, absolute paths, and other characters are rejected. Configuration
@@ -110,11 +113,11 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
-- TU01 verified with Rust 1.97.1:
+- TU02 verified with Rust 1.97.1:
   - `cargo fmt --check` — clean
   - `cargo clippy --all-targets --all-features -- -D warnings` — clean
   - `cargo test --all-targets --all-features -- --test-threads=1` — clean
-  - 856 library tests, 18 acceptance tests, 1 bootstrap test, 15 Git workflow
+  - 873 library tests, 18 acceptance tests, 1 bootstrap test, 15 Git workflow
     tests, 49 hardening tests, 21 mirror tests, and 14 orchestration tests pass.
 - The isolated Debian test image lacks `ssh`; the offline orchestration case
   passes with a test-only external SSH stub that reports connection refusal.

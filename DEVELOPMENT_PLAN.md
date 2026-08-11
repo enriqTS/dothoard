@@ -568,7 +568,7 @@ regression test that demonstrates the current failure.
   only the smallest necessary width dependency. Verify all text-input modes and
   narrow picker rendering.
 
-- [ ] **TU02 - Implement reliable list and preview viewports.** Add explicit
+- [x] **TU02 - Implement reliable list and preview viewports.** Add explicit
   viewport state for History and Ignore Preview, calculate visible rows from
   the actual render area, and keep the selected or active row visible during
   Up/Down, Vim navigation, Home/End, and PageUp/PageDown. Replace Ignore
