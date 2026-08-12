@@ -156,11 +156,14 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
-- TU13 documentation updated in `docs/tui.md`; local link validation remains
-  pending because the ad-hoc checker must exclude external badge URLs. A
-  real-terminal smoke attempt failed before launching dothoard:
-  `script: failed to create pseudo-terminal: Permission denied`. Do not mark
-  TU13 or begin TU14 until the required dark/light terminal acceptance runs.
+- TU13 documentation updated in `docs/tui.md`; local link validation excludes
+  external badge URLs and passes. Real-terminal acceptance remains blocked by
+  sandbox infrastructure, not dothoard: `/dev/ptmx`/PTY allocation is denied
+  (`script: failed to create pseudo-terminal: Permission denied`). Run TU13 on
+  a terminal-enabled Arch-based host or runner; first verify terminal support
+  with `script -qec 'test -t 0 && test -t 1 && pi' /dev/null`, then perform the
+  required dark/light smoke test. Do not mark TU13 complete or begin TU14 based
+  on this sandbox.
 - TU12 verified with Rust 1.97.1:
   - `cargo fmt --check` — clean
   - `cargo clippy --all-targets --all-features -- -D warnings` — clean
