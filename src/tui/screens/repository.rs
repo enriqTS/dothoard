@@ -6,6 +6,8 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::config::validate_namespace;
+
 use crate::tui::browser::{Browser, BrowserConfig};
 use crate::tui::{task::LoadState, text};
 
@@ -18,6 +20,8 @@ pub enum RepoMode {
     TextInput,
     /// Namespace management input.
     NamespaceInput,
+    /// Discovered namespace list and lifecycle controls.
+    Namespaces,
 }
 
 /// The state of the repository selection screen.
@@ -43,6 +47,18 @@ pub struct RepoScreen {
     pub namespace_action: NamespaceAction,
     pub namespace_origin: String,
     pub namespace_confirmation: Option<String>,
+    /// Namespaces discovered in the selected repository.
+    pub namespaces: Vec<NamespaceSummary>,
+    /// Selected namespace in the visible namespace list.
+    pub namespace_selected: usize,
+}
+
+/// A namespace discovered directly beneath a repository root.
+#[derive(Debug, Clone)]
+pub struct NamespaceSummary {
+    pub name: String,
+    pub ownership: OwnershipInfo,
+    pub active: bool,
 }
 
 /// Information about a validated repository.
@@ -78,6 +94,15 @@ impl OwnershipInfo {
     /// Whether the state allows proceeding at all.
     pub fn can_proceed(&self) -> bool {
         matches!(self, Self::New | Self::Owned { .. })
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::New => "New",
+            Self::Owned { .. } => "Owned",
+            Self::InvalidManifest(_) => "Invalid",
+            Self::Ambiguous(_) => "Ambiguous",
+        }
     }
 }
 
@@ -124,6 +149,8 @@ impl RepoScreen {
             namespace_action: NamespaceAction::None,
             namespace_origin: "desktop".to_string(),
             namespace_confirmation: None,
+            namespaces: Vec::new(),
+            namespace_selected: 0,
         }
     }
 
@@ -143,12 +170,73 @@ impl RepoScreen {
             namespace_action: NamespaceAction::None,
             namespace_origin: "desktop".to_string(),
             namespace_confirmation: None,
+            namespaces: Vec::new(),
+            namespace_selected: 0,
         }
     }
 
     pub fn set_namespace(&mut self, namespace: &str) {
         self.namespace_input = namespace.to_string();
         self.namespace_cursor = self.namespace_input.len();
+        if let Some(index) = self
+            .namespaces
+            .iter()
+            .position(|item| item.name == namespace)
+        {
+            self.namespace_selected = index;
+        }
+    }
+
+    /// Discover direct namespace directories without claiming ownership of them.
+    pub fn refresh_namespaces(&mut self, repository: &Path, active: &str) -> Result<(), String> {
+        let mut namespaces = Vec::new();
+        let entries = std::fs::read_dir(repository)
+            .map_err(|error| format!("Cannot list repository namespaces: {error}"))?;
+        for entry in entries {
+            let entry = entry.map_err(|error| format!("Cannot read repository entry: {error}"))?;
+            let name = entry.file_name().to_string_lossy().to_string();
+            if validate_namespace(&name).is_err() {
+                continue;
+            }
+            let metadata = std::fs::symlink_metadata(entry.path())
+                .map_err(|error| format!("Cannot inspect namespace {name:?}: {error}"))?;
+            let ownership = if metadata.file_type().is_symlink() {
+                OwnershipInfo::InvalidManifest(
+                    "namespace directory is a symbolic link and cannot be used".to_string(),
+                )
+            } else if metadata.file_type().is_dir() {
+                match crate::git::classify_ownership(repository, &name) {
+                    Ok(state) => ownership_info(state),
+                    Err(error) => OwnershipInfo::InvalidManifest(error.to_string()),
+                }
+            } else {
+                continue;
+            };
+            namespaces.push(NamespaceSummary {
+                active: name == active,
+                name,
+                ownership,
+            });
+        }
+        if !namespaces.iter().any(|item| item.name == active) {
+            namespaces.push(NamespaceSummary {
+                name: active.to_string(),
+                ownership: OwnershipInfo::New,
+                active: true,
+            });
+        }
+        namespaces.sort_by(|left, right| left.name.cmp(&right.name));
+        self.namespaces = namespaces;
+        self.namespace_selected = self
+            .namespaces
+            .iter()
+            .position(|item| item.active)
+            .unwrap_or(0);
+        Ok(())
+    }
+
+    pub fn selected_namespace(&self) -> Option<&NamespaceSummary> {
+        self.namespaces.get(self.namespace_selected)
     }
 
     pub fn begin_namespace(&mut self, action: NamespaceAction, current: &str) {
@@ -237,6 +325,62 @@ impl RepoScreen {
             RepoMode::Browser => self.handle_key_browser(key),
             RepoMode::TextInput => self.handle_key_text(key),
             RepoMode::NamespaceInput => self.handle_key_namespace(key),
+            RepoMode::Namespaces => self.handle_key_namespaces(key),
+        }
+    }
+
+    fn handle_key_namespaces(&mut self, key: crossterm::event::KeyEvent) -> KeyResult {
+        use crossterm::event::{KeyCode, KeyModifiers};
+        match (key.modifiers, key.code) {
+            (KeyModifiers::NONE, KeyCode::Tab) | (KeyModifiers::SHIFT, KeyCode::BackTab) => {
+                KeyResult::NotConsumed
+            }
+            (_, KeyCode::Esc) => {
+                self.mode = RepoMode::Browser;
+                KeyResult::Consumed
+            }
+            (_, KeyCode::Up) | (_, KeyCode::Char('k')) => {
+                self.namespace_selected = self.namespace_selected.saturating_sub(1);
+                KeyResult::Consumed
+            }
+            (_, KeyCode::Down) | (_, KeyCode::Char('j')) => {
+                self.namespace_selected = self
+                    .namespace_selected
+                    .saturating_add(1)
+                    .min(self.namespaces.len().saturating_sub(1));
+                KeyResult::Consumed
+            }
+            (_, KeyCode::Char('n')) => {
+                self.begin_namespace(NamespaceAction::SelectOrCreate, "");
+                KeyResult::Consumed
+            }
+            (_, KeyCode::Enter) => {
+                if let Some(item) = self.selected_namespace() {
+                    self.begin_namespace(NamespaceAction::SelectOrCreate, &item.name.clone());
+                }
+                KeyResult::Consumed
+            }
+            (_, KeyCode::Char('r')) => {
+                if let Some(name) = self
+                    .selected_namespace()
+                    .filter(|item| item.active)
+                    .map(|item| item.name.clone())
+                {
+                    self.begin_namespace(NamespaceAction::Rename, &name);
+                }
+                KeyResult::Consumed
+            }
+            (_, KeyCode::Char('d')) => {
+                if let Some(name) = self
+                    .selected_namespace()
+                    .filter(|item| item.active)
+                    .map(|item| item.name.clone())
+                {
+                    self.begin_namespace(NamespaceAction::Delete, &name);
+                }
+                KeyResult::Consumed
+            }
+            _ => KeyResult::Consumed,
         }
     }
 
@@ -470,20 +614,13 @@ impl RepoScreen {
             return Err(format!("Directory does not exist: {}", expanded.display()));
         }
 
-        use crate::git::{GitRunner, OwnershipState, classify_ownership, validate_repository};
+        use crate::git::{GitRunner, classify_ownership, validate_repository};
         let runner = GitRunner::new(std::time::Duration::from_secs(u64::from(timeout_seconds)));
         let info = validate_repository(&runner, &expanded, remote)
             .map_err(|e| format!("Not a valid repository: {e}"))?;
         let state = classify_ownership(&expanded, namespace)
             .map_err(|e| format!("Failed to classify ownership: {e}"))?;
-        let ownership = match state {
-            OwnershipState::New => OwnershipInfo::New,
-            OwnershipState::Owned { manifest } => OwnershipInfo::Owned {
-                sources: manifest.sources.into_iter().map(|s| s.path).collect(),
-            },
-            OwnershipState::InvalidManifest { reason } => OwnershipInfo::InvalidManifest(reason),
-            OwnershipState::Ambiguous { reason } => OwnershipInfo::Ambiguous(reason),
-        };
+        let ownership = ownership_info(state);
 
         Ok(RepoInfo {
             path: expanded,
@@ -509,6 +646,23 @@ impl RepoScreen {
 
         self.confirm_state = ConfirmState::Done;
         Ok(info.path)
+    }
+}
+
+fn ownership_info(state: crate::git::OwnershipState) -> OwnershipInfo {
+    match state {
+        crate::git::OwnershipState::New => OwnershipInfo::New,
+        crate::git::OwnershipState::Owned { manifest } => OwnershipInfo::Owned {
+            sources: manifest
+                .sources
+                .into_iter()
+                .map(|source| source.path)
+                .collect(),
+        },
+        crate::git::OwnershipState::InvalidManifest { reason } => {
+            OwnershipInfo::InvalidManifest(reason)
+        }
+        crate::git::OwnershipState::Ambiguous { reason } => OwnershipInfo::Ambiguous(reason),
     }
 }
 
@@ -549,6 +703,77 @@ mod tests {
 
     fn key_mod(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
         KeyEvent::new(code, modifiers)
+    }
+
+    #[test]
+    fn discovers_active_sibling_and_unsafe_namespace_states() {
+        use crate::backup::manifest::Manifest;
+
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(tmp.path().join("desktop")).unwrap();
+        Manifest::from_sources("desktop", &[])
+            .save(&tmp.path().join("desktop"))
+            .unwrap();
+        std::fs::create_dir_all(tmp.path().join("notebook/home")).unwrap();
+        std::fs::write(tmp.path().join("notebook/home/config"), "data").unwrap();
+        std::fs::create_dir_all(tmp.path().join("broken")).unwrap();
+        std::fs::write(
+            tmp.path().join("broken/.dothoard-manifest.toml"),
+            "not valid toml",
+        )
+        .unwrap();
+
+        let mut screen = RepoScreen::new();
+        screen.refresh_namespaces(tmp.path(), "desktop").unwrap();
+
+        assert_eq!(screen.namespaces.len(), 3);
+        assert!(screen.namespaces.iter().any(|item| item.active
+            && item.name == "desktop"
+            && matches!(item.ownership, OwnershipInfo::Owned { .. })));
+        assert!(
+            screen.namespaces.iter().any(|item| item.name == "notebook"
+                && matches!(item.ownership, OwnershipInfo::Ambiguous(_)))
+        );
+        assert!(screen.namespaces.iter().any(|item| item.name == "broken"
+            && matches!(item.ownership, OwnershipInfo::InvalidManifest(_))));
+    }
+
+    #[test]
+    fn discovery_includes_missing_active_namespace_as_new() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut screen = RepoScreen::new();
+        screen
+            .refresh_namespaces(tmp.path(), "new-machine")
+            .unwrap();
+
+        assert_eq!(screen.namespaces.len(), 1);
+        assert!(screen.namespaces[0].active);
+        assert!(matches!(screen.namespaces[0].ownership, OwnershipInfo::New));
+    }
+
+    #[test]
+    fn namespace_list_selects_rows_and_only_edits_active_namespace() {
+        let mut screen = RepoScreen::new();
+        screen.namespaces = vec![
+            NamespaceSummary {
+                name: "desktop".to_string(),
+                ownership: OwnershipInfo::Owned { sources: vec![] },
+                active: true,
+            },
+            NamespaceSummary {
+                name: "notebook".to_string(),
+                ownership: OwnershipInfo::Owned { sources: vec![] },
+                active: false,
+            },
+        ];
+        screen.mode = RepoMode::Namespaces;
+        screen.handle_key(key(KeyCode::Down));
+        assert_eq!(screen.namespace_selected, 1);
+        screen.handle_key(key(KeyCode::Char('r')));
+        assert_eq!(screen.mode, RepoMode::Namespaces);
+        screen.handle_key(key(KeyCode::Enter));
+        assert_eq!(screen.mode, RepoMode::NamespaceInput);
+        assert_eq!(screen.namespace_input, "notebook");
     }
 
     #[test]

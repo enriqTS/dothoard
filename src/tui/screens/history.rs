@@ -31,6 +31,8 @@ pub struct HistoryScreen {
     pub mode: Mode,
     /// Cached log lines for the current log view.
     pub log_lines: Vec<String>,
+    /// Namespace of the run whose log is displayed.
+    pub log_namespace: Option<String>,
 }
 
 impl Default for HistoryScreen {
@@ -47,6 +49,7 @@ impl HistoryScreen {
             log_viewport: Viewport::default(),
             mode: Mode::History,
             log_lines: Vec::new(),
+            log_namespace: None,
         }
     }
 
@@ -61,6 +64,7 @@ impl HistoryScreen {
             let log_path = state_dir.join("dothoard.log");
             Self::filter_logs_by_timestamp(&log_path, record.started_at, record.finished_at)
         };
+        self.log_namespace = (!record.namespace.is_empty()).then(|| record.namespace.clone());
         self.mode = Mode::LogView;
         self.log_viewport.home();
         self.log_viewport.clamp(self.log_lines.len());
@@ -70,6 +74,7 @@ impl HistoryScreen {
     pub fn exit_log_view(&mut self) {
         self.mode = Mode::History;
         self.log_lines.clear();
+        self.log_namespace = None;
         self.log_viewport.home();
     }
 
@@ -280,6 +285,7 @@ impl HistoryScreen {
 
         EntryDisplay {
             time: time_str,
+            namespace: (!record.namespace.is_empty()).then(|| record.namespace.clone()),
             outcome: outcome_str.to_string(),
             duration: duration_str,
             commit: record.commit.clone(),
@@ -295,6 +301,8 @@ impl HistoryScreen {
 pub struct EntryDisplay {
     /// Formatted timestamp.
     pub time: String,
+    /// Namespace recorded for this run, if available in legacy state.
+    pub namespace: Option<String>,
     /// Human-readable outcome.
     pub outcome: String,
     /// Duration string.
@@ -575,6 +583,30 @@ mod tests {
         let lines = HistoryScreen::filter_logs_by_timestamp(&log_path, start, end);
 
         assert!(lines.is_empty());
+    }
+
+    #[test]
+    fn format_entry_includes_namespace_identity() {
+        let mut record = sample_record(RunOutcome::Success);
+        record.namespace = "notebook".to_string();
+
+        let display = HistoryScreen::format_entry(&record);
+
+        assert_eq!(display.namespace.as_deref(), Some("notebook"));
+    }
+
+    #[test]
+    fn log_view_retains_run_namespace_context() {
+        let mut record = sample_record(RunOutcome::Success);
+        record.namespace = "desktop".to_string();
+        let tmp = tempfile::tempdir().unwrap();
+        let mut screen = HistoryScreen::new();
+
+        screen.enter_log_view(&record, tmp.path());
+
+        assert_eq!(screen.log_namespace.as_deref(), Some("desktop"));
+        screen.exit_log_view();
+        assert!(screen.log_namespace.is_none());
     }
 
     #[test]

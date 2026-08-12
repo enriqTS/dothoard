@@ -562,6 +562,7 @@ fn run_push_task(paths: &crate::paths::AppPaths) -> PushResult {
             let finished_at = chrono::Utc::now();
             record_push_outcome(
                 paths,
+                "",
                 started_at,
                 finished_at,
                 RunOutcome::Failed,
@@ -588,6 +589,7 @@ fn run_push_task(paths: &crate::paths::AppPaths) -> PushResult {
             let finished_at = chrono::Utc::now();
             record_push_outcome(
                 paths,
+                &config.namespace,
                 started_at,
                 finished_at,
                 RunOutcome::Failed,
@@ -641,6 +643,7 @@ fn run_push_task(paths: &crate::paths::AppPaths) -> PushResult {
             let finished_at = chrono::Utc::now();
             record_push_outcome(
                 paths,
+                &config.namespace,
                 started_at,
                 finished_at,
                 RunOutcome::Failed,
@@ -657,6 +660,7 @@ fn run_push_task(paths: &crate::paths::AppPaths) -> PushResult {
 /// Record a push outcome in the run history.
 fn record_push_outcome(
     paths: &crate::paths::AppPaths,
+    namespace: &str,
     started_at: chrono::DateTime<chrono::Utc>,
     finished_at: chrono::DateTime<chrono::Utc>,
     outcome: crate::state::RunOutcome,
@@ -666,7 +670,7 @@ fn record_push_outcome(
 
     let mut state = AppState::load(paths.state_dir()).unwrap_or_default();
     state.record_run(RunRecord {
-        namespace: String::new(),
+        namespace: namespace.to_string(),
         started_at,
         finished_at,
         outcome,

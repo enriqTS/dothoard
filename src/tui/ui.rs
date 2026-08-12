@@ -236,7 +236,7 @@ fn draw_modal_overlay(frame: &mut Frame, area: Rect, app: &App) {
                             },
                         );
                     }
-                    repository::RepoMode::Browser => {}
+                    repository::RepoMode::Browser | repository::RepoMode::Namespaces => {}
                 }
             }
         }
@@ -379,6 +379,7 @@ fn screen_title(app: &App, screen: &'static str) -> Line<'static> {
         }
         Screen::Repository => match app.repo_screen.mode {
             repository::RepoMode::Browser => "Browsing",
+            repository::RepoMode::Namespaces => "Managing namespaces",
             repository::RepoMode::TextInput | repository::RepoMode::NamespaceInput => "Editing",
         },
         Screen::Sources => match app.sources_screen.mode {
@@ -607,8 +608,10 @@ fn help_bar_repository(app: &App) -> Line<'static> {
                 Span::raw(" tabs  "),
                 Span::styled("Space", Style::default().fg(Color::Cyan)),
                 Span::raw(" select  "),
+                Span::styled("m", Style::default().fg(Color::Cyan)),
+                Span::raw(" namespaces  "),
                 Span::styled("n", Style::default().fg(Color::Cyan)),
-                Span::raw(" namespace  "),
+                Span::raw(" create  "),
             ];
             if app.config.is_some() {
                 spans.extend([
@@ -626,6 +629,18 @@ fn help_bar_repository(app: &App) -> Line<'static> {
             ]);
             Line::from(spans)
         }
+        RepoMode::Namespaces => Line::from(vec![
+            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::raw(" tabs  "),
+            Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
+            Span::raw(" select  "),
+            Span::styled("Enter", Style::default().fg(Color::Cyan)),
+            Span::raw(" use/create  "),
+            Span::styled("n/r/d", Style::default().fg(Color::Cyan)),
+            Span::raw(" create/rename/delete  "),
+            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::raw(" back"),
+        ]),
         RepoMode::NamespaceInput if app.repo_screen.namespace_confirmation.is_some() => {
             Line::from(vec![
                 Span::styled("Tab", Style::default().fg(Color::Cyan)),
@@ -1275,6 +1290,14 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &mut App) {
             Span::styled(marker, Style::default().fg(Color::Cyan)),
             Span::styled(entry.time.clone(), style),
             Span::raw(" "),
+            Span::styled(
+                entry
+                    .namespace
+                    .clone()
+                    .unwrap_or_else(|| "unknown namespace".to_string()),
+                THEME.label(),
+            ),
+            Span::raw(" "),
             Span::styled(entry.outcome.clone(), Style::default().fg(outcome_color)),
         ]));
     }
@@ -1317,6 +1340,12 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &mut App) {
             Span::styled(entry.outcome, Style::default().fg(outcome_color)),
         ]));
         detail_lines.push(field_line(" Started", entry.time));
+        detail_lines.push(field_line(
+            " Namespace",
+            entry
+                .namespace
+                .unwrap_or_else(|| "Unknown (legacy run)".to_string()),
+        ));
         detail_lines.push(field_line(" Duration", entry.duration));
 
         if let Some(ref sha) = entry.commit {
@@ -1362,6 +1391,11 @@ fn draw_log_view(frame: &mut Frame, area: Rect, app: &mut App) {
             .fg(Color::Cyan)
             .add_modifier(Modifier::BOLD),
     )));
+    if let Some(namespace) = &app.history_screen.log_namespace {
+        lines.push(field_line(" Namespace", namespace.clone()));
+    } else {
+        lines.push(dim_line(" Namespace: unknown (legacy run)"));
+    }
     lines.push(Line::from(""));
 
     if app.history_screen.log_lines.is_empty() {
@@ -2122,6 +2156,63 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
 
             let paragraph = Paragraph::new(lines);
             frame.render_widget(paragraph, chunks[1]);
+        }
+        RepoMode::Namespaces => {
+            let mut lines = vec![section_header("Namespaces")];
+            lines.push(dim_line(
+                "  Active and discovered direct repository namespaces",
+            ));
+            lines.push(Line::from(""));
+            if app.repo_screen.namespaces.is_empty() {
+                lines.push(dim_line(
+                    "  No repository selected. Create a namespace after selecting a repository.",
+                ));
+            }
+            for (index, item) in app.repo_screen.namespaces.iter().enumerate() {
+                let selected = index == app.repo_screen.namespace_selected;
+                let marker = if selected { "▶" } else { " " };
+                let active = if item.active { " active" } else { " sibling" };
+                let state_style = match item.ownership {
+                    crate::tui::screens::repository::OwnershipInfo::New => THEME.warning(),
+                    crate::tui::screens::repository::OwnershipInfo::Owned { .. } => THEME.success(),
+                    crate::tui::screens::repository::OwnershipInfo::InvalidManifest(_) => {
+                        THEME.error()
+                    }
+                    crate::tui::screens::repository::OwnershipInfo::Ambiguous(_) => THEME.warning(),
+                };
+                let row_style = if selected {
+                    THEME.selected()
+                } else {
+                    Style::default()
+                };
+                lines.push(Line::from(vec![
+                    Span::styled(format!(" {marker} "), row_style),
+                    Span::styled(item.name.clone(), row_style),
+                    Span::raw(active),
+                    Span::raw(" — "),
+                    Span::styled(item.ownership.label(), state_style),
+                ]));
+                if selected {
+                    match &item.ownership {
+                        crate::tui::screens::repository::OwnershipInfo::InvalidManifest(reason)
+                        | crate::tui::screens::repository::OwnershipInfo::Ambiguous(reason) => {
+                            for line in text::wrap(reason, inner.width.saturating_sub(4) as usize) {
+                                lines.push(dim_line(format!("     {line}")));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            lines.push(Line::from(""));
+            lines.push(field_line("  Create", "n (choose a new name)"));
+            lines.push(field_line(
+                "  Select",
+                "Enter (new and owned namespaces only)",
+            ));
+            lines.push(field_line("  Rename", "r (active namespace only)"));
+            lines.push(field_line("  Delete", "d (active; type a replacement)"));
+            frame.render_widget(Paragraph::new(lines), inner);
         }
         RepoMode::NamespaceInput => {
             let mut lines: Vec<Line> = Vec::new();
@@ -3192,6 +3283,37 @@ mod tests {
         assert!(content.contains("cancel"));
     }
 
+    #[test]
+    fn repository_namespace_controls_show_active_and_unsafe_siblings_on_narrow_layout() {
+        let backend = TestBackend::new(48, 18);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = app_on(Screen::Repository);
+        app.repo_screen.mode = crate::tui::screens::repository::RepoMode::Namespaces;
+        app.repo_screen.namespaces = vec![
+            crate::tui::screens::repository::NamespaceSummary {
+                name: "desktop".to_string(),
+                ownership: crate::tui::screens::repository::OwnershipInfo::Owned {
+                    sources: vec![],
+                },
+                active: true,
+            },
+            crate::tui::screens::repository::NamespaceSummary {
+                name: "orphan".to_string(),
+                ownership: crate::tui::screens::repository::OwnershipInfo::Ambiguous(
+                    "content has no manifest".to_string(),
+                ),
+                active: false,
+            },
+        ];
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("Namespaces"));
+        assert!(content.contains("desktop"));
+        assert!(content.contains("Owned"));
+        assert!(content.contains("Ambiguous"));
+        assert!(content.contains("Create"));
+    }
+
     /// Verify history screen renders with entries.
     #[test]
     fn history_screen_renders_with_entries() {
@@ -3211,7 +3333,7 @@ mod tests {
             latest_error: None,
             history: vec![
                 crate::state::RunRecord {
-                    namespace: String::new(),
+                    namespace: "desktop".to_string(),
                     started_at: Utc.with_ymd_and_hms(2026, 7, 21, 14, 0, 0).unwrap(),
                     finished_at: Utc.with_ymd_and_hms(2026, 7, 21, 14, 0, 2).unwrap(),
                     outcome: crate::state::RunOutcome::Success,
@@ -3220,7 +3342,7 @@ mod tests {
                     log_file: None,
                 },
                 crate::state::RunRecord {
-                    namespace: String::new(),
+                    namespace: "notebook".to_string(),
                     started_at: Utc.with_ymd_and_hms(2026, 7, 21, 13, 0, 0).unwrap(),
                     finished_at: Utc.with_ymd_and_hms(2026, 7, 21, 13, 0, 5).unwrap(),
                     outcome: crate::state::RunOutcome::Failed,
@@ -3238,6 +3360,8 @@ mod tests {
         let content = buffer_text(terminal.backend());
         assert!(content.contains("History"));
         assert!(content.contains("Success"));
+        assert!(content.contains("desktop"));
+        assert!(content.contains("Namespace"));
     }
 
     #[test]

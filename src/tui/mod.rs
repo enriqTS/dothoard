@@ -279,19 +279,29 @@ impl App {
                     self.reload_state();
                 }
                 task::TaskResult::RepositoryValidation { request_id, result } => {
-                    if self.repo_screen.validation.finish(request_id, result)
-                        && let Some(info) = self.repo_screen.validation.data()
-                        && info.ownership.needs_confirmation()
-                    {
-                        self.repo_screen.confirm_state = match info.ownership {
-                            screens::repository::OwnershipInfo::New => {
-                                screens::repository::ConfirmState::AskInitialize
+                    if self.repo_screen.validation.finish(request_id, result) {
+                        let validated = self.repo_screen.validation.data().cloned();
+                        if let Some(info) = validated {
+                            let active_namespace = self
+                                .config
+                                .as_ref()
+                                .map(|config| config.namespace.clone())
+                                .unwrap_or_else(|| self.repo_screen.namespace_input.clone());
+                            let _ = self
+                                .repo_screen
+                                .refresh_namespaces(&info.path, &active_namespace);
+                            if info.ownership.needs_confirmation() {
+                                self.repo_screen.confirm_state = match info.ownership {
+                                    screens::repository::OwnershipInfo::New => {
+                                        screens::repository::ConfirmState::AskInitialize
+                                    }
+                                    screens::repository::OwnershipInfo::Owned { .. } => {
+                                        screens::repository::ConfirmState::AskAttach
+                                    }
+                                    _ => screens::repository::ConfirmState::None,
+                                };
                             }
-                            screens::repository::OwnershipInfo::Owned { .. } => {
-                                screens::repository::ConfirmState::AskAttach
-                            }
-                            _ => screens::repository::ConfirmState::None,
-                        };
+                        }
                     }
                 }
                 task::TaskResult::BackupPreview { request_id, result } => {
@@ -1064,6 +1074,7 @@ impl App {
             Ok(_) => {
                 self.config = Some(config);
                 self.repo_screen.set_namespace(&requested);
+                let _ = self.repo_screen.refresh_namespaces(&repository, &requested);
                 self.repo_screen.namespace_action = screens::repository::NamespaceAction::None;
                 self.repo_screen.mode = screens::repository::RepoMode::Browser;
                 self.invalidate_repository_validation();
@@ -1088,6 +1099,21 @@ impl App {
                 .map(|c| c.namespace.as_str())
                 .unwrap_or("desktop");
             match key.code {
+                KeyCode::Char('m') => {
+                    if let Some(config) = &self.config
+                        && let Some(paths) = &self.paths
+                    {
+                        let repository = config.repository_path(paths.home());
+                        if let Err(error) = self
+                            .repo_screen
+                            .refresh_namespaces(&repository, &config.namespace)
+                        {
+                            self.warning(error);
+                        }
+                    }
+                    self.repo_screen.mode = screens::repository::RepoMode::Namespaces;
+                    return true;
+                }
                 KeyCode::Char('n') => {
                     self.repo_screen
                         .begin_namespace(NamespaceAction::SelectOrCreate, current);
