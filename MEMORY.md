@@ -15,10 +15,11 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   namespace-scoped backup/Git behavior, lifecycle operations, TUI namespace
   selection/create/rename/delete controls, and multi-machine documentation.
 - **Milestone 14 in progress**: TU01–TU14 define the post-namespace TUI
-  usability and visual design work. **TU01–TU05 are complete**: Unicode text,
+  usability and visual design work. **TU01–TU06 are complete**: Unicode text,
   reliable viewports, consistent interaction exits, nonblocking slow TUI reads,
-  and separate contextual help/status regions are implemented. **TU06 is
-  active**: introduce a shared visual theme and explicit focus language.
+  separate contextual help/status regions, and a shared semantic visual theme
+  with explicit focus and mode language are implemented. **TU07 is active**:
+  build consistent reusable modal and text-input presentation.
 
 ## Durable Decisions
 
@@ -119,6 +120,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   separate typed status row; severity priority prevents lower-priority
   replacement, event-loop ticks expire non-running messages, and narrow status
   text is truncated by display width.
+- TUI semantic styles are centralized in `src/tui/theme.rs`. Color reinforces
+  rather than owns meaning: focus uses visible `▶` labels plus underline,
+  selection uses markers plus reverse video, screen titles name the active
+  mode, and the picker labels Parent, Files, and Preview with explicit focus.
 - Namespace names are explicit user-selected portable ASCII path components:
   letters, digits, `.`, `_`, and `-` only; empty names, path separators,
   `.`/`..`, absolute paths, and other characters are rejected. Configuration
@@ -127,6 +132,17 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- TU06 verified with Rust 1.97.1:
+  - `cargo fmt --check` — clean
+  - `cargo clippy --all-targets --all-features -- -D warnings` — clean
+  - `cargo test --all-targets --all-features -- --test-threads=1` — clean
+  - 908 library tests, 18 acceptance tests, 1 bootstrap test, 15 Git workflow
+    tests, 49 hardening tests, 21 mirror tests, and 14 orchestration tests pass.
+  - Style-sensitive tests cover standard and color-reduced palettes, explicit
+    tab/content/nested focus, selected rows, mode labels, and picker panes.
+  - A real-terminal smoke attempt could not allocate a PTY in this sandbox
+    (`script: failed to create pseudo-terminal: Permission denied`); retain the
+    dark/light real-terminal acceptance in TU13.
 - TU05 verified with Rust 1.97.1:
   - `cargo fmt --check` — clean
   - `cargo clippy --all-targets --all-features -- -D warnings` — clean

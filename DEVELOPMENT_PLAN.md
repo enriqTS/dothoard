@@ -609,7 +609,7 @@ regression test that demonstrates the current failure.
   confirmations. Add rendering and timer/event tests for help/status
   coexistence and message lifecycle.
 
-- [ ] **TU06 - Introduce a shared visual theme and explicit focus language.**
+- [x] **TU06 - Introduce a shared visual theme and explicit focus language.**
   Centralize styles for screen borders, headings, labels, muted text, focused
   controls, selections, success, warning, error, progress, and disabled states.
   Make tab-bar focus, content focus, nested-control focus, and selected rows
