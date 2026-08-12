@@ -18,8 +18,11 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   usability and visual design work. **TU01–TU06 are complete**: Unicode text,
   reliable viewports, consistent interaction exits, nonblocking slow TUI reads,
   separate contextual help/status regions, and a shared semantic visual theme
-  with explicit focus and mode language are implemented. **TU07 is active**:
-  build consistent reusable modal and text-input presentation.
+  with explicit focus and mode language are implemented. **TU07 is complete**:
+  reusable centered, de-emphasizing modal and Unicode-safe text-input overlays
+  now cover repository and namespace actions, source apply/removal, ignore input,
+  and automation confirmations. **TU08 is next**: redesign the Dashboard around
+  health and recommended next actions.
 - **Milestone 15 is partially complete**: PV01–PV03 provide the GitHub landing
   page, sanitized SVG visual demonstrations, and reorganized user
   documentation. PV04–PV06 remain for the documentation website, public trust
@@ -136,6 +139,15 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- TU07 verified with Rust 1.97.1:
+  - `cargo fmt --check` — clean
+  - `cargo clippy --all-targets --all-features -- -D warnings` — clean
+  - `cargo test --all-targets --all-features -- --test-threads=1` — clean
+  - 913 library tests, 18 acceptance tests, 1 bootstrap test, 15 Git workflow
+    tests, 49 hardening tests, 21 mirror tests, and 14 orchestration tests pass.
+  - Rendering tests cover centered and clamped modal geometry, background
+    de-emphasis and modal precedence, Unicode cursor visibility, validation
+    display, long affected paths, narrow, and short terminal areas.
 - TU06 verified with Rust 1.97.1:
   - `cargo fmt --check` — clean
   - `cargo clippy --all-targets --all-features -- -D warnings` — clean

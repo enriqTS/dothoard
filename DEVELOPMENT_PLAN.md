@@ -619,7 +619,7 @@ regression test that demonstrates the current failure.
   buffer assertions for dark, light-compatible, color-reduced, focused, and
   unfocused states.
 
-- [ ] **TU07 - Build consistent modal and text-input presentation.** Create
+- [x] **TU07 - Build consistent modal and text-input presentation.** Create
   reusable centered modal rendering with background de-emphasis, title,
   affected object or path, consequence, validation/error area, and explicit
   confirm/cancel actions. Adopt it for namespace create/select/rename/delete,
