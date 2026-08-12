@@ -13,7 +13,7 @@ export default defineConfig({
         { label: 'Use dothoard', items: [{ label: 'Configuration', slug: 'configuration' }, { label: 'Ignore rules', slug: 'ignore-rules' }, { label: 'Multiple-machine namespaces', slug: 'namespaces' }] },
         { label: 'Safety and Git', items: [{ label: 'Safety model and limitations', slug: 'safety' }, { label: 'Git authentication', slug: 'authentication' }] },
         { label: 'Help', items: [{ label: 'Troubleshooting', slug: 'troubleshooting' }, { label: 'FAQ', slug: 'faq' }] },
-        { label: 'Community', items: [{ label: 'Development', slug: 'development' }, { label: 'Contributing', slug: 'contributing' }] }
+        { label: 'Community', items: [{ label: 'Development', slug: 'development' }, { label: 'Contributing', slug: 'contributing' }, { label: 'Experimental releases', slug: 'releases' }] }
       ]
     })
   ]

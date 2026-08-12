@@ -45,8 +45,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - **Milestone 15 is partially complete**: PV01–PV03 provide the GitHub landing
   page, sanitized SVG visual demonstrations, and reorganized user
   documentation. **PV04 is complete**: a simple Astro Starlight website uses
-  the existing Markdown documentation and deploys through GitHub Pages. PV05 is
-  next for public-trust automation and discoverability; PV06 remains acceptance.
+  the existing Markdown documentation and deploys through GitHub Pages. **PV05
+  is complete**: Rust quality CI, issue forms, private vulnerability reporting,
+  and experimental release/AUR policy are present. PV06 is next for visibility
+  acceptance.
 
 ## Durable Decisions
 
@@ -159,6 +161,16 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- PV05 verified with Rust 1.97.1 and Node 24.19.0: `cargo fmt --check`,
+  `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test
+  --all-targets --all-features -- --test-threads=1` pass (935 library tests plus
+  all integration suites). `cd website && npm run build` passes with zero Astro
+  diagnostics and creates 15 static pages and its search index. The `Rust CI`
+  workflow runs that serialized baseline on `main` pushes and pull requests
+  using Rust 1.85; GitHub must run it after the branch is pushed. `SECURITY.md`
+  directs private reports to GitHub advisories, and issue forms prohibit secrets
+  in public reports. Experimental release notes document pre-release tags,
+  support, and deferred AUR packaging.
 - PV04 verified: `website/` is a simple Astro Starlight source and
   `.github/workflows/docs.yml` builds/deploys it to GitHub Pages from `main`.
   `npm run sync-docs` copies authored `docs/*.md` files (excluding their index)

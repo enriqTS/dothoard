@@ -1,0 +1,28 @@
+name: Feature request
+description: Suggest an improvement that fits dothoard's backup scope.
+title: "feature: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before proposing a change, review PLAN.md and the contribution guide.
+        Dothoard is a backup tool; restore, encryption, and repository creation
+        are currently deferred work.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Explain the expected user-visible behavior and safety implications.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

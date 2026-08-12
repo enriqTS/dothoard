@@ -753,7 +753,7 @@ its release readiness is explicitly established.
   static site, preferably with Astro Starlight unless another option is shown
   to fit better, and publish it through GitHub Pages. Include a welcoming
   landing page and searchable or clearly navigable documentation.
-- [ ] **PV05 - Establish public trust and discoverability.** Add CI for the
+- [x] **PV05 - Establish public trust and discoverability.** Add CI for the
   formatting, Clippy, and test baseline; provide clearly marked pre-release
   notes or GitHub Releases, issue templates, and `SECURITY.md`. Evaluate AUR
   packaging after the release workflow is stable.

@@ -4,6 +4,7 @@
 > reviewable when you need them.
 
 [![Status: experimental](https://img.shields.io/badge/status-experimental-orange)](#project-status)
+[![Rust CI](https://github.com/enriqTS/dothoard/actions/workflows/ci.yml/badge.svg)](https://github.com/enriqTS/dothoard/actions/workflows/ci.yml)
 [![License: GPL--3.0--or--later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
 ![dothoard Dashboard](assets/screenshots/dashboard.svg)
@@ -157,6 +158,13 @@ in the GitHub repository settings. Recommended description:
 
 Recommended topics: `dotfiles`, `backup`, `git`, `rust`, `linux`, `ratatui`,
 `systemd`, `dotfile-manager`.
+
+## Releases and security
+
+Dothoard releases remain experimental and are clearly marked as pre-releases;
+see [Experimental releases](docs/releases.md). To report a vulnerability,
+follow the private reporting process in [SECURITY.md](SECURITY.md), not a public
+issue.
 
 ## License
 

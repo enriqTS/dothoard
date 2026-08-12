@@ -11,4 +11,5 @@
 - [Frequently asked questions](faq.md)
 - [Development](development.md)
 - [Contributing](contributing.md)
+- [Experimental releases](releases.md)
 - [TUI key-transition matrix](tui-key-transitions.md)
