@@ -53,9 +53,8 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   remain manual blockers before accepting PV06 and Milestone 15. **CI/MSRV bug
   fixed:** source and its current dependency graph require Rust 1.97.1; Cargo
   metadata, documentation, and CI now use that verified toolchain. The site
-  homepage intentionally uses Starlight's normal documentation template rather
-  than its splash template so the sidebar remains visible; internal Markdown
-  links are base-aware under `/dothoard/`.
+  homepage intentionally uses Starlight's splash template; its action links
+  are explicitly rooted at `/dothoard/` for GitHub Pages.
 
 ## Durable Decisions
 
