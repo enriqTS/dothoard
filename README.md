@@ -7,6 +7,8 @@
 [![Rust CI](https://github.com/enriqTS/dothoard/actions/workflows/ci.yml/badge.svg)](https://github.com/enriqTS/dothoard/actions/workflows/ci.yml)
 [![License: GPL--3.0--or--later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
+**[Documentation website](https://enriqts.github.io/dothoard/)**
+
 ![dothoard quick start walkthrough](assets/screenshots/quickstart.gif)
 
 `dothoard` copies selected files and directories from your home directory into a
