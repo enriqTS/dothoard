@@ -20,6 +20,8 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   separate contextual help/status regions, and a shared semantic visual theme
   with explicit focus and mode language are implemented. **TU07 is active**:
   build consistent reusable modal and text-input presentation.
+- **Milestone 15 is planned**: Project Visibility and Documentation (PV01–PV06)
+  follows completion of the current TUI usability milestone.
 
 ## Durable Decisions
 
@@ -143,6 +145,8 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   - A real-terminal smoke attempt could not allocate a PTY in this sandbox
     (`script: failed to create pseudo-terminal: Permission denied`); retain the
     dark/light real-terminal acceptance in TU13.
+- Milestone 15 planning was added to `PLAN.md` and `DEVELOPMENT_PLAN.md`; no
+  implementation work has started.
 - TU05 verified with Rust 1.97.1:
   - `cargo fmt --check` — clean
   - `cargo clippy --all-targets --all-features -- -D warnings` — clean

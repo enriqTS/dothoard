@@ -723,7 +723,47 @@ Bootstrap
   -> Multi-Select Source Browser
   -> Multiple-Machine Namespaces
   -> TUI Usability and Visual Design
+  -> Project Visibility and Documentation
 ```
 
 The explicit naming prerequisite avoids introducing installed paths and unit
 names that would require a migration before release.
+
+## 15. Project Visibility and Documentation
+
+Improve the public presentation of dothoard without changing backup behavior,
+ownership boundaries, or safety guarantees. The project is experimental until
+its release readiness is explicitly established.
+
+- [ ] **PV01 - Improve the GitHub landing page.** Rewrite the opening README
+  section around the product value, intended audience, experimental status,
+  supported platforms, and a five-minute first-run workflow. Add a concise
+  safety-guarantees section, relevant repository topics, a useful description,
+  and a social preview asset.
+- [ ] **PV02 - Add visual demonstrations.** Capture polished screenshots of the
+  Dashboard, source browser, and backup preview, and add a short terminal
+  recording where practical. Ensure all visuals reflect the current UI and do
+  not reveal personal paths, credentials, or private repository information.
+- [ ] **PV03 - Restructure user documentation.** Organize beginner, usage, and
+  reference material covering installation, first-run TUI use, keyboard
+  navigation, configuration, ignore rules, namespaces, authentication, safety,
+  limitations, troubleshooting, FAQ, development, and contribution guidance.
+- [ ] **PV04 - Publish a static documentation website.** Create a Markdown-based
+  static site, preferably with Astro Starlight unless another option is shown
+  to fit better, and publish it through GitHub Pages. Include a welcoming
+  landing page and searchable or clearly navigable documentation.
+- [ ] **PV05 - Establish public trust and discoverability.** Add CI for the
+  formatting, Clippy, and test baseline; provide clearly marked pre-release
+  notes or GitHub Releases, issue templates, and `SECURITY.md`. Evaluate AUR
+  packaging after the release workflow is stable.
+- [ ] **PV06 - Complete visibility acceptance.** Verify README and website
+  links, commands, screenshots, supported-platform claims, experimental status,
+  and safety statements against the implementation. Confirm that a new visitor
+  can understand the project and first-run path from the first page, and that
+  the documentation site builds successfully.
+
+**Milestone gate:** The GitHub page and documentation website clearly explain
+what dothoard does, who it is for, how to try it, and why its safety model is
+trustworthy. Visuals are current and sanitized, unfinished functionality is not
+presented as stable, documentation links and site builds pass, and CI covers
+the documented quality baseline.

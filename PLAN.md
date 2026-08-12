@@ -425,6 +425,86 @@ Visual changes also require a manual smoke test in a real terminal using dark
 and light-compatible palettes. The README will include a concise keyboard guide
 and first-run TUI workflow.
 
+## 15. Project Visibility and Documentation
+
+Improve the public presentation of dothoard without changing backup behavior,
+ownership boundaries, or safety guarantees. The project is not yet ready for a
+stable release, so public status must clearly distinguish experimental software
+from production-ready functionality.
+
+### Public Positioning
+
+Present dothoard as:
+
+> A safe, Git-native dotfile backup tool for Linux users who want unattended
+> backups without giving up control.
+
+Explain clearly that dothoard is a focused backup and synchronization tool—not
+a restore manager, cloud backup service, persistent daemon, or general-purpose
+repository manager.
+
+### Repository Presentation
+
+Improve the GitHub landing page with:
+
+- A concise repository description and relevant topics such as `dotfiles`,
+  `backup`, `git`, `rust`, `linux`, `ratatui`, and `systemd`.
+- A prominent tagline, project status label (`experimental`, `alpha`, or
+  equivalent), and a social preview image.
+- A short first-run workflow that explains installation, repository setup,
+  source selection, preview, and timer installation.
+- Screenshots of the Dashboard, source browser, and backup preview, plus a
+  short terminal recording where practical.
+- A concise safety-guarantees section explaining no-follow traversal, managed
+  path boundaries, namespace isolation, noninteractive operation, failed-sync
+  recovery, and secret warnings.
+- A comparison with adjacent tools that clarifies dothoard's intended niche
+  without making unsupported superiority claims.
+
+### Documentation Website
+
+Publish a small static documentation website, preferably with Astro Starlight
+unless implementation experience shows that MkDocs Material or another static
+Markdown-based tool is a better fit. Host it on GitHub Pages and keep source
+content in the repository.
+
+The website should provide a welcoming landing page and documentation for:
+
+- Installation and a five-minute quick start.
+- First-run TUI workflow and keyboard navigation.
+- Configuration and ignore-rule reference.
+- Multi-machine namespaces and lifecycle operations.
+- Authentication and noninteractive Git setup.
+- Safety model, limitations, backup-only behavior, and conflict recovery.
+- Troubleshooting, FAQ, development, and contribution guidance.
+
+### Trust and Discoverability
+
+Before actively promoting the project, add continuous integration for formatting,
+Clippy, and tests; clearly documented supported distributions; pre-release
+notes or GitHub Releases; issue templates; and a `SECURITY.md` policy. Consider
+AUR packaging after the release workflow is stable. Do not describe unfinished
+features as available, and do not present experimental builds as stable.
+
+### Delivery Order
+
+1. Improve the GitHub description, topics, social preview, and README opening.
+2. Add polished screenshots and a short demo recording.
+3. Add CI and clearly marked pre-release metadata.
+4. Restructure documentation into beginner, usage, and reference sections.
+5. Publish the static GitHub Pages documentation website.
+6. Add release binaries or distribution packaging.
+7. Promote the project through relevant Rust, Linux, Arch, and dotfile
+   communities.
+
+### Milestone Verification
+
+Verify that a new visitor can understand the purpose, safety model, supported
+platforms, experimental status, and first-run path within the first page of the
+README or website. Check all screenshots and commands against the current
+implementation, build the site successfully, validate links, and confirm that
+CI covers the documented quality baseline.
+
 ## Deferred Work
 
 - Restore support.
