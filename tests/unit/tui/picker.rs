@@ -579,11 +579,13 @@ fn pane_focus_and_selection_are_visible_without_color() {
     assert!(content.contains("Parent"));
     assert!(content.contains("▶ Files [ACTIVE: Browser]"));
     assert!(content.contains("Preview"));
+    // Selection is conveyed by the "▶" marker (already asserted above via
+    // text content) plus a bold weight, not by color alone.
     assert!(
         buffer
             .content()
             .iter()
-            .any(|cell| cell.modifier.contains(Modifier::REVERSED))
+            .any(|cell| cell.modifier.contains(Modifier::BOLD))
     );
 }
 

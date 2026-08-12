@@ -1,5 +1,6 @@
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
+use ratatui::style::Modifier;
 
 use super::*;
 use crate::tui::task;
@@ -1494,11 +1495,13 @@ fn focus_and_selection_have_visible_non_color_language() {
     let content_text = buffer_text(terminal.backend());
     assert!(content_text.contains("▶ CONTENT"));
     assert!(content_text.contains("[Browsing]"));
+    // Selection is conveyed by the "▶" marker (already asserted above via
+    // text content) plus a bold weight, not by color alone.
     assert!(
         buffer
             .content()
             .iter()
-            .any(|cell| cell.modifier.contains(Modifier::REVERSED))
+            .any(|cell| cell.modifier.contains(Modifier::BOLD))
     );
 }
 

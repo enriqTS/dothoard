@@ -29,10 +29,39 @@ Dashboard and History stack their primary panes before secondary details.
 | Filesystem browser | Enter: open directory; Space: select/toggle; `:` or `/`: text entry |
 | Refreshable screens | `r`: refresh; Preview and Automation load automatically on first entry when configured |
 | History | Enter: view the selected run's logs; Esc: return from logs |
+| Anywhere | `Ctrl+T`: open the theme picker |
 
 Focus is explicit: `▶` and underline identify tab/content or nested-control
 focus, while reverse video marks the selected row. Screen titles name modes such
 as Browsing, Editing, Previewing, Confirming, and Running.
+
+## Themes
+
+Press `Ctrl+T` from anywhere to open the theme picker. `↑`/`↓` or `j`/`k`
+move between themes and preview each one immediately; `Enter` saves the
+highlighted theme to `theme.toml` in the configuration directory; `Esc`
+closes the picker and restores whatever theme was active before it opened.
+The picker owns all input while it is open, so it can be opened mid-dialog
+or mid-edit without disturbing whatever the rest of the interface is doing
+underneath it.
+
+dothoard ships ten built-in themes, defaulting to Catppuccin Mocha:
+
+- Catppuccin Mocha (default)
+- Catppuccin Latte
+- Dracula
+- Nord
+- Gruvbox Dark
+- Tokyo Night
+- Solarized Dark
+- Rose Pine
+- Everforest
+- Kanagawa
+
+Each theme paints an explicit set of colors for the whole interface —
+background, chrome, borders, and every semantic color — rather than
+inheriting the host terminal's palette, so the chosen theme looks the same
+everywhere dothoard runs.
 
 ## First-run workflow
 

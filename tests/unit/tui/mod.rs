@@ -20,6 +20,7 @@ fn test_app() -> App {
         preview_screen: screens::preview::PreviewScreen::new(),
         automation_screen: screens::automation::AutomationScreen::new(),
         history_screen: screens::history::HistoryScreen::new(),
+        theme_picker: None,
     }
 }
 
@@ -2238,4 +2239,141 @@ fn repository_browser_has_no_checkboxes() {
         !content.contains("[◉]"),
         "repo browser should not have inherited checkbox"
     );
+}
+
+// --- Theme picker (Ctrl+T) ---
+
+#[test]
+fn ctrl_t_opens_theme_picker_from_anywhere() {
+    let _guard = theme::TEST_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    app.focus = Focus::Content;
+    app.active_screen = Screen::Sources;
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL));
+
+    assert!(app.theme_picker.is_some());
+    theme::set_active(theme::ThemeId::default());
+}
+
+#[test]
+fn theme_picker_owns_every_key_while_open() {
+    let _guard = theme::TEST_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    app.handle_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL));
+    assert!(app.theme_picker.is_some());
+
+    // 'q' would normally quit; while the picker owns input it must not.
+    app.handle_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE));
+    assert!(!app.should_quit);
+    assert!(app.theme_picker.is_some());
+
+    theme::set_active(theme::ThemeId::default());
+}
+
+#[test]
+fn theme_picker_down_previews_the_next_theme_live() {
+    let _guard = theme::TEST_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    theme::set_active(theme::ThemeId::default());
+    let mut app = test_app();
+    app.handle_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL));
+
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+
+    let expected = theme::ThemeId::default().next();
+    assert_eq!(theme::active_id(), expected);
+    assert_eq!(app.theme_picker.as_ref().unwrap().selected, expected);
+
+    theme::set_active(theme::ThemeId::default());
+}
+
+#[test]
+fn theme_picker_esc_restores_the_theme_active_before_it_opened() {
+    let _guard = theme::TEST_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    theme::set_active(theme::ThemeId::Nord);
+    let mut app = test_app();
+    app.handle_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL));
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    assert_ne!(theme::active_id(), theme::ThemeId::Nord);
+
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+    assert!(app.theme_picker.is_none());
+    assert_eq!(theme::active_id(), theme::ThemeId::Nord);
+
+    theme::set_active(theme::ThemeId::default());
+}
+
+#[test]
+fn theme_picker_enter_confirms_and_persists_to_disk() {
+    let _guard = theme::TEST_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    theme::set_active(theme::ThemeId::default());
+    let (mut app, _temp) = configured_test_app();
+    let config_dir = app.paths.as_ref().unwrap().config_dir().to_path_buf();
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL));
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    let expected = theme::ThemeId::default().next();
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert!(app.theme_picker.is_none());
+    assert_eq!(theme::active_id(), expected);
+    assert_eq!(theme::load_preference(&config_dir), Some(expected));
+    assert!(app.status_message.is_some());
+
+    theme::set_active(theme::ThemeId::default());
+}
+
+#[test]
+fn theme_picker_renders_every_theme_name_and_paints_the_active_palette() {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
+    let _guard = theme::TEST_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+    theme::set_active(theme::ThemeId::default());
+    let backend = TestBackend::new(100, 30);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = test_app();
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('t'),
+        crossterm::event::KeyModifiers::CONTROL,
+    ));
+
+    terminal
+        .draw(|frame| crate::tui::ui::draw(frame, &mut app))
+        .unwrap();
+
+    let buffer = terminal.backend().buffer();
+    let content: String = buffer
+        .content()
+        .iter()
+        .map(|cell| cell.symbol().chars().next().unwrap_or(' '))
+        .collect();
+    for &id in theme::ThemeId::ALL {
+        assert!(content.contains(id.label()), "missing {}", id.label());
+    }
+    assert!(content.contains("Select Theme"));
+
+    // The default theme's canvas background is painted behind the dialog.
+    let mocha_background = theme::ThemeId::CatppuccinMocha.palette().background;
+    assert!(
+        buffer
+            .content()
+            .iter()
+            .any(|cell| cell.bg == mocha_background)
+    );
+
+    theme::set_active(theme::ThemeId::default());
 }

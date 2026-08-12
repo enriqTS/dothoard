@@ -121,6 +121,20 @@ pub struct App {
     pub automation_screen: screens::automation::AutomationScreen,
     /// History screen state.
     pub history_screen: screens::history::HistoryScreen,
+    /// Theme picker overlay state, present only while it owns input.
+    pub theme_picker: Option<ThemePickerState>,
+}
+
+/// State for the global theme picker overlay (Ctrl+T).
+///
+/// Moving the selection previews the highlighted theme immediately; Enter
+/// persists it and Esc restores whatever was active before the picker
+/// opened.
+pub struct ThemePickerState {
+    /// The theme that was active before the picker opened.
+    previous: theme::ThemeId,
+    /// The currently highlighted row.
+    pub selected: theme::ThemeId,
 }
 
 impl Default for App {
@@ -150,6 +164,13 @@ impl App {
             repo_screen.set_namespace(&c.namespace);
         }
 
+        if let Some(id) = paths
+            .as_ref()
+            .and_then(|p| theme::load_preference(p.config_dir()))
+        {
+            theme::set_active(id);
+        }
+
         Self {
             focus: Focus::TabBar,
             active_screen: Screen::Dashboard,
@@ -168,6 +189,7 @@ impl App {
             preview_screen: screens::preview::PreviewScreen::new(),
             automation_screen: screens::automation::AutomationScreen::new(),
             history_screen: screens::history::HistoryScreen::new(),
+            theme_picker: None,
         }
     }
 
@@ -189,6 +211,60 @@ impl App {
 
     fn running(&mut self, message: impl Into<String>) {
         self.publish_status(status::StatusMessage::running(message));
+    }
+
+    /// Open the theme picker, remembering the active theme so Esc can
+    /// restore it if the user backs out without confirming a choice.
+    fn open_theme_picker(&mut self) {
+        let previous = theme::active_id();
+        self.theme_picker = Some(ThemePickerState {
+            previous,
+            selected: previous,
+        });
+    }
+
+    /// Handle a key event while the theme picker owns input.
+    fn handle_theme_picker_key(&mut self, key: crossterm::event::KeyEvent) {
+        use crossterm::event::{KeyCode, KeyModifiers};
+
+        let Some(picker) = self.theme_picker.as_mut() else {
+            return;
+        };
+
+        match (key.modifiers, key.code) {
+            (KeyModifiers::NONE, KeyCode::Up) | (KeyModifiers::NONE, KeyCode::Char('k')) => {
+                picker.selected = picker.selected.prev();
+                theme::set_active(picker.selected);
+            }
+            (KeyModifiers::NONE, KeyCode::Down) | (KeyModifiers::NONE, KeyCode::Char('j')) => {
+                picker.selected = picker.selected.next();
+                theme::set_active(picker.selected);
+            }
+            (KeyModifiers::NONE, KeyCode::Enter) => {
+                let id = picker.selected;
+                self.theme_picker = None;
+                self.persist_theme(id);
+            }
+            (KeyModifiers::NONE, KeyCode::Esc) | (KeyModifiers::CONTROL, KeyCode::Char('t')) => {
+                theme::set_active(picker.previous);
+                self.theme_picker = None;
+            }
+            _ => {}
+        }
+    }
+
+    /// Save the chosen theme to `theme.toml` so it survives restarts.
+    /// Persistence failures only surface as a status message; the theme
+    /// itself is already active regardless of whether the write succeeds.
+    fn persist_theme(&mut self, id: theme::ThemeId) {
+        let Some(paths) = self.paths.as_ref() else {
+            self.success(format!("Theme set to {} (not saved)", id.label()));
+            return;
+        };
+        match theme::save_preference(paths.config_dir(), id) {
+            Ok(()) => self.success(format!("Theme set to {}", id.label())),
+            Err(err) => self.warning(format!("Theme set to {} (save failed: {err})", id.label())),
+        }
     }
 
     /// Advance transient UI state on the periodic event-loop tick.
@@ -793,6 +869,20 @@ impl App {
     /// Handle a key event and update application state.
     pub fn handle_key(&mut self, key: crossterm::event::KeyEvent) {
         use crossterm::event::{KeyCode, KeyModifiers};
+
+        // The theme picker is a global overlay: while open, it owns every
+        // key regardless of which screen or mode was active beneath it.
+        if self.theme_picker.is_some() {
+            self.handle_theme_picker_key(key);
+            return;
+        }
+
+        // Ctrl+T opens the theme picker from anywhere, mirroring Ctrl+C's
+        // always-available precedent.
+        if key.modifiers == KeyModifiers::CONTROL && key.code == KeyCode::Char('t') {
+            self.open_theme_picker();
+            return;
+        }
 
         // Ctrl+C quits only when no text entry or confirmation owns input.
         if key.modifiers == KeyModifiers::CONTROL && key.code == KeyCode::Char('c') {

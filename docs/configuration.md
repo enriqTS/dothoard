@@ -50,3 +50,17 @@ See [Namespaces](namespaces.md) for lifecycle behavior.
 
 Each source can have `ignore = [...]`. Rules use Git-style semantics rooted at
 that source. See [Ignore rules](ignore-rules.md) for examples and limitations.
+
+## Theme preference
+
+`~/.config/dothoard/theme.toml` stores the TUI's selected theme, separately
+from `config.toml` so a theme can be chosen before a repository is
+configured:
+
+```toml
+theme = "catppuccin-mocha"
+```
+
+It is written when a theme is confirmed from the theme picker (`Ctrl+T`) and
+is optional; a missing or unrecognized file falls back to Catppuccin Mocha.
+See [TUI Guide](tui.md#themes) for the full list of built-in themes.

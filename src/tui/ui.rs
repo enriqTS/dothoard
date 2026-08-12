@@ -5,11 +5,11 @@
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, Tabs};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs};
 
-use super::{App, Screen, modal, text, theme::THEME};
+use super::{App, Screen, modal, text, theme};
 
 /// Supported responsive layout classes. Width determines pane arrangement;
 /// short terminals prioritize the active control, status, and shortcut footer.
@@ -36,6 +36,7 @@ fn layout_class(area: Rect) -> LayoutClass {
 /// Draw the complete UI for one frame.
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
+    frame.render_widget(Block::default().style(theme::current().canvas()), area);
     let compact_shell = !matches!(layout_class(area), LayoutClass::Wide);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -52,11 +53,87 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_status_bar(frame, chunks[2], app);
     draw_help_bar(frame, chunks[3], app);
     draw_modal_overlay(frame, area, app);
+    if let Some(picker) = &app.theme_picker {
+        draw_theme_picker(frame, area, picker);
+    }
+}
+
+/// Render the global theme picker (Ctrl+T). Each row previews its own
+/// theme's palette with a swatch strip, independent of whichever theme is
+/// currently active, so every option can be compared at a glance; moving
+/// the selection also live-applies that theme to the rest of the interface
+/// behind the dialog.
+fn draw_theme_picker(frame: &mut Frame, area: Rect, picker: &super::ThemePickerState) {
+    use super::theme::ThemeId;
+
+    let width = area.width.saturating_sub(6).clamp(30, 56);
+    let height = u16::try_from(ThemeId::ALL.len() + 4)
+        .unwrap_or(u16::MAX)
+        .min(area.height);
+    let dialog = modal::dialog_area(area, width, height);
+
+    frame.render_widget(Block::default().style(theme::current().backdrop()), area);
+    frame.render_widget(Clear, dialog);
+    let block = Block::default()
+        .style(theme::current().surface())
+        .borders(Borders::ALL)
+        .border_style(theme::current().dialog())
+        .title(Line::from(Span::styled(
+            " Select Theme ",
+            theme::current().heading(),
+        )));
+    let inner = block.inner(dialog);
+    frame.render_widget(block, dialog);
+
+    let rows: Vec<Line> = ThemeId::ALL
+        .iter()
+        .map(|&id| {
+            let palette = id.palette();
+            let swatch = [
+                palette.accent,
+                palette.secondary,
+                palette.success,
+                palette.warning,
+                palette.error,
+            ];
+            let marker = if id == picker.selected { "▶ " } else { "  " };
+            let name_style = if id == picker.selected {
+                theme::current().selected()
+            } else {
+                Style::default()
+            };
+            let mut spans = vec![Span::styled(marker, theme::current().focused())];
+            spans.extend(
+                swatch
+                    .into_iter()
+                    .map(|color| Span::styled("██", Style::default().fg(color))),
+            );
+            spans.push(Span::raw(" "));
+            spans.push(Span::styled(format!("{:<18}", id.label()), name_style));
+            Line::from(spans)
+        })
+        .collect();
+
+    let mut lines = vec![Line::from("")];
+    lines.extend(rows);
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::styled("↑↓/jk", theme::current().key()),
+        Span::raw(" preview  "),
+        Span::styled("Enter", theme::current().key()),
+        Span::raw(" save  "),
+        Span::styled("Esc", theme::current().key()),
+        Span::raw(" cancel"),
+    ]));
+
+    frame.render_widget(Paragraph::new(lines), inner);
 }
 
 /// Draw the tab bar at the top.
 fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
     use super::Focus;
+
+    frame.render_widget(Block::default().style(theme::current().chrome()), area);
 
     let compact = area.height <= 1;
     if compact {
@@ -71,9 +148,9 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
                     .enumerate()
                     .flat_map(|(index, _)| {
                         let style = if index == selected {
-                            THEME.selected()
+                            theme::current().selected()
                         } else {
-                            THEME.key()
+                            theme::current().key()
                         };
                         [
                             Span::styled(format!(" {} ", index + 1), style),
@@ -84,8 +161,8 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
             )
         } else {
             Line::from(vec![
-                Span::styled("▶ ", THEME.focused()),
-                Span::styled(format!("{}/7 ", selected + 1), THEME.selected()),
+                Span::styled("▶ ", theme::current().focused()),
+                Span::styled(format!("{}/7 ", selected + 1), theme::current().selected()),
                 Span::raw(text::truncate(
                     app.active_screen.label(),
                     area.width.saturating_sub(7) as usize,
@@ -101,7 +178,7 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
         .map(|(i, screen)| {
             let num = format!("{}", i + 1);
             Line::from(vec![
-                Span::styled(num, THEME.key()),
+                Span::styled(num, theme::current().key()),
                 Span::raw(":"),
                 Span::raw(screen.label()),
             ])
@@ -124,24 +201,24 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
         tabs = tabs.block(
             Block::default()
                 .borders(Borders::BOTTOM)
-                .border_style(THEME.border(tab_focused))
+                .border_style(theme::current().border(tab_focused))
                 .title(Line::from(Span::styled(
                     title,
                     if tab_focused {
-                        THEME.focused()
+                        theme::current().focused()
                     } else {
-                        THEME.muted()
+                        theme::current().muted()
                     },
                 ))),
         );
     }
     let tabs = tabs
         .select(selected)
-        .style(Style::default())
+        .style(theme::current().chrome())
         .highlight_style(if tab_focused {
-            THEME.selected()
+            theme::current().selected()
         } else {
-            THEME.heading()
+            theme::current().heading()
         });
 
     frame.render_widget(tabs, area);
@@ -252,16 +329,16 @@ fn draw_modal_overlay(frame: &mut Frame, area: Rect, app: &App) {
                     repository::RepoMode::TextInput => {
                         let validation = match &app.repo_screen.validation {
                             LoadState::Failed { error, .. } => {
-                                Some((error.as_str(), THEME.error()))
+                                Some((error.as_str(), theme::current().error()))
                             }
                             LoadState::Loading { .. } => {
-                                Some(("Checking repository…", THEME.progress()))
+                                Some(("Checking repository…", theme::current().progress()))
                             }
                             _ => app
                                 .repo_screen
                                 .selection_error
                                 .as_deref()
-                                .map(|error| (error, THEME.error())),
+                                .map(|error| (error, theme::current().error())),
                         };
                         modal::draw_text_input(
                             frame,
@@ -294,7 +371,9 @@ fn draw_modal_overlay(frame: &mut Frame, area: Rect, app: &App) {
                                 label: app.repo_screen.namespace_action_name(),
                                 text: &app.repo_screen.namespace_input,
                                 cursor: app.repo_screen.namespace_cursor,
-                                validation: affected.as_deref().map(|path| (path, THEME.muted())),
+                                validation: affected
+                                    .as_deref()
+                                    .map(|path| (path, theme::current().muted())),
                                 submit: "Enter: review",
                                 cancel: "Esc: cancel",
                             },
@@ -317,7 +396,7 @@ fn draw_modal_overlay(frame: &mut Frame, area: Rect, app: &App) {
                         .sources_screen
                         .message
                         .as_ref()
-                        .map(|message| (message.text.as_str(), THEME.error())),
+                        .map(|message| (message.text.as_str(), theme::current().error())),
                     submit: "Enter: add",
                     cancel: "Esc: browser",
                 },
@@ -389,7 +468,7 @@ fn draw_modal_overlay(frame: &mut Frame, area: Rect, app: &App) {
                         .ignore_screen
                         .message
                         .as_ref()
-                        .map(|message| (message.text.as_str(), THEME.error())),
+                        .map(|message| (message.text.as_str(), theme::current().error())),
                     submit: "Enter: add",
                     cancel: "Esc: cancel",
                 },
@@ -424,7 +503,7 @@ fn draw_modal_overlay(frame: &mut Frame, area: Rect, app: &App) {
 
 /// Border style for the active screen block, based on focus.
 fn content_border_style(app: &App) -> Style {
-    THEME.border(app.focus == super::Focus::Content)
+    theme::current().border(app.focus == super::Focus::Content)
 }
 
 /// Title text names both the screen and the interaction mode that owns input.
@@ -476,18 +555,20 @@ fn screen_title(app: &App, screen: &'static str) -> Line<'static> {
         Span::styled(
             format!(" {marker} · {screen} "),
             if owns_focus {
-                THEME.focused()
+                theme::current().focused()
             } else {
-                THEME.muted()
+                theme::current().muted()
             },
         ),
-        Span::styled(format!("[{mode}] "), THEME.label()),
+        Span::styled(format!("[{mode}] "), theme::current().label()),
     ])
 }
 
 /// Draw transient feedback and progress independently from keyboard help.
 fn draw_status_bar(frame: &mut Frame, area: Rect, app: &App) {
     use super::status::{StatusKind, StatusMessage};
+
+    frame.render_widget(Block::default().style(theme::current().chrome()), area);
 
     let fallback = if let Some(message) = app.sources_screen.message.as_ref() {
         let kind = match message.kind {
@@ -540,7 +621,7 @@ fn draw_status_bar(frame: &mut Frame, area: Rect, app: &App) {
         frame.render_widget(
             Paragraph::new(Line::from(Span::styled(
                 rendered,
-                THEME.status(message.kind),
+                theme::current().status(message.kind),
             ))),
             area,
         );
@@ -550,6 +631,8 @@ fn draw_status_bar(frame: &mut Frame, area: Rect, app: &App) {
 /// Draw the authoritative mode-aware shortcut footer.
 fn draw_help_bar(frame: &mut Frame, area: Rect, app: &App) {
     use super::Focus;
+
+    frame.render_widget(Block::default().style(theme::current().chrome()), area);
 
     let line = match app.focus {
         Focus::TabBar => help_bar_tab_focus(),
@@ -561,13 +644,15 @@ fn draw_help_bar(frame: &mut Frame, area: Rect, app: &App) {
 /// Help bar when the tab bar has focus.
 fn help_bar_tab_focus() -> Line<'static> {
     Line::from(vec![
-        Span::styled("←→/hl", Style::default().fg(Color::Cyan)),
+        Span::styled("←→/hl", theme::current().key()),
         Span::raw(" tabs  "),
-        Span::styled("↓/j/Enter", Style::default().fg(Color::Cyan)),
+        Span::styled("↓/j/Enter", theme::current().key()),
         Span::raw(" content  "),
-        Span::styled("1-7", Style::default().fg(Color::Cyan)),
+        Span::styled("1-7", theme::current().key()),
         Span::raw(" jump  "),
-        Span::styled("q", Style::default().fg(Color::Cyan)),
+        Span::styled("Ctrl+T", theme::current().key()),
+        Span::raw(" theme  "),
+        Span::styled("q", theme::current().key()),
         Span::raw(" quit"),
     ])
 }
@@ -576,18 +661,21 @@ fn help_bar_tab_focus() -> Line<'static> {
 fn help_bar_content_focus(app: &App) -> Line<'static> {
     match app.active_screen {
         Screen::Dashboard if app.dashboard_screen.detail.is_some() => Line::from(vec![
-            Span::styled("Tab", THEME.key()),
+            Span::styled("Tab", theme::current().key()),
             Span::raw(" tabs  "),
-            Span::styled("Esc", THEME.key()),
+            Span::styled("Esc", theme::current().key()),
             Span::raw(" close details"),
         ]),
         Screen::Dashboard => {
-            let mut spans = vec![Span::styled("Tab", THEME.key()), Span::raw(" tabs  ")];
+            let mut spans = vec![
+                Span::styled("Tab", theme::current().key()),
+                Span::raw(" tabs  "),
+            ];
             if !app.tasks.is_busy() && app.config.is_some() {
                 spans.extend([
-                    Span::styled("c", THEME.key()),
+                    Span::styled("c", theme::current().key()),
                     Span::raw(" check  "),
-                    Span::styled("p", THEME.key()),
+                    Span::styled("p", theme::current().key()),
                     Span::raw(" push  "),
                 ]);
                 if app
@@ -595,17 +683,20 @@ fn help_bar_content_focus(app: &App) -> Line<'static> {
                     .as_ref()
                     .is_some_and(|config| !config.sources.is_empty())
                 {
-                    spans.extend([Span::styled("b", THEME.key()), Span::raw(" backup  ")]);
+                    spans.extend([
+                        Span::styled("b", theme::current().key()),
+                        Span::raw(" backup  "),
+                    ]);
                 }
             }
             spans.extend([
-                Span::styled("a", THEME.key()),
+                Span::styled("a", theme::current().key()),
                 Span::raw(" automation  "),
-                Span::styled("r", THEME.key()),
+                Span::styled("r", theme::current().key()),
                 Span::raw(" repository  "),
-                Span::styled("d", THEME.key()),
+                Span::styled("d", theme::current().key()),
                 Span::raw(" details  "),
-                Span::styled("q", THEME.key()),
+                Span::styled("q", theme::current().key()),
                 Span::raw(" quit"),
             ]);
             Line::from(spans)
@@ -615,50 +706,59 @@ fn help_bar_content_focus(app: &App) -> Line<'static> {
         Screen::Ignore => help_bar_ignore(app),
         Screen::Preview => {
             let mut spans = vec![
-                Span::styled("Tab", THEME.key()),
+                Span::styled("Tab", theme::current().key()),
                 Span::raw(" tabs  "),
-                Span::styled("r", THEME.key()),
+                Span::styled("r", theme::current().key()),
                 Span::raw(" refresh  "),
             ];
             if app.config.is_some() {
-                spans.extend([Span::styled("p", THEME.key()), Span::raw(" push  ")]);
+                spans.extend([
+                    Span::styled("p", theme::current().key()),
+                    Span::raw(" push  "),
+                ]);
                 if app
                     .config
                     .as_ref()
                     .is_some_and(|config| !config.sources.is_empty())
                 {
-                    spans.extend([Span::styled("b", THEME.key()), Span::raw(" backup  ")]);
+                    spans.extend([
+                        Span::styled("b", theme::current().key()),
+                        Span::raw(" backup  "),
+                    ]);
                 }
             }
-            spans.extend([Span::styled("↑↓/jk", THEME.key()), Span::raw(" scroll")]);
+            spans.extend([
+                Span::styled("↑↓/jk", theme::current().key()),
+                Span::raw(" scroll"),
+            ]);
             Line::from(spans)
         }
         Screen::Automation => {
             use crate::tui::screens::automation::ConfirmAction;
             if app.automation_screen.confirm == ConfirmAction::None {
                 let mut spans = vec![
-                    Span::styled("Tab", THEME.key()),
+                    Span::styled("Tab", theme::current().key()),
                     Span::raw(" tabs  "),
-                    Span::styled("r", THEME.key()),
+                    Span::styled("r", theme::current().key()),
                     Span::raw(" refresh"),
                 ];
                 if app.config.is_some() && app.paths.is_some() {
                     spans.extend([
                         Span::raw("  "),
-                        Span::styled("i", THEME.key()),
+                        Span::styled("i", theme::current().key()),
                         Span::raw(" install  "),
-                        Span::styled("x", THEME.key()),
+                        Span::styled("x", theme::current().key()),
                         Span::raw(" remove"),
                     ]);
                 }
                 Line::from(spans)
             } else {
                 Line::from(vec![
-                    Span::styled("Tab", Style::default().fg(Color::Cyan)),
+                    Span::styled("Tab", theme::current().key()),
                     Span::raw(" tabs  "),
-                    Span::styled("y", Style::default().fg(Color::Cyan)),
+                    Span::styled("y", theme::current().key()),
                     Span::raw(" confirm  "),
-                    Span::styled("n/Esc", Style::default().fg(Color::Cyan)),
+                    Span::styled("n/Esc", theme::current().key()),
                     Span::raw(" cancel"),
                 ])
             }
@@ -675,11 +775,11 @@ fn help_bar_repository(app: &App) -> Line<'static> {
         || app.repo_screen.confirm_state == ConfirmState::AskAttach
     {
         return Line::from(vec![
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::styled("Tab", theme::current().key()),
             Span::raw(" tabs  "),
-            Span::styled("y", Style::default().fg(Color::Cyan)),
+            Span::styled("y", theme::current().key()),
             Span::raw(" confirm  "),
-            Span::styled("n/Esc", Style::default().fg(Color::Cyan)),
+            Span::styled("n/Esc", theme::current().key()),
             Span::raw(" cancel"),
         ]);
     }
@@ -687,71 +787,71 @@ fn help_bar_repository(app: &App) -> Line<'static> {
     match app.repo_screen.mode {
         RepoMode::Browser => {
             let mut spans = vec![
-                Span::styled("Tab", Style::default().fg(Color::Cyan)),
+                Span::styled("Tab", theme::current().key()),
                 Span::raw(" tabs  "),
-                Span::styled("Space", Style::default().fg(Color::Cyan)),
+                Span::styled("Space", theme::current().key()),
                 Span::raw(" select  "),
-                Span::styled("m", Style::default().fg(Color::Cyan)),
+                Span::styled("m", theme::current().key()),
                 Span::raw(" namespaces  "),
-                Span::styled("n", Style::default().fg(Color::Cyan)),
+                Span::styled("n", theme::current().key()),
                 Span::raw(" create  "),
             ];
             if app.config.is_some() {
                 spans.extend([
-                    Span::styled("r", Style::default().fg(Color::Cyan)),
+                    Span::styled("r", theme::current().key()),
                     Span::raw(" rename  "),
-                    Span::styled("d", Style::default().fg(Color::Cyan)),
+                    Span::styled("d", theme::current().key()),
                     Span::raw(" delete  "),
                 ]);
             }
             spans.extend([
-                Span::styled("↑↓←→", Style::default().fg(Color::Cyan)),
+                Span::styled("↑↓←→", theme::current().key()),
                 Span::raw(" navigate  "),
-                Span::styled(":/", Style::default().fg(Color::Cyan)),
+                Span::styled(":/", theme::current().key()),
                 Span::raw(" text input"),
             ]);
             Line::from(spans)
         }
         RepoMode::Namespaces => Line::from(vec![
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::styled("Tab", theme::current().key()),
             Span::raw(" tabs  "),
-            Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
+            Span::styled("↑↓/jk", theme::current().key()),
             Span::raw(" select  "),
-            Span::styled("Enter", Style::default().fg(Color::Cyan)),
+            Span::styled("Enter", theme::current().key()),
             Span::raw(" use/create  "),
-            Span::styled("n/r/d", Style::default().fg(Color::Cyan)),
+            Span::styled("n/r/d", theme::current().key()),
             Span::raw(" create/rename/delete  "),
-            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::styled("Esc", theme::current().key()),
             Span::raw(" back"),
         ]),
         RepoMode::NamespaceInput if app.repo_screen.namespace_confirmation.is_some() => {
             Line::from(vec![
-                Span::styled("Tab", Style::default().fg(Color::Cyan)),
+                Span::styled("Tab", theme::current().key()),
                 Span::raw(" tabs  "),
-                Span::styled("y", Style::default().fg(Color::Cyan)),
+                Span::styled("y", theme::current().key()),
                 Span::raw(" confirm  "),
-                Span::styled("n/Esc", Style::default().fg(Color::Cyan)),
+                Span::styled("n/Esc", theme::current().key()),
                 Span::raw(" cancel"),
             ])
         }
         RepoMode::NamespaceInput => Line::from(vec![
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::styled("Tab", theme::current().key()),
             Span::raw(" tabs  "),
-            Span::styled("Enter", Style::default().fg(Color::Cyan)),
+            Span::styled("Enter", theme::current().key()),
             Span::raw(" review  "),
-            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::styled("Esc", theme::current().key()),
             Span::raw(" cancel  "),
-            Span::styled("Ctrl+U", Style::default().fg(Color::Cyan)),
+            Span::styled("Ctrl+U", theme::current().key()),
             Span::raw(" clear"),
         ]),
         RepoMode::TextInput => Line::from(vec![
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::styled("Tab", theme::current().key()),
             Span::raw(" tabs  "),
-            Span::styled("Enter", Style::default().fg(Color::Cyan)),
+            Span::styled("Enter", theme::current().key()),
             Span::raw(" validate  "),
-            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::styled("Esc", theme::current().key()),
             Span::raw(" browser  "),
-            Span::styled("Ctrl+U", Style::default().fg(Color::Cyan)),
+            Span::styled("Ctrl+U", theme::current().key()),
             Span::raw(" clear"),
         ]),
     }
@@ -768,68 +868,68 @@ fn help_bar_sources(app: &App) -> Line<'static> {
                 .as_ref()
                 .is_some_and(|config| !config.sources.is_empty());
             let mut spans = vec![
-                Span::styled("Tab", Style::default().fg(Color::Cyan)),
+                Span::styled("Tab", theme::current().key()),
                 Span::raw(" tabs  "),
-                Span::styled("a", Style::default().fg(Color::Cyan)),
+                Span::styled("a", theme::current().key()),
                 Span::raw(" add"),
             ];
             if has_sources {
                 spans.extend([
                     Span::raw("  "),
-                    Span::styled("d", Style::default().fg(Color::Cyan)),
+                    Span::styled("d", theme::current().key()),
                     Span::raw(" delete  "),
-                    Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
+                    Span::styled("↑↓/jk", theme::current().key()),
                     Span::raw(" navigate"),
                 ]);
             }
             Line::from(spans)
         }
         Mode::Browse => Line::from(vec![
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::styled("Tab", theme::current().key()),
             Span::raw(" tabs  "),
-            Span::styled("Space", Style::default().fg(Color::Cyan)),
+            Span::styled("Space", theme::current().key()),
             Span::raw(" toggle  "),
-            Span::styled("↑↓←→", Style::default().fg(Color::Cyan)),
+            Span::styled("↑↓←→", theme::current().key()),
             Span::raw(" navigate  "),
-            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::styled("Esc", theme::current().key()),
             Span::raw(" review changes  "),
-            Span::styled(":/", Style::default().fg(Color::Cyan)),
+            Span::styled(":/", theme::current().key()),
             Span::raw(" text"),
         ]),
         Mode::AddInput => Line::from(vec![
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::styled("Tab", theme::current().key()),
             Span::raw(" tabs  "),
-            Span::styled("Enter", Style::default().fg(Color::Cyan)),
+            Span::styled("Enter", theme::current().key()),
             Span::raw(" add  "),
-            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::styled("Esc", theme::current().key()),
             Span::raw(" browser  "),
-            Span::styled("Ctrl+U", Style::default().fg(Color::Cyan)),
+            Span::styled("Ctrl+U", theme::current().key()),
             Span::raw(" clear"),
         ]),
         Mode::ConfirmDelete => Line::from(vec![
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::styled("Tab", theme::current().key()),
             Span::raw(" tabs  "),
-            Span::styled("y", Style::default().fg(Color::Cyan)),
+            Span::styled("y", theme::current().key()),
             Span::raw(" confirm  "),
-            Span::styled("n/Esc", Style::default().fg(Color::Cyan)),
+            Span::styled("n/Esc", theme::current().key()),
             Span::raw(" cancel"),
         ]),
         Mode::PendingChanges => Line::from(vec![
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::styled("Tab", theme::current().key()),
             Span::raw(" tabs  "),
-            Span::styled("a", Style::default().fg(Color::Cyan)),
+            Span::styled("a", theme::current().key()),
             Span::raw(" apply  "),
-            Span::styled("d", Style::default().fg(Color::Cyan)),
+            Span::styled("d", theme::current().key()),
             Span::raw(" discard  "),
-            Span::styled("c/Esc", Style::default().fg(Color::Cyan)),
+            Span::styled("c/Esc", theme::current().key()),
             Span::raw(" continue editing"),
         ]),
         Mode::ConfirmApply => Line::from(vec![
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::styled("Tab", theme::current().key()),
             Span::raw(" tabs  "),
-            Span::styled("y", Style::default().fg(Color::Cyan)),
+            Span::styled("y", theme::current().key()),
             Span::raw(" remove and apply  "),
-            Span::styled("n/Esc", Style::default().fg(Color::Cyan)),
+            Span::styled("n/Esc", theme::current().key()),
             Span::raw(" back to choices"),
         ]),
     }
@@ -841,25 +941,25 @@ fn help_bar_ignore(app: &App) -> Line<'static> {
 
     match app.ignore_screen.mode {
         Mode::AddInput => Line::from(vec![
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::styled("Tab", theme::current().key()),
             Span::raw(" tabs  "),
-            Span::styled("Enter", Style::default().fg(Color::Cyan)),
+            Span::styled("Enter", theme::current().key()),
             Span::raw(" add  "),
-            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::styled("Esc", theme::current().key()),
             Span::raw(" cancel  "),
-            Span::styled("Ctrl+U", Style::default().fg(Color::Cyan)),
+            Span::styled("Ctrl+U", theme::current().key()),
             Span::raw(" clear"),
         ]),
         Mode::Preview => Line::from(vec![
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::styled("Tab", theme::current().key()),
             Span::raw(" tabs  "),
-            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::styled("Esc", theme::current().key()),
             Span::raw(" back  "),
-            Span::styled("r", Style::default().fg(Color::Cyan)),
+            Span::styled("r", theme::current().key()),
             Span::raw(" refresh  "),
-            Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
+            Span::styled("↑↓/jk", theme::current().key()),
             Span::raw(" scroll  "),
-            Span::styled("PgUp/PgDn", Style::default().fg(Color::Cyan)),
+            Span::styled("PgUp/PgDn", theme::current().key()),
             Span::raw(" page"),
         ]),
         Mode::List => {
@@ -869,7 +969,7 @@ fn help_bar_ignore(app: &App) -> Line<'static> {
                 .is_some_and(|config| !config.sources.is_empty());
             if !has_sources {
                 return Line::from(vec![
-                    Span::styled("Tab", Style::default().fg(Color::Cyan)),
+                    Span::styled("Tab", theme::current().key()),
                     Span::raw(" tabs"),
                 ]);
             }
@@ -879,23 +979,23 @@ fn help_bar_ignore(app: &App) -> Line<'static> {
                 .and_then(|config| config.sources.get(app.ignore_screen.source_idx))
                 .is_some_and(|source| !source.ignore.is_empty());
             let mut spans = vec![
-                Span::styled("Tab", Style::default().fg(Color::Cyan)),
+                Span::styled("Tab", theme::current().key()),
                 Span::raw(" tabs  "),
-                Span::styled("a", Style::default().fg(Color::Cyan)),
+                Span::styled("a", theme::current().key()),
                 Span::raw(" add  "),
             ];
             if has_patterns {
                 spans.extend([
-                    Span::styled("d", Style::default().fg(Color::Cyan)),
+                    Span::styled("d", theme::current().key()),
                     Span::raw(" delete  "),
                 ]);
             }
             spans.extend([
-                Span::styled("p", Style::default().fg(Color::Cyan)),
+                Span::styled("p", theme::current().key()),
                 Span::raw(" preview  "),
-                Span::styled("←→/hl", Style::default().fg(Color::Cyan)),
+                Span::styled("←→/hl", theme::current().key()),
                 Span::raw(" source  "),
-                Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
+                Span::styled("↑↓/jk", theme::current().key()),
                 Span::raw(" focus/item"),
             ]);
             Line::from(spans)
@@ -909,13 +1009,13 @@ fn help_bar_history(app: &App) -> Line<'static> {
 
     match app.history_screen.mode {
         Mode::LogView => Line::from(vec![
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
+            Span::styled("Tab", theme::current().key()),
             Span::raw(" tabs  "),
-            Span::styled("Esc", Style::default().fg(Color::Cyan)),
+            Span::styled("Esc", theme::current().key()),
             Span::raw(" back  "),
-            Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
+            Span::styled("↑↓/jk", theme::current().key()),
             Span::raw(" scroll  "),
-            Span::styled("PgUp/PgDn", Style::default().fg(Color::Cyan)),
+            Span::styled("PgUp/PgDn", theme::current().key()),
             Span::raw(" page"),
         ]),
         Mode::History => {
@@ -924,19 +1024,19 @@ fn help_bar_history(app: &App) -> Line<'static> {
                 .as_ref()
                 .is_some_and(|state| !state.history.is_empty());
             let mut spans = vec![
-                Span::styled("Tab", Style::default().fg(Color::Cyan)),
+                Span::styled("Tab", theme::current().key()),
                 Span::raw(" tabs  "),
             ];
             if has_history {
                 spans.extend([
-                    Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
+                    Span::styled("↑↓/jk", theme::current().key()),
                     Span::raw(" navigate  "),
-                    Span::styled("Enter", Style::default().fg(Color::Cyan)),
+                    Span::styled("Enter", theme::current().key()),
                     Span::raw(" view logs  "),
                 ]);
             }
             spans.extend([
-                Span::styled("q", Style::default().fg(Color::Cyan)),
+                Span::styled("q", theme::current().key()),
                 Span::raw(" quit"),
             ]);
             Line::from(spans)
@@ -1004,9 +1104,9 @@ fn draw_dashboard_status(frame: &mut Frame, area: Rect, app: &App) {
             "  No pending commits"
         },
         if pending_push {
-            THEME.warning()
+            theme::current().warning()
         } else {
-            THEME.success()
+            theme::current().success()
         },
     )));
     if let Some(last_push) = app
@@ -1027,7 +1127,7 @@ fn draw_dashboard_status(frame: &mut Frame, area: Rect, app: &App) {
     lines.push(section_header("Recommended Next Action"));
     lines.push(Line::from(Span::styled(
         format!("  {}", dashboard_action(app)),
-        THEME.focused(),
+        theme::current().focused(),
     )));
 
     frame.render_widget(Paragraph::new(lines), area);
@@ -1080,7 +1180,7 @@ fn draw_dashboard_info(frame: &mut Frame, area: Rect, app: &App) {
     } else {
         lines.push(Line::from(Span::styled(
             "  No issues reported",
-            THEME.success(),
+            theme::current().success(),
         )));
     }
 
@@ -1089,10 +1189,10 @@ fn draw_dashboard_info(frame: &mut Frame, area: Rect, app: &App) {
 
 fn dashboard_health(app: &App) -> (&'static str, Style) {
     if app.config.is_none() {
-        return ("UNCONFIGURED — setup required", THEME.warning());
+        return ("UNCONFIGURED — setup required", theme::current().warning());
     }
     if app.tasks.active_task() == Some(super::task::TaskKind::Backup) {
-        return ("RUNNING — backup in progress", THEME.progress());
+        return ("RUNNING — backup in progress", theme::current().progress());
     }
     if app
         .state
@@ -1100,7 +1200,10 @@ fn dashboard_health(app: &App) -> (&'static str, Style) {
         .is_some_and(|state| state.latest_error.is_some())
         || app.last_check.as_ref().is_some_and(|check| !check.healthy)
     {
-        return ("NEEDS ATTENTION — review the latest issue", THEME.error());
+        return (
+            "NEEDS ATTENTION — review the latest issue",
+            theme::current().error(),
+        );
     }
     if app
         .state
@@ -1108,9 +1211,9 @@ fn dashboard_health(app: &App) -> (&'static str, Style) {
         .and_then(|state| state.last_success.as_ref())
         .is_none()
     {
-        return ("NO SUCCESSFUL BACKUP YET", THEME.warning());
+        return ("NO SUCCESSFUL BACKUP YET", theme::current().warning());
     }
-    ("HEALTHY", THEME.success())
+    ("HEALTHY", theme::current().success())
 }
 
 fn dashboard_automation(app: &App) -> (String, Style) {
@@ -1118,46 +1221,55 @@ fn dashboard_automation(app: &App) -> (String, Style) {
     match &app.automation_screen.status_state {
         LoadState::Loaded(status) => {
             let style = if status == "active" {
-                THEME.success()
+                theme::current().success()
             } else {
-                THEME.warning()
+                theme::current().warning()
             };
             (status.clone(), style)
         }
-        LoadState::Loading { .. } => ("Checking automation status…".to_string(), THEME.progress()),
+        LoadState::Loading { .. } => (
+            "Checking automation status…".to_string(),
+            theme::current().progress(),
+        ),
         LoadState::Stale {
             previous: Some(status),
-        } => (format!("Stale: {status}"), THEME.warning()),
+        } => (format!("Stale: {status}"), theme::current().warning()),
         LoadState::Stale { previous: None } | LoadState::NotLoaded => (
             "Unavailable — not inspected yet (press a)".to_string(),
-            THEME.warning(),
+            theme::current().warning(),
         ),
         LoadState::Failed { error, previous } => (
             previous.as_ref().map_or_else(
                 || format!("Unavailable: {error}"),
                 |status| format!("Unavailable: {error}; previous {status}"),
             ),
-            THEME.error(),
+            theme::current().error(),
         ),
     }
 }
 
 fn dashboard_check(app: &App) -> (String, Style) {
     if app.tasks.active_task() == Some(super::task::TaskKind::Check) {
-        return ("Checking repository…".to_string(), THEME.progress());
+        return (
+            "Checking repository…".to_string(),
+            theme::current().progress(),
+        );
     }
     let Some(check) = &app.last_check else {
         return if app.config.is_some() {
-            ("Unavailable — run check (c)".to_string(), THEME.warning())
+            (
+                "Unavailable — run check (c)".to_string(),
+                theme::current().warning(),
+            )
         } else {
             (
                 "Unavailable — configure repository first".to_string(),
-                THEME.warning(),
+                theme::current().warning(),
             )
         };
     };
     if check.healthy {
-        ("All checks passed".to_string(), THEME.success())
+        ("All checks passed".to_string(), theme::current().success())
     } else if let Some(item) = first_check_issue(check) {
         (
             format!(
@@ -1165,12 +1277,12 @@ fn dashboard_check(app: &App) -> (String, Style) {
                 item.label,
                 item.detail.as_deref().unwrap_or("needs attention")
             ),
-            THEME.error(),
+            theme::current().error(),
         )
     } else {
         (
             "Checks reported an unspecified issue".to_string(),
-            THEME.error(),
+            theme::current().error(),
         )
     }
 }
@@ -1185,19 +1297,19 @@ fn dashboard_issue(app: &App) -> Option<(String, Style)> {
                 item.label,
                 item.detail.as_deref().unwrap_or("needs attention")
             ),
-            THEME.error(),
+            theme::current().error(),
         ));
     }
     app.state.as_ref().and_then(|state| {
         state
             .latest_error
             .as_ref()
-            .map(|error| (error.clone(), THEME.error()))
+            .map(|error| (error.clone(), theme::current().error()))
             .or_else(|| {
                 state
                     .latest_warning
                     .as_ref()
-                    .map(|warning| (warning.clone(), THEME.warning()))
+                    .map(|warning| (warning.clone(), theme::current().warning()))
             })
     })
 }
@@ -1269,14 +1381,14 @@ fn wrapped_field_lines(label: &'static str, value: &str, width: u16) -> Vec<Line
 
 /// Create a section header line.
 fn section_header(title: &'static str) -> Line<'static> {
-    Line::from(Span::styled(title, THEME.heading()))
+    Line::from(Span::styled(title, theme::current().heading()))
 }
 
 /// Create a "label: value" field line with owned strings.
 fn field_line(label: &'static str, value: impl Into<String>) -> Line<'static> {
     let val: String = value.into();
     Line::from(vec![
-        Span::styled(label, THEME.label()),
+        Span::styled(label, theme::current().label()),
         Span::raw(": "),
         Span::raw(val),
     ])
@@ -1284,7 +1396,7 @@ fn field_line(label: &'static str, value: impl Into<String>) -> Line<'static> {
 
 /// Create a dim informational line with an owned string.
 fn dim_line(text: impl Into<String>) -> Line<'static> {
-    Line::from(Span::styled(text.into(), THEME.muted()))
+    Line::from(Span::styled(text.into(), theme::current().muted()))
 }
 
 /// Format a DateTime for display.
@@ -1339,9 +1451,7 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &mut App) {
     let mut list_lines: Vec<Line> = Vec::new();
     list_lines.push(Line::from(Span::styled(
         " Recent runs:",
-        Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD),
+        theme::current().heading(),
     )));
     list_lines.push(Line::from(""));
 
@@ -1364,21 +1474,21 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &mut App) {
         };
 
         let outcome_color = if entry.is_error {
-            Color::Red
+            theme::current().palette().error
         } else if entry.is_warning {
-            Color::Yellow
+            theme::current().palette().warning
         } else {
-            Color::Green
+            theme::current().palette().success
         };
 
         let style = if i == app.history_screen.selected {
-            THEME.selected()
+            theme::current().selected()
         } else {
             Style::default()
         };
 
         list_lines.push(Line::from(vec![
-            Span::styled(marker, Style::default().fg(Color::Cyan)),
+            Span::styled(marker, theme::current().focused()),
             Span::styled(entry.time.clone(), style),
             Span::raw(" "),
             Span::styled(
@@ -1386,7 +1496,7 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &mut App) {
                     .namespace
                     .clone()
                     .unwrap_or_else(|| "unknown namespace".to_string()),
-                THEME.label(),
+                theme::current().label(),
             ),
             Span::raw(" "),
             Span::styled(entry.outcome.clone(), Style::default().fg(outcome_color)),
@@ -1412,22 +1522,20 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &mut App) {
 
         detail_lines.push(Line::from(Span::styled(
             " Details:",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
+            theme::current().heading(),
         )));
         detail_lines.push(Line::from(""));
 
         let outcome_color = if entry.is_error {
-            Color::Red
+            theme::current().palette().error
         } else if entry.is_warning {
-            Color::Yellow
+            theme::current().palette().warning
         } else {
-            Color::Green
+            theme::current().palette().success
         };
 
         detail_lines.push(Line::from(vec![
-            Span::styled(" Outcome: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(" Outcome: ", theme::current().muted()),
             Span::styled(entry.outcome, Style::default().fg(outcome_color)),
         ]));
         detail_lines.push(field_line(" Started", entry.time));
@@ -1448,7 +1556,7 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &mut App) {
             detail_lines.push(Line::from(""));
             detail_lines.push(Line::from(Span::styled(
                 " Message:",
-                Style::default().fg(Color::DarkGray),
+                theme::current().muted(),
             )));
             // Wrap long messages without splitting UTF-8 characters.
             let max_width = detail_area.width.saturating_sub(3) as usize;
@@ -1457,11 +1565,11 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &mut App) {
                     Span::raw(" "),
                     Span::styled(
                         message_line,
-                        Style::default().fg(if entry.is_error {
-                            Color::Red
+                        if entry.is_error {
+                            theme::current().error()
                         } else {
-                            Color::Yellow
-                        }),
+                            theme::current().warning()
+                        },
                     ),
                 ]));
             }
@@ -1493,9 +1601,7 @@ fn draw_log_view(frame: &mut Frame, area: Rect, app: &mut App) {
 
     lines.push(Line::from(Span::styled(
         " Log View:",
-        Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD),
+        theme::current().heading(),
     )));
     if let Some(namespace) = &app.history_screen.log_namespace {
         lines.push(field_line(" Namespace", namespace.clone()));
@@ -1557,9 +1663,7 @@ fn draw_automation(frame: &mut Frame, area: Rect, app: &App) {
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "  Systemd Timer",
-        Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD),
+        theme::current().heading(),
     )));
     lines.push(Line::from(""));
 
@@ -1574,7 +1678,7 @@ fn draw_automation(frame: &mut Frame, area: Rect, app: &App) {
         LoadState::Loading { previous, .. } => {
             lines.push(Line::from(Span::styled(
                 "  Checking automation status...",
-                Style::default().fg(Color::Yellow),
+                theme::current().warning(),
             )));
             if let Some(status) = previous {
                 lines.push(field_line("  Previous", status.clone()));
@@ -1592,7 +1696,7 @@ fn draw_automation(frame: &mut Frame, area: Rect, app: &App) {
         LoadState::Failed { error, previous } => {
             lines.push(Line::from(Span::styled(
                 format!("  Status check failed: {error}. Press r to retry."),
-                Style::default().fg(Color::Red),
+                theme::current().error(),
             )));
             if let Some(status) = previous {
                 lines.push(field_line("  Previous", status.clone()));
@@ -1620,23 +1724,13 @@ fn draw_automation(frame: &mut Frame, area: Rect, app: &App) {
         ConfirmAction::Install => {
             lines.push(Line::from(vec![
                 Span::raw("  "),
-                Span::styled(
-                    "Install and enable the timer?",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
+                Span::styled("Install and enable the timer?", theme::current().warning()),
             ]));
         }
         ConfirmAction::Remove => {
             lines.push(Line::from(vec![
                 Span::raw("  "),
-                Span::styled(
-                    "Remove the timer?",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
+                Span::styled("Remove the timer?", theme::current().warning()),
             ]));
         }
         ConfirmAction::None => {}
@@ -1664,14 +1758,14 @@ fn draw_preview(frame: &mut Frame, area: Rect, app: &App) {
     match &app.preview_screen.load_state {
         LoadState::Loading { .. } => lines.push(Line::from(Span::styled(
             "  Generating preview...",
-            Style::default().fg(Color::Yellow),
+            theme::current().warning(),
         ))),
         LoadState::Stale { .. } => {
             lines.push(dim_line("  Preview is stale. Press r to refresh."));
         }
         LoadState::Failed { error, .. } => lines.push(Line::from(Span::styled(
             format!("  Preview failed: {error}. Press r to retry."),
-            Style::default().fg(Color::Red),
+            theme::current().error(),
         ))),
         LoadState::NotLoaded | LoadState::Loaded(_) => {}
     }
@@ -1701,9 +1795,7 @@ fn draw_preview(frame: &mut Frame, area: Rect, app: &App) {
                 "Added: {}  Changed: {}  Deleted: {}  Ignored: {}  Warning: {}",
                 data.additions, data.modifications, data.deletions, data.exclusions, data.warnings
             ),
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
+            theme::current().heading(),
         ),
         Span::raw(format!(
             "  ({} total operations)",
@@ -1723,27 +1815,23 @@ fn draw_preview(frame: &mut Frame, area: Rect, app: &App) {
             .min(data.entries.len().saturating_sub(visible_height));
 
         for entry in data.entries.iter().skip(scroll).take(visible_height) {
-            let (prefix_color, path_style) = match entry.kind {
-                EntryKind::Addition => (Color::Green, Style::default().fg(Color::Green)),
-                EntryKind::Modification => (Color::Yellow, Style::default().fg(Color::Yellow)),
-                EntryKind::Deletion => (Color::Red, Style::default().fg(Color::Red)),
-                EntryKind::Exclusion => (Color::DarkGray, Style::default().fg(Color::DarkGray)),
-                EntryKind::Warning => (Color::Yellow, Style::default().fg(Color::Yellow)),
+            let entry_style = match entry.kind {
+                EntryKind::Addition => theme::current().success(),
+                EntryKind::Modification | EntryKind::Warning => theme::current().warning(),
+                EntryKind::Deletion => theme::current().error(),
+                EntryKind::Exclusion => theme::current().muted(),
             };
 
             let mut spans = vec![
                 Span::raw("  "),
-                Span::styled(
-                    format!("{} ", entry.kind.prefix()),
-                    Style::default().fg(prefix_color),
-                ),
-                Span::styled(entry.path.clone(), path_style),
+                Span::styled(format!("{} ", entry.kind.prefix()), entry_style),
+                Span::styled(entry.path.clone(), entry_style),
             ];
 
             if let Some(ref detail) = entry.detail {
                 spans.push(Span::styled(
                     format!("  ({})", detail),
-                    Style::default().fg(Color::DarkGray),
+                    theme::current().muted(),
                 ));
             }
 
@@ -1804,16 +1892,16 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
             "  Source selector: "
         },
         if source_focused {
-            THEME.focused()
+            theme::current().focused()
         } else {
-            THEME.label()
+            theme::current().label()
         },
     )];
     for (i, source) in sources.iter().enumerate() {
         let style = if i == app.ignore_screen.source_idx {
-            THEME.selected()
+            theme::current().selected()
         } else {
-            THEME.muted()
+            theme::current().muted()
         };
         source_tabs.push(Span::styled(format!(" {} ", source.path), style));
         source_tabs.push(Span::raw("|"));
@@ -1830,23 +1918,21 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
         lines.push(field_line(" Active rule context", active_rule));
         lines.push(Line::from(Span::styled(
             " File Preview:",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
+            theme::current().heading(),
         )));
 
         use crate::tui::task::LoadState;
         match &app.ignore_screen.preview_state {
             LoadState::Loading { .. } => lines.push(Line::from(Span::styled(
                 "  Generating ignore preview...",
-                Style::default().fg(Color::Yellow),
+                theme::current().warning(),
             ))),
             LoadState::Stale { .. } => {
                 lines.push(dim_line("  Preview is stale. Press r to refresh."))
             }
             LoadState::Failed { error, .. } => lines.push(Line::from(Span::styled(
                 format!("  Preview failed: {error}. Press r to retry."),
-                Style::default().fg(Color::Red),
+                theme::current().error(),
             ))),
             LoadState::NotLoaded | LoadState::Loaded(_) => {}
         }
@@ -1878,27 +1964,18 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
                 let mut spans = vec![Span::raw("  ")];
 
                 if entry.ignored {
-                    spans.push(Span::styled("[ignored] ", Style::default().fg(Color::Red)));
-                    spans.push(Span::styled(
-                        entry.path.clone(),
-                        Style::default().fg(Color::DarkGray),
-                    ));
+                    spans.push(Span::styled("[ignored] ", theme::current().error()));
+                    spans.push(Span::styled(entry.path.clone(), theme::current().muted()));
                     if let Some(ref pat) = entry.matched_by {
-                        spans.push(Span::styled(
-                            format!("  ({pat})"),
-                            Style::default().fg(Color::DarkGray),
-                        ));
+                        spans.push(Span::styled(format!("  ({pat})"), theme::current().muted()));
                     }
                 } else {
-                    spans.push(Span::styled("✓ ", Style::default().fg(Color::Green)));
+                    spans.push(Span::styled("✓ ", theme::current().success()));
                     spans.push(Span::raw(entry.path.clone()));
                 }
 
                 if entry.secret_warning {
-                    spans.push(Span::styled(
-                        "  ⚠ secret",
-                        Style::default().fg(Color::Yellow),
-                    ));
+                    spans.push(Span::styled("  ⚠ secret", theme::current().warning()));
                 }
 
                 lines.push(Line::from(spans));
@@ -1935,9 +2012,9 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
                 "  Pattern list:"
             },
             if patterns_focused {
-                THEME.focused()
+                theme::current().focused()
             } else {
-                THEME.label()
+                theme::current().label()
             },
         )));
         for (i, pattern) in current_source.ignore.iter().enumerate() {
@@ -1947,13 +2024,13 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
                 "  "
             };
             let style = if i == app.ignore_screen.pattern_idx {
-                THEME.selected()
+                theme::current().selected()
             } else {
                 Style::default()
             };
             lines.push(Line::from(vec![
                 Span::raw("  "),
-                Span::styled(marker, Style::default().fg(Color::Cyan)),
+                Span::styled(marker, theme::current().focused()),
                 Span::styled(pattern.clone(), style),
             ]));
         }
@@ -1964,7 +2041,7 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             "  New pattern (gitignore syntax):",
-            Style::default().fg(Color::Cyan),
+            theme::current().label(),
         )));
         let input_display = format!("  > {}", app.ignore_screen.input);
         lines.push(Line::from(Span::raw(input_display)));
@@ -2012,7 +2089,7 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
         } else {
             let msg = Paragraph::new(Line::from(Span::styled(
                 " Browser is not ready. Press Esc, then a to try again.",
-                Style::default().fg(Color::DarkGray),
+                theme::current().muted(),
             )));
             frame.render_widget(msg, chunks[0]);
         }
@@ -2028,10 +2105,8 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
                 }
             },
         );
-        let paragraph = Paragraph::new(Line::from(Span::styled(
-            summary,
-            Style::default().fg(Color::Cyan),
-        )));
+        let paragraph =
+            Paragraph::new(Line::from(Span::styled(summary, theme::current().accent())));
         frame.render_widget(paragraph, chunks[1]);
         return;
     }
@@ -2048,7 +2123,7 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             "  No sources configured.",
-            THEME.disabled(),
+            theme::current().disabled(),
         )));
         lines.push(Line::from(""));
         let next_step = if app.config.is_some() {
@@ -2061,9 +2136,7 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             "  Configured sources:",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
+            theme::current().heading(),
         )));
         lines.push(Line::from(""));
 
@@ -2074,18 +2147,18 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
                 "  "
             };
             let style = if i == app.sources_screen.selected {
-                THEME.selected()
+                theme::current().selected()
             } else {
                 Style::default()
             };
             lines.push(Line::from(vec![
                 Span::raw("  "),
-                Span::styled(marker, Style::default().fg(Color::Cyan)),
+                Span::styled(marker, theme::current().focused()),
                 Span::styled(src.path.clone(), style),
                 if !src.ignore.is_empty() {
                     Span::styled(
                         format!("  ({} ignore rules)", src.ignore.len()),
-                        Style::default().fg(Color::DarkGray),
+                        theme::current().muted(),
                     )
                 } else {
                     Span::raw("")
@@ -2099,7 +2172,7 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             "  New source (relative to $HOME):",
-            Style::default().fg(Color::Cyan),
+            theme::current().label(),
         )));
         let input_display = format!("  > {}", app.sources_screen.input);
         lines.push(Line::from(Span::raw(input_display)));
@@ -2116,9 +2189,7 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
             Span::raw("  "),
             Span::styled(
                 format!("Remove source '{path}'?"),
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
+                theme::current().warning(),
             ),
         ]));
     }
@@ -2130,7 +2201,7 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
             Span::raw("  "),
             Span::styled(
                 "Pending source changes require a decision.",
-                THEME.warning(),
+                theme::current().warning(),
             ),
         ]));
         if let Some(diff) = &app.sources_screen.pending_diff {
@@ -2158,9 +2229,7 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
                 Span::raw("  "),
                 Span::styled(
                     format!("Remove sources and apply changes ({summary})?"),
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
+                    theme::current().warning(),
                 ),
             ]));
 
@@ -2168,12 +2237,7 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
         } else {
             lines.push(Line::from(vec![
                 Span::raw("  "),
-                Span::styled(
-                    "Apply changes?",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
+                Span::styled("Apply changes?", theme::current().warning()),
             ]));
         }
     }
@@ -2192,31 +2256,31 @@ fn append_source_diff_lines(
     if !diff.additions.is_empty() {
         lines.push(Line::from(Span::styled(
             "  Sources to add:",
-            THEME.success(),
+            theme::current().success(),
         )));
         for path in &diff.additions {
             lines.push(Line::from(Span::styled(
                 format!("    + {}", text::truncate(path, path_width)),
-                THEME.success(),
+                theme::current().success(),
             )));
         }
     }
     if !diff.removals.is_empty() {
         lines.push(Line::from(Span::styled(
             "  Sources to remove:",
-            THEME.error(),
+            theme::current().error(),
         )));
         for path in &diff.removals {
             lines.push(Line::from(Span::styled(
                 format!("    - {}", text::truncate(path, path_width)),
-                THEME.error(),
+                theme::current().error(),
             )));
         }
     }
     if !diff.ignore_rules.is_empty() {
         lines.push(Line::from(Span::styled(
             "  Generated ignore rules:",
-            THEME.warning(),
+            theme::current().warning(),
         )));
         let mut sources: Vec<_> = diff.ignore_rules.iter().collect();
         sources.sort_by(|left, right| left.0.cmp(right.0));
@@ -2224,7 +2288,7 @@ fn append_source_diff_lines(
             for rule in rules {
                 lines.push(Line::from(Span::styled(
                     format!("    {source}: {}", text::truncate(rule, path_width)),
-                    THEME.warning(),
+                    theme::current().warning(),
                 )));
             }
         }
@@ -2267,7 +2331,7 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
             } else {
                 let msg = Paragraph::new(Line::from(Span::styled(
                     " Press Enter or ↓ to start browsing",
-                    Style::default().fg(Color::DarkGray),
+                    theme::current().muted(),
                 )));
                 frame.render_widget(msg, chunks[0]);
             }
@@ -2277,16 +2341,16 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
             if let Some(ref config) = app.config {
                 lines.push(Line::from(vec![
                     Span::raw(" "),
-                    Span::styled("Namespace: ", Style::default().fg(Color::Cyan)),
-                    Span::styled(config.namespace.clone(), Style::default().fg(Color::White)),
+                    Span::styled("Namespace: ", theme::current().label()),
+                    Span::styled(config.namespace.clone(), theme::current().emphasis()),
                 ]));
             } else {
                 lines.push(Line::from(vec![
                     Span::raw(" "),
-                    Span::styled("Namespace: ", Style::default().fg(Color::Cyan)),
+                    Span::styled("Namespace: ", theme::current().label()),
                     Span::styled(
                         app.repo_screen.namespace_input.clone(),
-                        Style::default().fg(Color::White),
+                        theme::current().emphasis(),
                     ),
                 ]));
             }
@@ -2294,7 +2358,7 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
             if let Some(ref err) = app.repo_screen.selection_error {
                 lines.push(Line::from(vec![
                     Span::raw(" "),
-                    Span::styled(format!("✗ {err}"), Style::default().fg(Color::Red)),
+                    Span::styled(format!("✗ {err}"), theme::current().error()),
                 ]));
             }
 
@@ -2302,21 +2366,21 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
                 LoadState::Loaded(info) => {
                     lines.push(Line::from(vec![
                         Span::raw(" "),
-                        Span::styled("✓ Valid repository", Style::default().fg(Color::Green)),
+                        Span::styled("✓ Valid repository", theme::current().success()),
                         Span::raw(" — "),
-                        Span::styled(&info.branch, Style::default().fg(Color::Cyan)),
+                        Span::styled(&info.branch, theme::current().accent()),
                     ]));
                     draw_ownership_line(&info.ownership, &mut lines);
                 }
                 LoadState::Loading { .. } => lines.push(Line::from(Span::styled(
                     " Checking repository...",
-                    Style::default().fg(Color::Yellow),
+                    theme::current().warning(),
                 ))),
                 LoadState::Failed { error, .. } => lines.push(Line::from(vec![
                     Span::raw(" "),
                     Span::styled(
                         format!("✗ {error}. Select a directory to retry."),
-                        Style::default().fg(Color::Red),
+                        theme::current().error(),
                     ),
                 ])),
                 LoadState::Stale { .. } => lines.push(dim_line(
@@ -2349,15 +2413,21 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
                 let marker = if selected { "▶" } else { " " };
                 let active = if item.active { " active" } else { " sibling" };
                 let state_style = match item.ownership {
-                    crate::tui::screens::repository::OwnershipInfo::New => THEME.warning(),
-                    crate::tui::screens::repository::OwnershipInfo::Owned { .. } => THEME.success(),
-                    crate::tui::screens::repository::OwnershipInfo::InvalidManifest(_) => {
-                        THEME.error()
+                    crate::tui::screens::repository::OwnershipInfo::New => {
+                        theme::current().warning()
                     }
-                    crate::tui::screens::repository::OwnershipInfo::Ambiguous(_) => THEME.warning(),
+                    crate::tui::screens::repository::OwnershipInfo::Owned { .. } => {
+                        theme::current().success()
+                    }
+                    crate::tui::screens::repository::OwnershipInfo::InvalidManifest(_) => {
+                        theme::current().error()
+                    }
+                    crate::tui::screens::repository::OwnershipInfo::Ambiguous(_) => {
+                        theme::current().warning()
+                    }
                 };
                 let row_style = if selected {
-                    THEME.selected()
+                    theme::current().selected()
                 } else {
                     Style::default()
                 };
@@ -2394,9 +2464,7 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
             let mut lines: Vec<Line> = Vec::new();
             lines.push(Line::from(Span::styled(
                 format!("  Namespace ({}):", app.repo_screen.namespace_action_name()),
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
+                theme::current().heading(),
             )));
             lines.push(Line::from(format!(
                 "  > {}",
@@ -2425,7 +2493,7 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
             if let Some(ref confirmation) = app.repo_screen.namespace_confirmation {
                 lines.push(Line::from(Span::styled(
                     format!("  {confirmation}"),
-                    Style::default().fg(Color::Yellow),
+                    theme::current().warning(),
                 )));
             }
             let paragraph = Paragraph::new(lines);
@@ -2437,9 +2505,7 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
                 "  Repository path (Esc → browser):",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
+                theme::current().heading(),
             )));
             lines.push(Line::from(""));
 
@@ -2453,7 +2519,7 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
             let cursor_line = format!("  {}^", " ".repeat(cursor_width + 1));
             lines.push(Line::from(Span::styled(
                 cursor_line,
-                Style::default().fg(Color::DarkGray),
+                theme::current().muted(),
             )));
             lines.push(Line::from(""));
 
@@ -2462,7 +2528,7 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
                 LoadState::Loaded(info) => {
                     lines.push(Line::from(vec![
                         Span::raw("  "),
-                        Span::styled("✓ Valid repository", Style::default().fg(Color::Green)),
+                        Span::styled("✓ Valid repository", theme::current().success()),
                     ]));
                     lines.push(field_line("    Branch", info.branch.clone()));
                     lines.push(field_line("    Path", info.path.display().to_string()));
@@ -2471,13 +2537,13 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
                 }
                 LoadState::Loading { .. } => lines.push(Line::from(Span::styled(
                     "  Checking repository...",
-                    Style::default().fg(Color::Yellow),
+                    theme::current().warning(),
                 ))),
                 LoadState::Failed { error, .. } => lines.push(Line::from(vec![
                     Span::raw("  "),
                     Span::styled(
                         format!("✗ {error}. Press Enter to retry."),
-                        Style::default().fg(Color::Red),
+                        theme::current().error(),
                     ),
                 ])),
                 LoadState::Stale { .. } => {
@@ -2507,7 +2573,7 @@ fn draw_ownership_line(
         OwnershipInfo::New => {
             lines.push(Line::from(vec![
                 Span::raw(" "),
-                Span::styled("New namespace", Style::default().fg(Color::Green)),
+                Span::styled("New namespace", theme::current().success()),
             ]));
         }
         OwnershipInfo::Owned { sources } => {
@@ -2515,7 +2581,7 @@ fn draw_ownership_line(
                 Span::raw(" "),
                 Span::styled(
                     format!("Existing manifest ({} sources)", sources.len()),
-                    Style::default().fg(Color::Yellow),
+                    theme::current().warning(),
                 ),
             ]));
         }
@@ -2524,17 +2590,14 @@ fn draw_ownership_line(
                 Span::raw(" "),
                 Span::styled(
                     format!("✗ Invalid manifest: {reason}"),
-                    Style::default().fg(Color::Red),
+                    theme::current().error(),
                 ),
             ]));
         }
         OwnershipInfo::Ambiguous(reason) => {
             lines.push(Line::from(vec![
                 Span::raw(" "),
-                Span::styled(
-                    format!("✗ Ambiguous: {reason}"),
-                    Style::default().fg(Color::Red),
-                ),
+                Span::styled(format!("✗ Ambiguous: {reason}"), theme::current().error()),
             ]));
         }
     }
@@ -2552,17 +2615,14 @@ fn draw_ownership_lines(
                 Span::raw("  "),
                 Span::styled(
                     "New namespace — no existing data.",
-                    Style::default().fg(Color::Green),
+                    theme::current().success(),
                 ),
             ]));
         }
         OwnershipInfo::Owned { sources } => {
             lines.push(Line::from(vec![
                 Span::raw("  "),
-                Span::styled(
-                    "Existing manifest found.",
-                    Style::default().fg(Color::Yellow),
-                ),
+                Span::styled("Existing manifest found.", theme::current().warning()),
             ]));
             lines.push(dim_line(format!("    Sources: {}", sources.len())));
             for s in sources.iter().take(5) {
@@ -2574,17 +2634,14 @@ fn draw_ownership_lines(
                 Span::raw("  "),
                 Span::styled(
                     format!("✗ Invalid manifest: {reason}"),
-                    Style::default().fg(Color::Red),
+                    theme::current().error(),
                 ),
             ]));
         }
         OwnershipInfo::Ambiguous(reason) => {
             lines.push(Line::from(vec![
                 Span::raw("  "),
-                Span::styled(
-                    format!("✗ Ambiguous: {reason}"),
-                    Style::default().fg(Color::Red),
-                ),
+                Span::styled(format!("✗ Ambiguous: {reason}"), theme::current().error()),
             ]));
         }
     }
@@ -2600,32 +2657,19 @@ fn draw_confirm_line(
         ConfirmState::AskInitialize => {
             lines.push(Line::from(vec![
                 Span::raw(" "),
-                Span::styled(
-                    "Initialize this repository?",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
+                Span::styled("Initialize this repository?", theme::current().warning()),
             ]));
         }
         ConfirmState::AskAttach => {
             lines.push(Line::from(vec![
                 Span::raw(" "),
-                Span::styled(
-                    "Attach to this repository?",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
+                Span::styled("Attach to this repository?", theme::current().warning()),
             ]));
         }
         ConfirmState::Done => {
             lines.push(Line::from(vec![
                 Span::raw(" "),
-                Span::styled(
-                    "✓ Repository configured.",
-                    Style::default().fg(Color::Green),
-                ),
+                Span::styled("✓ Repository configured.", theme::current().success()),
             ]));
         }
         ConfirmState::None => {}

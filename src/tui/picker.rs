@@ -10,14 +10,14 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph},
 };
 
 use super::browser::{Browser, DirListing, EntryKind, Selection, SelectionError};
 use super::selection::CheckState;
-use super::{text, theme::THEME};
+use super::{text, theme};
 
 /// Type alias for the optional check-state callback.
 ///
@@ -185,7 +185,7 @@ fn draw_breadcrumb(frame: &mut Frame, area: Rect, browser: &Browser) {
     let path_display = text::truncate(&path_str, area.width.saturating_sub(1) as usize);
     let line = Line::from(vec![
         Span::styled(" ", Style::default()),
-        Span::styled(path_display, THEME.heading()),
+        Span::styled(path_display, theme::current().heading()),
     ]);
     frame.render_widget(Paragraph::new(line), area);
 }
@@ -245,8 +245,11 @@ fn draw_panes(
 fn draw_parent_pane(frame: &mut Frame, area: Rect, browser: &mut Browser) {
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(THEME.border(false))
-        .title(Line::from(Span::styled(" Parent ", THEME.label())));
+        .border_style(theme::current().border(false))
+        .title(Line::from(Span::styled(
+            " Parent ",
+            theme::current().label(),
+        )));
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -266,7 +269,7 @@ fn draw_parent_pane(frame: &mut Frame, area: Rect, browser: &mut Browser) {
         Some(DirListing::Error(_)) => {
             vec![ListItem::new(Line::from(Span::styled(
                 "<error>",
-                THEME.error(),
+                theme::current().error(),
             )))]
         }
         None => Vec::new(),
@@ -287,10 +290,10 @@ fn draw_current_pane(
 ) {
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(THEME.border(true))
+        .border_style(theme::current().border(true))
         .title(Line::from(Span::styled(
             format!(" ▶ Files [ACTIVE: {label}] "),
-            THEME.focused(),
+            theme::current().focused(),
         )));
 
     let inner = block.inner(area);
@@ -300,7 +303,10 @@ fn draw_current_pane(
     let current_dir = browser.current_dir().to_path_buf();
     match listing {
         DirListing::Entries(entries) if entries.is_empty() => {
-            let msg = Paragraph::new(Line::from(Span::styled(" (empty)", THEME.muted())));
+            let msg = Paragraph::new(Line::from(Span::styled(
+                " (empty)",
+                theme::current().muted(),
+            )));
             frame.render_widget(msg, inner);
         }
         DirListing::Entries(entries) => {
@@ -328,9 +334,9 @@ fn draw_current_pane(
                     let mut spans: Vec<Span> = vec![Span::styled(
                         if is_selected { "▶ " } else { "  " },
                         if is_selected {
-                            THEME.focused()
+                            theme::current().focused()
                         } else {
-                            THEME.muted()
+                            theme::current().muted()
                         },
                     )];
 
@@ -339,14 +345,17 @@ fn draw_current_pane(
                         let entry_path = current_dir.join(&e.name);
                         let state = check(&entry_path);
                         let (indicator, ind_style) = match state {
-                            CheckState::Explicit => ("[●]", Style::default().fg(Color::Cyan)),
-                            CheckState::Inherited => ("[◉]", Style::default().fg(Color::DarkGray)),
-                            CheckState::Unchecked => ("[ ]", Style::default().fg(Color::DarkGray)),
+                            CheckState::Explicit => (
+                                "[●]",
+                                Style::default().fg(theme::current().palette().accent),
+                            ),
+                            CheckState::Inherited => ("[◉]", theme::current().muted()),
+                            CheckState::Unchecked => ("[ ]", theme::current().muted()),
                         };
                         spans.push(Span::styled(
                             format!("{indicator} "),
                             if is_selected {
-                                ind_style.patch(THEME.selected())
+                                ind_style.patch(theme::current().selected())
                             } else {
                                 ind_style
                             },
@@ -372,7 +381,7 @@ fn draw_current_pane(
         DirListing::Error(e) => {
             let msg = Paragraph::new(Line::from(Span::styled(
                 format!(" Error: {e}"),
-                THEME.error(),
+                theme::current().error(),
             )));
             frame.render_widget(msg, inner);
         }
@@ -383,8 +392,11 @@ fn draw_current_pane(
 fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser, ascii: bool) {
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(THEME.border(false))
-        .title(Line::from(Span::styled(" Preview ", THEME.label())));
+        .border_style(theme::current().border(false))
+        .title(Line::from(Span::styled(
+            " Preview ",
+            theme::current().label(),
+        )));
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -398,7 +410,10 @@ fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser, ascii
             let preview = browser.preview_listing();
             match preview {
                 Some(DirListing::Entries(entries)) if entries.is_empty() => {
-                    let msg = Paragraph::new(Line::from(Span::styled(" (empty)", THEME.muted())));
+                    let msg = Paragraph::new(Line::from(Span::styled(
+                        " (empty)",
+                        theme::current().muted(),
+                    )));
                     frame.render_widget(msg, inner);
                 }
                 Some(DirListing::Entries(entries)) => {
@@ -421,8 +436,10 @@ fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser, ascii
                     frame.render_widget(list, inner);
                 }
                 Some(DirListing::Error(e)) => {
-                    let msg =
-                        Paragraph::new(Line::from(Span::styled(format!(" {e}"), THEME.error())));
+                    let msg = Paragraph::new(Line::from(Span::styled(
+                        format!(" {e}"),
+                        theme::current().error(),
+                    )));
                     frame.render_widget(msg, inner);
                 }
                 None => {}
@@ -445,28 +462,28 @@ fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser, ascii
                 EntryKind::Directory => "Directory",
             };
             lines.push(Line::from(vec![
-                Span::styled(" Type: ", THEME.label()),
+                Span::styled(" Type: ", theme::current().label()),
                 Span::raw(kind_str),
             ]));
 
             if let Some(size) = entry.size {
                 lines.push(Line::from(vec![
-                    Span::styled(" Size: ", THEME.label()),
+                    Span::styled(" Size: ", theme::current().label()),
                     Span::raw(format_size(size)),
                 ]));
             }
 
             if entry.executable {
                 lines.push(Line::from(vec![
-                    Span::styled(" Exec: ", THEME.label()),
-                    Span::styled("yes", Style::default().fg(Color::Green)),
+                    Span::styled(" Exec: ", theme::current().label()),
+                    Span::styled("yes", theme::current().success()),
                 ]));
             }
 
             if let Some(ref target) = entry.link_target {
                 lines.push(Line::from(vec![
-                    Span::styled(" Target: ", THEME.label()),
-                    Span::styled(target.clone(), Style::default().fg(Color::Magenta)),
+                    Span::styled(" Target: ", theme::current().label()),
+                    Span::styled(target.clone(), theme::current().symlink()),
                 ]));
             }
 
@@ -474,7 +491,7 @@ fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser, ascii
                 lines.push(Line::from(""));
                 lines.push(Line::from(Span::styled(
                     " ⚠ Non-UTF-8 name (cannot select)",
-                    THEME.warning(),
+                    theme::current().warning(),
                 )));
             }
 
@@ -482,7 +499,10 @@ fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser, ascii
             frame.render_widget(paragraph, inner);
         }
         None => {
-            let msg = Paragraph::new(Line::from(Span::styled(" (no selection)", THEME.muted())));
+            let msg = Paragraph::new(Line::from(Span::styled(
+                " (no selection)",
+                theme::current().muted(),
+            )));
             frame.render_widget(msg, inner);
         }
     }
@@ -514,16 +534,14 @@ fn entry_icon(entry: &super::browser::Entry, ascii: bool) -> &'static str {
 /// Get a style for an entry based on kind and selection state.
 fn entry_style(kind: EntryKind, selected: bool) -> Style {
     let base = match kind {
-        EntryKind::Directory => Style::default()
-            .fg(Color::Blue)
-            .add_modifier(Modifier::BOLD),
-        EntryKind::Symlink => Style::default().fg(Color::Magenta),
-        EntryKind::File => Style::default().fg(Color::White),
-        EntryKind::Special => Style::default().fg(Color::Yellow),
-        EntryKind::Error => Style::default().fg(Color::Red),
+        EntryKind::Directory => theme::current().directory(),
+        EntryKind::Symlink => theme::current().symlink(),
+        EntryKind::File => Style::default(),
+        EntryKind::Special => theme::current().warning(),
+        EntryKind::Error => theme::current().error(),
     };
     if selected {
-        base.patch(THEME.selected())
+        base.patch(theme::current().selected())
     } else {
         base
     }

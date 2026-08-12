@@ -10,7 +10,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
-use super::{text, theme::THEME};
+use super::{text, theme};
 
 /// Content for a confirmation or review dialog.
 pub(crate) struct ModalSpec<'a> {
@@ -39,7 +39,10 @@ pub(crate) fn draw(frame: &mut Frame, area: Rect, spec: ModalSpec<'_>) {
     let body_width = usize::from(width.saturating_sub(4)).max(1);
     let mut lines = Vec::new();
     if let Some(affected) = spec.affected {
-        lines.push(Line::from(Span::styled("Affected: ", THEME.label())));
+        lines.push(Line::from(Span::styled(
+            "Affected: ",
+            theme::current().label(),
+        )));
         lines.extend(
             text::wrap(affected, body_width)
                 .into_iter()
@@ -79,16 +82,19 @@ pub(crate) fn draw(frame: &mut Frame, area: Rect, spec: ModalSpec<'_>) {
 pub(crate) fn draw_text_input(frame: &mut Frame, area: Rect, spec: TextInputSpec<'_>) {
     let width = area.width.saturating_sub(4).clamp(24, 76);
     let body_width = usize::from(width.saturating_sub(4)).max(1);
-    let mut lines = vec![Line::from(Span::styled(spec.label, THEME.label()))];
+    let mut lines = vec![Line::from(Span::styled(
+        spec.label,
+        theme::current().label(),
+    ))];
     let input_width = body_width.saturating_sub(2).max(1);
     let (display, cursor_cells) = input_window(spec.text, spec.cursor, input_width);
     lines.push(Line::from(vec![
-        Span::styled("> ", THEME.focused()),
-        Span::styled(display, THEME.selected()),
+        Span::styled("> ", theme::current().focused()),
+        Span::styled(display, theme::current().selected()),
     ]));
     lines.push(Line::from(Span::styled(
         format!("  {}^", " ".repeat(cursor_cells)),
-        THEME.focused(),
+        theme::current().focused(),
     )));
     if let Some((message, style)) = spec.validation {
         lines.push(Line::from(""));
@@ -125,21 +131,22 @@ fn fit_lines_to_dialog(lines: &mut Vec<Line<'_>>, max_lines: usize) {
     }
     lines.truncate(max_lines.saturating_sub(2));
     if max_lines > 1 {
-        lines.push(Line::from(Span::styled("…", THEME.muted())));
+        lines.push(Line::from(Span::styled("…", theme::current().muted())));
     }
     lines.push(actions);
 }
 
 fn draw_backdrop(frame: &mut Frame, area: Rect, dialog: Rect, title: &str) {
-    frame.render_widget(Block::default().style(THEME.backdrop()), area);
+    frame.render_widget(Block::default().style(theme::current().backdrop()), area);
     frame.render_widget(Clear, dialog);
     frame.render_widget(
         Block::default()
+            .style(theme::current().surface())
             .borders(Borders::ALL)
-            .border_style(THEME.dialog())
+            .border_style(theme::current().dialog())
             .title(Line::from(Span::styled(
                 format!(" {title} "),
-                THEME.heading(),
+                theme::current().heading(),
             ))),
         dialog,
     );
@@ -151,9 +158,9 @@ fn dialog_inner(dialog: Rect) -> Rect {
 
 fn actions_line(confirm: &str, cancel: &str) -> Line<'static> {
     Line::from(vec![
-        Span::styled(confirm.to_string(), THEME.focused()),
+        Span::styled(confirm.to_string(), theme::current().focused()),
         Span::raw(" · "),
-        Span::styled(cancel.to_string(), THEME.focused()),
+        Span::styled(cancel.to_string(), theme::current().focused()),
     ])
 }
 
