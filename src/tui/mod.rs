@@ -6,6 +6,7 @@
 
 pub mod browser;
 mod event;
+mod modal;
 pub mod picker;
 pub mod screens;
 pub mod selection;

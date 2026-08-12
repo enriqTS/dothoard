@@ -9,7 +9,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Tabs};
 
-use super::{App, Screen, text, theme::THEME};
+use super::{App, Screen, modal, text, theme::THEME};
 
 /// Draw the complete UI for one frame.
 pub fn draw(frame: &mut Frame, app: &mut App) {
@@ -27,6 +27,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_screen(frame, chunks[1], app);
     draw_status_bar(frame, chunks[2], app);
     draw_help_bar(frame, chunks[3], app);
+    draw_modal_overlay(frame, frame.area(), app);
 }
 
 /// Draw the tab bar at the top.
@@ -92,6 +93,253 @@ fn draw_screen(frame: &mut Frame, area: Rect, app: &mut App) {
         Screen::Preview => draw_preview(frame, area, app),
         Screen::Automation => draw_automation(frame, area, app),
         Screen::History => draw_history(frame, area, app),
+    }
+}
+
+/// Render the modal that currently owns input, if any.
+///
+/// Screen state machines retain all confirmation semantics; this function only
+/// gives their ownership a consistent, centered presentation.
+fn draw_modal_overlay(frame: &mut Frame, area: Rect, app: &App) {
+    use crate::tui::screens::{automation, ignore, repository, sources};
+    use crate::tui::task::LoadState;
+
+    match app.active_screen {
+        Screen::Repository => {
+            if let Some(question) = app.repo_screen.namespace_confirmation.as_deref() {
+                let affected = app.config.as_ref().map(|config| {
+                    let home = app
+                        .paths
+                        .as_ref()
+                        .map(|paths| paths.home())
+                        .unwrap_or_else(|| std::path::Path::new("."));
+                    let namespace = if app.repo_screen.namespace_action
+                        == repository::NamespaceAction::Delete
+                    {
+                        &app.repo_screen.namespace_origin
+                    } else {
+                        &app.repo_screen.namespace_input
+                    };
+                    config
+                        .repository_path(home)
+                        .join(namespace)
+                        .display()
+                        .to_string()
+                });
+                modal::draw(
+                    frame,
+                    area,
+                    modal::ModalSpec {
+                        title: "Confirm namespace change",
+                        affected: affected.as_deref(),
+                        consequence: question,
+                        validation: None,
+                        confirm: "y: confirm",
+                        cancel: "n / Esc: cancel",
+                    },
+                );
+            } else if matches!(
+                app.repo_screen.confirm_state,
+                repository::ConfirmState::AskInitialize | repository::ConfirmState::AskAttach
+            ) {
+                let initialize =
+                    app.repo_screen.confirm_state == repository::ConfirmState::AskInitialize;
+                modal::draw(
+                    frame,
+                    area,
+                    modal::ModalSpec {
+                        title: if initialize {
+                            "Initialize namespace"
+                        } else {
+                            "Attach namespace"
+                        },
+                        affected: if app.repo_screen.input.is_empty() {
+                            None
+                        } else {
+                            Some(app.repo_screen.input.as_str())
+                        },
+                        consequence: if initialize {
+                            "This creates dothoard's ownership manifest only in the selected namespace."
+                        } else {
+                            "This uses the existing matching ownership manifest; no sibling namespace is changed."
+                        },
+                        validation: None,
+                        confirm: "y: confirm",
+                        cancel: "n / Esc: cancel",
+                    },
+                );
+            } else {
+                match app.repo_screen.mode {
+                    repository::RepoMode::TextInput => {
+                        let validation = match &app.repo_screen.validation {
+                            LoadState::Failed { error, .. } => {
+                                Some((error.as_str(), THEME.error()))
+                            }
+                            LoadState::Loading { .. } => {
+                                Some(("Checking repository…", THEME.progress()))
+                            }
+                            _ => app
+                                .repo_screen
+                                .selection_error
+                                .as_deref()
+                                .map(|error| (error, THEME.error())),
+                        };
+                        modal::draw_text_input(
+                            frame,
+                            area,
+                            modal::TextInputSpec {
+                                title: "Repository path",
+                                label: "Existing Git worktree path",
+                                text: &app.repo_screen.input,
+                                cursor: app.repo_screen.cursor,
+                                validation,
+                                submit: "Enter: validate",
+                                cancel: "Esc: browser",
+                            },
+                        );
+                    }
+                    repository::RepoMode::NamespaceInput => {
+                        let affected = app.config.as_ref().map(|config| {
+                            let home = app
+                                .paths
+                                .as_ref()
+                                .map(|paths| paths.home())
+                                .unwrap_or_else(|| std::path::Path::new("."));
+                            config.repository_path(home).display().to_string()
+                        });
+                        modal::draw_text_input(
+                            frame,
+                            area,
+                            modal::TextInputSpec {
+                                title: "Namespace",
+                                label: app.repo_screen.namespace_action_name(),
+                                text: &app.repo_screen.namespace_input,
+                                cursor: app.repo_screen.namespace_cursor,
+                                validation: affected.as_deref().map(|path| (path, THEME.muted())),
+                                submit: "Enter: review",
+                                cancel: "Esc: cancel",
+                            },
+                        );
+                    }
+                    repository::RepoMode::Browser => {}
+                }
+            }
+        }
+        Screen::Sources => match app.sources_screen.mode {
+            sources::Mode::AddInput => modal::draw_text_input(
+                frame,
+                area,
+                modal::TextInputSpec {
+                    title: "Add source",
+                    label: "Path relative to $HOME",
+                    text: &app.sources_screen.input,
+                    cursor: app.sources_screen.cursor,
+                    validation: app
+                        .sources_screen
+                        .message
+                        .as_ref()
+                        .map(|message| (message.text.as_str(), THEME.error())),
+                    submit: "Enter: add",
+                    cancel: "Esc: browser",
+                },
+            ),
+            sources::Mode::ConfirmDelete => {
+                let affected = app
+                    .config
+                    .as_ref()
+                    .and_then(|config| config.sources.get(app.sources_screen.selected))
+                    .map(|source| source.path.as_str());
+                modal::draw(
+                    frame,
+                    area,
+                    modal::ModalSpec {
+                        title: "Remove source",
+                        affected,
+                        consequence: "This removes the source from configuration. It does not delete files from your home directory.",
+                        validation: None,
+                        confirm: "y: remove",
+                        cancel: "n / Esc: cancel",
+                    },
+                );
+            }
+            sources::Mode::PendingChanges => modal::draw(
+                frame,
+                area,
+                modal::ModalSpec {
+                    title: "Review source changes",
+                    affected: None,
+                    consequence: "Source selection changed. Choose whether to apply it, discard it, or continue editing.",
+                    validation: None,
+                    confirm: "a: apply  d: discard",
+                    cancel: "c / Esc: continue editing",
+                },
+            ),
+            sources::Mode::ConfirmApply => {
+                let summary = app.sources_screen.pending_diff.as_ref().map(|diff| {
+                    format!(
+                        "{} additions, {} removals",
+                        diff.additions.len(),
+                        diff.removals.len()
+                    )
+                });
+                modal::draw(
+                    frame,
+                    area,
+                    modal::ModalSpec {
+                        title: "Apply source changes",
+                        affected: summary.as_deref(),
+                        consequence: "Removing sources changes configuration and applies generated ignore rules. Existing backup data is not deleted here.",
+                        validation: None,
+                        confirm: "y: remove and apply",
+                        cancel: "n / Esc: back",
+                    },
+                );
+            }
+            _ => {}
+        },
+        Screen::Ignore if app.ignore_screen.mode == ignore::Mode::AddInput => {
+            modal::draw_text_input(
+                frame,
+                area,
+                modal::TextInputSpec {
+                    title: "Add ignore pattern",
+                    label: "Gitignore syntax",
+                    text: &app.ignore_screen.input,
+                    cursor: app.ignore_screen.cursor,
+                    validation: app
+                        .ignore_screen
+                        .message
+                        .as_ref()
+                        .map(|message| (message.text.as_str(), THEME.error())),
+                    submit: "Enter: add",
+                    cancel: "Esc: cancel",
+                },
+            );
+        }
+        Screen::Automation if app.automation_screen.confirm != automation::ConfirmAction::None => {
+            let removing = app.automation_screen.confirm == automation::ConfirmAction::Remove;
+            modal::draw(
+                frame,
+                area,
+                modal::ModalSpec {
+                    title: if removing {
+                        "Remove automation"
+                    } else {
+                        "Install automation"
+                    },
+                    affected: Some("dothoard-backup.service and dothoard-backup.timer"),
+                    consequence: if removing {
+                        "This disables and removes only dothoard's user timer units."
+                    } else {
+                        "This installs and enables dothoard's user timer using the current schedule."
+                    },
+                    validation: None,
+                    confirm: if removing { "y: remove" } else { "y: install" },
+                    cancel: "n / Esc: cancel",
+                },
+            );
+        }
+        _ => {}
     }
 }
 
@@ -2257,8 +2505,8 @@ mod tests {
             .chunks(width)
             .find_map(|row| row.iter().position(|cell| cell.symbol() == "^"))
             .expect("cursor indicator should be rendered");
-        // One border cell plus the six-cell cursor offset inside the panel.
-        assert_eq!(caret_column, 7);
+        // Centered input border plus the six-cell display-width cursor offset.
+        assert_eq!(caret_column, 8);
     }
 
     #[test]
@@ -3294,6 +3542,59 @@ mod tests {
                 .iter()
                 .any(|cell| cell.modifier.contains(Modifier::REVERSED))
         );
+    }
+
+    #[test]
+    fn centered_confirmation_modal_takes_precedence_and_dims_background() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = app_on(Screen::Repository);
+        app.focus = crate::tui::Focus::Content;
+        app.repo_screen.mode = crate::tui::screens::repository::RepoMode::TextInput;
+        app.repo_screen.input = "/a/very/long/repository/path".to_string();
+        app.repo_screen.confirm_state =
+            crate::tui::screens::repository::ConfirmState::AskInitialize;
+
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("Initialize namespace"));
+        assert!(content.contains("y: confirm"));
+        assert!(
+            buffer
+                .content()
+                .iter()
+                .any(|cell| cell.modifier.contains(Modifier::DIM))
+        );
+    }
+
+    #[test]
+    fn shared_input_dialogs_render_labels_validation_and_cursors() {
+        let backend = TestBackend::new(60, 16);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = app_on(Screen::Sources);
+        app.focus = crate::tui::Focus::Content;
+        app.sources_screen.mode = crate::tui::screens::sources::Mode::AddInput;
+        app.sources_screen.input = "配置/界".to_string();
+        app.sources_screen.cursor = app.sources_screen.input.len();
+        app.sources_screen.message = Some(crate::tui::screens::sources::Message {
+            text: "Source is invalid".to_string(),
+            kind: crate::tui::screens::sources::MessageKind::Error,
+        });
+
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("Add source"));
+        assert!(content.contains("Source is invalid"));
+        assert!(content.contains("^"));
+
+        app.active_screen = Screen::Ignore;
+        app.ignore_screen.mode = crate::tui::screens::ignore::Mode::AddInput;
+        app.ignore_screen.input = "*界*".to_string();
+        app.ignore_screen.cursor = app.ignore_screen.input.len();
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        assert!(buffer_text(terminal.backend()).contains("Add ignore pattern"));
     }
 
     #[test]

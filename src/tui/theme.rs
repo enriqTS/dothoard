@@ -87,6 +87,16 @@ impl Theme {
         self.focused()
     }
 
+    /// Dim the inactive UI while a modal owns input.
+    pub fn backdrop(self) -> Style {
+        Style::default().add_modifier(Modifier::DIM)
+    }
+
+    /// Keep dialog borders distinct even when color is unavailable.
+    pub fn dialog(self) -> Style {
+        self.focused().add_modifier(Modifier::REVERSED)
+    }
+
     pub fn status(self, kind: StatusKind) -> Style {
         match kind {
             StatusKind::Success => self.success(),
