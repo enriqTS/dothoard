@@ -749,7 +749,7 @@ its release readiness is explicitly established.
   reference material covering installation, first-run TUI use, keyboard
   navigation, configuration, ignore rules, namespaces, authentication, safety,
   limitations, troubleshooting, FAQ, development, and contribution guidance.
-- [ ] **PV04 - Publish a static documentation website.** Create a Markdown-based
+- [x] **PV04 - Publish a static documentation website.** Create a Markdown-based
   static site, preferably with Astro Starlight unless another option is shown
   to fit better, and publish it through GitHub Pages. Include a welcoming
   landing page and searchable or clearly navigable documentation.

@@ -44,9 +44,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   is accepted; next work is Milestone 15 PV04.
 - **Milestone 15 is partially complete**: PV01–PV03 provide the GitHub landing
   page, sanitized SVG visual demonstrations, and reorganized user
-  documentation. **PV04 is active**: create a simple Astro Starlight site that
-  uses the existing Markdown documentation and can deploy to GitHub Pages.
-  PV05–PV06 remain for public-trust automation and acceptance.
+  documentation. **PV04 is complete**: a simple Astro Starlight website uses
+  the existing Markdown documentation and deploys through GitHub Pages. PV05 is
+  next for public-trust automation and discoverability; PV06 remains acceptance.
 
 ## Durable Decisions
 
@@ -159,15 +159,14 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
-- PV04 implementation: `website/` contains the simple Astro Starlight source,
-  and `.github/workflows/docs.yml` builds/deploys it to GitHub Pages from
-  `main`. `npm run sync-docs` copies the authored `docs/*.md` files (excluding
-  their index) before every site build; generated copies are ignored. The
-  copied local Markdown links resolve. Site dependency installation/build is
-  **unverified** in this sandbox because npm registry requests for the scoped
-  Starlight package consistently reset or time out; run `cd website && npm
-  install && npm run build` once registry access is available, then enable
-  GitHub Pages as the repository's Actions source.
+- PV04 verified: `website/` is a simple Astro Starlight source and
+  `.github/workflows/docs.yml` builds/deploys it to GitHub Pages from `main`.
+  `npm run sync-docs` copies authored `docs/*.md` files (excluding their index)
+  before each build; generated copies are ignored. With Node 24.19.0, `npm
+  install --no-audit --no-fund` and `npm run build` pass (zero Astro diagnostics,
+  14 static pages and search index generated). The Pages workflow uses the
+  configured base path and `npm ci`; GitHub Pages must be enabled with GitHub
+  Actions as its source after pushing.
 - TU14 verified with Rust 1.97.1:
   - `cargo fmt --check` — clean
   - `cargo clippy --all-targets --all-features -- -D warnings` — clean

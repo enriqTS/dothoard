@@ -1,4 +1,5 @@
 node_modules/
 dist/
+.astro/
 src/content/docs/*.md
 !src/content/docs/index.md

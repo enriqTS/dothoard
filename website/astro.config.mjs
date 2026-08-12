@@ -2,6 +2,7 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
 export default defineConfig({
+  site: 'https://enriqts.github.io',
   base: process.env.BASE ?? '/dothoard',
   integrations: [
     starlight({
