@@ -25,4 +25,5 @@ conventional messages such as `fix: preserve local commit on sync failure`.
 Provide reproducible steps, expected and actual behavior, dothoard version,
 platform, and sanitized diagnostics. Never report secrets or complete URLs that
 contain credentials. Security-sensitive reports must follow the private reporting instructions in
-[`SECURITY.md`](../SECURITY.md), not a public issue.
+[security policy](https://github.com/enriqTS/dothoard/security/policy), not a
+public issue.

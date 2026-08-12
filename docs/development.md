@@ -7,7 +7,7 @@ On CachyOS or Arch Linux:
 ```bash
 sudo pacman -Syu --needed base-devel git rustup
 rustup default stable
-git clone https://github.com/henrique/dothoard.git
+git clone https://github.com/enriqTS/dothoard.git
 cd dothoard
 cargo build
 ```

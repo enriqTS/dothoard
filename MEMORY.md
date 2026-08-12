@@ -47,8 +47,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   documentation. **PV04 is complete**: a simple Astro Starlight website uses
   the existing Markdown documentation and deploys through GitHub Pages. **PV05
   is complete**: Rust quality CI, issue forms, private vulnerability reporting,
-  and experimental release/AUR policy are present. PV06 is next for visibility
-  acceptance.
+  and experimental release/AUR policy are present. **PV06 is partially
+  complete**: automated documentation, command, asset, package-metadata, and
+  site-build checks pass. GitHub Pages activation and final visual inspection
+  remain manual blockers before accepting PV06 and Milestone 15.
 
 ## Durable Decisions
 
@@ -161,6 +163,17 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- PV06 automated acceptance: `dothoard --help` and `dothoard service --help`
+  match every documented command; all SVG screenshots and the social-preview
+  SVG parse as XML; 29 authored/generated local Markdown pages resolve their
+  links; Cargo repository/homepage metadata matches the `enriqTS/dothoard`
+  origin; and `npm run build` completes with zero Astro diagnostics (15 pages
+  and search index). GitHub repository, security-policy, and private-advisory
+  URLs respond with HTTP 200. The GitHub Pages URL currently returns HTTP 404
+  because Pages has not yet been enabled with GitHub Actions as its source.
+  Manual PV06 work: enable Pages after pushing, confirm deployment and CI runs,
+  then visually inspect the README/site and screenshots for current/sanitized
+  presentation.
 - PV05 verified with Rust 1.97.1 and Node 24.19.0: `cargo fmt --check`,
   `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test
   --all-targets --all-features -- --test-threads=1` pass (935 library tests plus
