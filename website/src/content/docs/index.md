@@ -11,7 +11,6 @@ hero:
       icon: right-arrow
     - text: Read the safety model
       link: /dothoard/safety/
-      icon: external
 ---
 
 > **Experimental:** dothoard is under active development. Use a dedicated

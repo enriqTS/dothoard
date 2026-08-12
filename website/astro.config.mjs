@@ -1,9 +1,29 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import { visit } from 'unist-util-visit';
+
+const base = process.env.BASE ?? '/dothoard';
+
+// docs/*.md link to each other with GitHub-relative paths (e.g. `safety.md#topic`)
+// so they render correctly when read directly on GitHub. Rewrite those to
+// Starlight's clean routes (e.g. `/dothoard/safety/#topic`) at build time.
+function remarkFixDocLinks() {
+  return (tree) => {
+    visit(tree, 'link', (node) => {
+      const match = node.url.match(/^([\w-]+)\.md(#.*)?$/);
+      if (!match) return;
+      const [, slug, hash = ''] = match;
+      node.url = `${base}/${slug}/${hash}`;
+    });
+  };
+}
 
 export default defineConfig({
   site: 'https://enriqts.github.io',
-  base: process.env.BASE ?? '/dothoard',
+  base,
+  markdown: {
+    remarkPlugins: [remarkFixDocLinks],
+  },
   integrations: [
     starlight({
       title: 'dothoard',
