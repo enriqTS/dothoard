@@ -21,8 +21,11 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   with explicit focus and mode language are implemented. **TU07 is complete**:
   reusable centered, de-emphasizing modal and Unicode-safe text-input overlays
   now cover repository and namespace actions, source apply/removal, ignore input,
-  and automation confirmations. **TU08 is next**: redesign the Dashboard around
-  health and recommended next actions.
+  and automation confirmations. **TU08 is complete**: Dashboard primary
+  summaries now prioritize health, last success, pending push, automation,
+  latest check, and a recommended action; `d` opens complete issue details.
+  **TU09 is next**: make namespace management visible and History
+  namespace-aware.
 - **Milestone 15 is partially complete**: PV01–PV03 provide the GitHub landing
   page, sanitized SVG visual demonstrations, and reorganized user
   documentation. PV04–PV06 remain for the documentation website, public trust
@@ -139,6 +142,16 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- TU08 verified with Rust 1.97.1:
+  - `cargo fmt --check` — clean
+  - `cargo clippy --all-targets --all-features -- -D warnings` — clean
+  - `cargo test --all-targets --all-features -- --test-threads=1` — clean
+  - 919 library tests, 18 acceptance tests, 1 bootstrap test, 15 Git workflow
+    tests, 49 hardening tests, 21 mirror tests, and 14 orchestration tests pass.
+  - Dashboard tests cover configured/unconfigured, unhealthy check issue
+    precedence, pending push, automation unavailable/loading, first-entry
+    inspection, narrow stacking, long Unicode detail dialogs, and detail input
+    ownership.
 - TU07 verified with Rust 1.97.1:
   - `cargo fmt --check` — clean
   - `cargo clippy --all-targets --all-features -- -D warnings` — clean

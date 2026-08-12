@@ -629,7 +629,7 @@ regression test that demonstrates the current failure.
   consistent submit/cancel behavior. Test input ownership, modal precedence,
   resize behavior, long affected paths, and narrow/short terminals.
 
-- [ ] **TU08 - Redesign the Dashboard around health and next actions.** Make
+- [x] **TU08 - Redesign the Dashboard around health and next actions.** Make
   backup health, last successful backup, pending push state, and automation
   health the primary summaries. Keep repository, active namespace, source
   count, schedule, and timeout secondary. Render the latest check result and
