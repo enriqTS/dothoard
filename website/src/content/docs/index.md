@@ -1,17 +1,6 @@
 ---
 title: dothoard
 description: Safe, Git-native dotfile backups for Linux.
-template: splash
-hero:
-  title: Safe, Git-native dotfile backups
-  tagline: Back up selected Linux dotfiles to a Git repository, with reviewable changes and optional unattended synchronization.
-  actions:
-    - text: Get started
-      link: /quick-start/
-      icon: right-arrow
-    - text: Read the safety model
-      link: /safety/
-      icon: external
 ---
 
 > **Experimental:** dothoard is under active development. Use a dedicated
