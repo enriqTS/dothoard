@@ -1,6 +1,6 @@
 # Project Memory
 
-Last updated: 2026-08-11
+Last updated: 2026-08-12
 
 This file is the concise resume point for ongoing work. Product details belong
 in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
@@ -153,9 +153,11 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   upload through GitHub repository settings. Repository description, topics,
   and social-preview selection themselves require GitHub settings access.
 - PV01–PV03 verification: local Markdown links resolve and SVG XML parses;
-  `git diff --check` is clean. No Rust code changed. The normal Rust baseline
-  could not run in this session because `cargo` is absent from `PATH`; rerun it
-  in a Rust-enabled environment before release.
+  `git diff --check` is clean. With Rust 1.97.1 now available in the image,
+  `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D
+  warnings`, and `cargo test --all-targets --all-features --
+  --test-threads=1` all pass (908 library tests; acceptance, bootstrap, Git,
+  hardening, mirror, and orchestration suites also pass). No Rust code changed.
 - TU05 verified with Rust 1.97.1:
   - `cargo fmt --check` — clean
   - `cargo clippy --all-targets --all-features -- -D warnings` — clean
