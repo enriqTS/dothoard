@@ -735,16 +735,16 @@ Improve the public presentation of dothoard without changing backup behavior,
 ownership boundaries, or safety guarantees. The project is experimental until
 its release readiness is explicitly established.
 
-- [ ] **PV01 - Improve the GitHub landing page.** Rewrite the opening README
+- [x] **PV01 - Improve the GitHub landing page.** Rewrite the opening README
   section around the product value, intended audience, experimental status,
   supported platforms, and a five-minute first-run workflow. Add a concise
   safety-guarantees section, relevant repository topics, a useful description,
   and a social preview asset.
-- [ ] **PV02 - Add visual demonstrations.** Capture polished screenshots of the
+- [x] **PV02 - Add visual demonstrations.** Capture polished screenshots of the
   Dashboard, source browser, and backup preview, and add a short terminal
   recording where practical. Ensure all visuals reflect the current UI and do
   not reveal personal paths, credentials, or private repository information.
-- [ ] **PV03 - Restructure user documentation.** Organize beginner, usage, and
+- [x] **PV03 - Restructure user documentation.** Organize beginner, usage, and
   reference material covering installation, first-run TUI use, keyboard
   navigation, configuration, ignore rules, namespaces, authentication, safety,
   limitations, troubleshooting, FAQ, development, and contribution guidance.

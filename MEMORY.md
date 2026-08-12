@@ -20,8 +20,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   separate contextual help/status regions, and a shared semantic visual theme
   with explicit focus and mode language are implemented. **TU07 is active**:
   build consistent reusable modal and text-input presentation.
-- **Milestone 15 is planned**: Project Visibility and Documentation (PV01–PV06)
-  follows completion of the current TUI usability milestone.
+- **Milestone 15 is partially complete**: PV01–PV03 provide the GitHub landing
+  page, sanitized SVG visual demonstrations, and reorganized user
+  documentation. PV04–PV06 remain for the documentation website, public trust
+  automation, and acceptance.
 
 ## Durable Decisions
 
@@ -145,8 +147,15 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   - A real-terminal smoke attempt could not allocate a PTY in this sandbox
     (`script: failed to create pseudo-terminal: Permission denied`); retain the
     dark/light real-terminal acceptance in TU13.
-- Milestone 15 planning was added to `PLAN.md` and `DEVELOPMENT_PLAN.md`; no
-  implementation work has started.
+- Public documentation uses `README.md` as the concise landing page and
+  `docs/README.md` as its index. PV02 visual assets are sanitized SVG terminal
+  renderings in `assets/screenshots/`; `assets/social-preview.svg` is ready to
+  upload through GitHub repository settings. Repository description, topics,
+  and social-preview selection themselves require GitHub settings access.
+- PV01–PV03 verification: local Markdown links resolve and SVG XML parses;
+  `git diff --check` is clean. No Rust code changed. The normal Rust baseline
+  could not run in this session because `cargo` is absent from `PATH`; rerun it
+  in a Rust-enabled environment before release.
 - TU05 verified with Rust 1.97.1:
   - `cargo fmt --check` — clean
   - `cargo clippy --all-targets --all-features -- -D warnings` — clean

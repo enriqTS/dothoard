@@ -3,12 +3,12 @@ name = "dothoard"
 version = "1.1.0"
 edition = "2024"
 authors = ["Henrique Teixeira Silva"]
-description = "Automatically back up dotfiles to a Git repository with scheduled commits and pushes"
+description = "Safe, Git-native dotfile backups for Linux with unattended sync and a keyboard-driven TUI"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/henrique/dothoard"
 homepage = "https://github.com/henrique/dothoard"
 readme = "README.md"
-keywords = ["dotfiles", "backup", "git", "automation", "tui"]
+keywords = ["dotfiles", "backup", "git", "ratatui", "systemd"]
 categories = ["command-line-utilities", "filesystem"]
 rust-version = "1.85"
 

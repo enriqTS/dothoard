@@ -1,198 +1,92 @@
 # dothoard
 
-Automatically back up your dotfiles to a Git repository.
+> Safe, Git-native dotfile backups for Linux — unattended when you want them,
+> reviewable when you need them.
 
-dothoard watches selected files and directories under `$HOME`, mirrors them
-into a dedicated Git repo, and commits + pushes on a schedule — all without
-interactive prompts. A Ratatui TUI lets you configure sources, preview
-changes, and monitor status.
+[![Status: experimental](https://img.shields.io/badge/status-experimental-orange)](#project-status)
+[![License: GPL--3.0--or--later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
-## Features
+![dothoard Dashboard](assets/screenshots/dashboard.svg)
 
-- Mirror selected paths from `$HOME` into a dedicated Git repository.
-- Scheduled backups via `systemd --user` timer (default: every 5 minutes).
-- Noninteractive Git commits and pushes — works unattended after login.
-- Per-source `.gitignore`-style ignore rules.
-- Desktop notifications on failure and recovery.
-- Interactive TUI for configuration, preview, and monitoring.
-- Secret detection warnings for private keys, credentials, and tokens.
-- Safe by design: never follows symlinks, never touches unmanaged files.
+`dothoard` copies selected files and directories from your home directory into a
+dedicated Git repository, then commits and pushes them on demand or through a
+`systemd --user` timer. Its keyboard-first terminal UI configures sources,
+ignore rules, namespaces, previews, and automation.
 
-## Requirements
+**It is for Linux users who want a focused backup and synchronization tool for
+their dotfiles without giving up control of the Git repository.** It is not a
+restore manager, cloud backup service, persistent daemon, or general-purpose
+repository manager.
 
-- **OS:** CachyOS, Arch Linux, or any systemd-based Linux distribution.
-- **Rust:** stable toolchain (1.85+).
-- **Git:** installed and accessible in `$PATH`.
-- **systemd:** user session support (`systemd --user`).
-- **notify-send** (optional): for desktop failure notifications.
+## Project status
 
-## Installation
+**Experimental.** The backend is extensively tested, but the TUI usability and
+visual-design work is still in progress. Review previews and use a dedicated
+repository before relying on it for important data. Supported and manually
+smoke-tested platforms are CachyOS and Arch Linux; other systemd-based Linux
+distributions may work but are not yet supported.
 
-### From source (recommended)
+## Why dothoard?
 
-Install the Rust toolchain if you don't have it:
+- **Safe boundaries:** it never follows symlinks while traversing, and every
+  write or deletion stays inside the active namespace in the repository.
+- **Git-native:** changes are ordinary Git commits that you can inspect,
+  review, and synchronize with your usual tools.
+- **Multi-machine aware:** each computer owns a named namespace and cannot
+  stage, alter, or clean a sibling namespace.
+- **Unattended by design:** scheduled Git operations are noninteractive and
+  timeout-bounded; failed network sync keeps the local commit for a later run.
+- **Review before backup:** preview exact additions, changes, deletions,
+  exclusions, and likely-secret warnings before a manual backup.
 
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
+Read the complete [safety model](docs/safety.md) before use. Ignore rules and
+secret warnings reduce risk, but a committed secret remains in Git history and
+must be rotated.
 
-Then build and install dothoard:
+## Five-minute quick start
 
-```bash
-cargo install --path .
-```
+1. **Install prerequisites:** Rust 1.85+, Git, and a systemd user session.
+2. **Create or clone a dedicated Git repository**—do not share it with another
+   project.
+3. **Install dothoard and open the TUI:**
 
-Or use the Makefile:
+   ```bash
+   cargo install --path .
+   dothoard
+   ```
 
-```bash
-make install          # installs to ~/.local/bin/
-make install PREFIX=/usr/local  # installs to /usr/local/bin/
-```
+4. In **Repository**, choose the clone and create/select a namespace such as
+   `desktop`.
+5. In **Sources**, select files or directories below `$HOME`; inspect **Preview**
+   and run the first backup.
+6. When the manual flow is working, install automation:
 
-Or build a release binary manually:
+   ```bash
+   dothoard service install
+   ```
 
-```bash
-cargo build --release
-cp target/release/dothoard ~/.local/bin/
-```
+For commands, authentication, and a configuration-file workflow, see the
+[quick-start guide](docs/quick-start.md).
 
-Ensure `~/.local/bin` is in your PATH:
+![dothoard source browser](assets/screenshots/sources.svg)
 
-```bash
-# fish
-fish_add_path ~/.local/bin
+## Documentation
 
-# bash / zsh (add to ~/.bashrc or ~/.zshrc)
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-### From a Git clone
-
-```bash
-git clone https://github.com/henrique/dothoard.git
-cd dothoard
-cargo install --path .
-```
-
-Verify the installation:
-
-```bash
-dothoard --version
-dothoard --help
-```
-
-## Development Setup
-
-On CachyOS or Arch Linux, install the development prerequisites:
-
-```bash
-sudo pacman -Syu --needed base-devel git rustup
-rustup default stable
-```
-
-Clone the repository and build it without installing a system-wide binary:
-
-```bash
-git clone https://github.com/henrique/dothoard.git
-cd dothoard
-cargo build
-cargo run -- --help
-```
-
-Run the same checks required before submitting a change:
-
-```bash
-cargo fmt --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-targets --all-features -- --test-threads=1
-```
-
-`make check` runs formatting and Clippy, and `make test` runs the serialized
-full test suite. Tests use temporary homes, repositories, remotes, runtime
-directories, and user-unit locations; they must not use your real dotfiles or
-install user services.
-
-## Quick Start
-
-### 1. Prepare a dedicated Git repository
-
-dothoard needs a dedicated clone — it won't share a repo with other projects.
-
-```bash
-mkdir ~/dotfiles
-cd ~/dotfiles
-git init
-git remote add origin git@github.com:you/dotfiles.git
-```
-
-Or clone an existing one:
-
-```bash
-git clone git@github.com:you/dotfiles.git ~/dotfiles
-```
-
-### 2. Create the configuration
-
-Create `~/.config/dothoard/config.toml`:
-
-```toml
-version = 2
-repository = "~/dotfiles"
-remote = "origin"
-namespace = "desktop"
-interval_minutes = 5
-network_timeout_seconds = 120
-
-[[sources]]
-path = ".config/fish"
-ignore = [
-  "fish_variables",
-  "*.log",
-]
-
-[[sources]]
-path = ".config/hypr"
-ignore = [
-  "*token*",
-  "*.cache",
-]
-
-[[sources]]
-path = ".bashrc"
-```
-
-### 3. Validate and run your first backup
-
-```bash
-# Check that configuration and repository are valid
-dothoard check
-
-# Run one backup manually
-dothoard backup
-```
-
-### 4. Install the systemd timer
-
-```bash
-dothoard service install
-```
-
-This creates and enables `dothoard-backup.timer` and `dothoard-backup.service`
-under `~/.config/systemd/user/`. The timer fires 1 minute after login and then
-every `interval_minutes` (default: 5) after each completed run.
-
-### 5. Open the TUI
-
-```bash
-dothoard
-```
-
-The TUI provides tabs for: Dashboard, Repository, Sources, Ignore, Preview,
-Automation, and History.
+| I want to… | Read |
+|---|---|
+| Install and make a first backup | [Quick start](docs/quick-start.md) |
+| Use the terminal UI and keyboard controls | [TUI guide](docs/tui.md) |
+| Edit the configuration file | [Configuration reference](docs/configuration.md) |
+| Exclude files safely | [Ignore rules](docs/ignore-rules.md) |
+| Use one repository from several machines | [Namespaces](docs/namespaces.md) |
+| Configure SSH or HTTPS for unattended Git | [Authentication](docs/authentication.md) |
+| Understand limits, safety, and recovery | [Safety model](docs/safety.md) |
+| Solve a common problem | [Troubleshooting](docs/troubleshooting.md) and [FAQ](docs/faq.md) |
+| Build or contribute | [Development](docs/development.md) and [Contributing](docs/contributing.md) |
 
 ## Commands
 
-```
+```text
 dothoard                 Open the TUI
 dothoard backup          Run one backup immediately
 dothoard check           Validate configuration and repository
@@ -201,131 +95,27 @@ dothoard service remove  Disable and remove the user timer
 dothoard service status  Show automation status
 ```
 
-### Exit codes
+| Exit code | Meaning |
+|---:|---|
+| 0 | Success or no changes needed |
+| 1 | Backup or operation failed |
+| 2 | Another backup is already running |
+| 3 | Configuration is missing or invalid |
 
-| Code | Meaning |
-|------|---------|
-| 0    | Success (or no changes needed) |
-| 1    | Backup or operation failed |
-| 2    | Another backup is already running |
-| 3    | Configuration is invalid or missing |
+## What a backup does
 
-## Configuration Reference
+A run validates the configuration, repository, active namespace, and source
+paths; blocks dirty changes outside that namespace; mirrors sources under
+`<namespace>/home/`; updates the namespace manifest; stages only that
+namespace; and commits, rebases, and pushes noninteractively. A source or
+manifest failure prevents Git publication for that run. A network failure keeps
+the local commit so a later run can push it.
 
-The configuration file lives at `~/.config/dothoard/config.toml`.
+![dothoard backup preview](assets/screenshots/preview.svg)
 
-```toml
-# Schema version (required, must be 2)
-version = 2
+## Repository layout
 
-# Path to the dedicated Git repository (required)
-# Supports ~ expansion
-repository = "~/dotfiles"
-
-# Git remote name for push/pull (default: "origin")
-remote = "origin"
-
-# User-selected portable name for this machine's namespace (required)
-namespace = "desktop"
-
-# Minutes between scheduled backups (default: 5, minimum: 1)
-interval_minutes = 5
-
-# Timeout in seconds for network Git operations (default: 120)
-network_timeout_seconds = 120
-
-# One or more source entries
-[[sources]]
-# Path relative to $HOME (required)
-path = ".config/fish"
-# Optional ignore patterns (gitignore syntax, rooted at the source)
-ignore = [
-  "fish_variables",
-  "*.log",
-  "cache/",
-]
-```
-
-### Source path rules
-
-- Paths are relative to `$HOME` — absolute paths are rejected.
-- Parent traversal (`..`) is not allowed.
-- Symlinks in parent components between `$HOME` and the source are rejected.
-- A source root that is itself a symlink is preserved as a link (not followed).
-- Sources must not overlap each other.
-- Sources must not contain or be contained by the repository.
-
-### Ignore pattern syntax
-
-Patterns follow `.gitignore` semantics, rooted at the configured source:
-
-- `*.log` — match files ending in `.log` at any depth.
-- `/build` — match only `build` at the source root.
-- `cache/` — match directories named `cache`.
-- `!important.log` — re-include a previously ignored file.
-- `\#comment` — escape a leading `#`.
-
-The last matching rule wins. A child cannot be re-included while its parent
-directory remains excluded. Nested `.git` directories and special files
-(sockets, devices, FIFOs) are always excluded and cannot be negated.
-
-## Systemd Automation
-
-### Install and enable
-
-```bash
-dothoard service install
-```
-
-This is idempotent — safe to run multiple times. It will:
-1. Generate `dothoard-backup.service` and `dothoard-backup.timer`.
-2. Write them atomically to `~/.config/systemd/user/`.
-3. Run `systemctl --user daemon-reload`.
-4. Enable and start the timer.
-
-### Check status
-
-```bash
-dothoard service status
-
-# Or directly via systemctl:
-systemctl --user status dothoard-backup.timer
-systemctl --user status dothoard-backup.service
-```
-
-### View logs
-
-```bash
-journalctl --user -u dothoard-backup.service -f
-```
-
-### Remove
-
-```bash
-dothoard service remove
-```
-
-### Timer behavior
-
-- Fires 1 minute after user-manager startup (first login).
-- Fires again `interval_minutes` after each completed backup.
-- Does not fire per-login if the user manager is already running.
-- The service has a timeout = `network_timeout_seconds` + 60s as a safeguard.
-
-### Updating the interval
-
-Change `interval_minutes` in your config and reinstall:
-
-```bash
-dothoard service install
-```
-
-Or use the Automation tab in the TUI — it regenerates and restarts the timer
-automatically.
-
-## Repository Layout
-
-```
+```text
 repository/
 |-- desktop/
 |   |-- home/
@@ -337,94 +127,33 @@ repository/
 `-- other repository content (untouched)
 ```
 
-Each machine chooses a portable namespace (for example `desktop` or
-`notebook`). It owns only that namespace's `home/` directory and manifest;
-root-level V1 `home/` data and sibling namespaces remain unmanaged. The TUI
-Repository screen supports selecting/creating a namespace and, with explicit
-confirmation, renaming or deleting it. Deletion requires entering a different
-usable namespace first. Namespaces do not depend on the hostname.
+Each configured machine owns only its selected namespace. Root-level legacy
+`home/` data and sibling namespaces are unmanaged and untouched. See
+[Namespaces](docs/namespaces.md) for setup and lifecycle details.
 
-## Backup Workflow
-
-Each `dothoard backup` run:
-
-1. Acquires an exclusive lock (prevents concurrent runs).
-2. Loads and validates the configuration.
-3. Validates the Git repository (branch, remote, no rebase/merge in progress).
-4. Rejects dirty unmanaged paths (staged/unstaged/untracked outside the active namespace).
-5. Mirrors each configured source into `repository/<namespace>/home/...`.
-6. Updates the manifest.
-7. Stages only the active namespace and its manifest using literal Git pathspecs.
-8. Commits if anything changed (message: `backup(<hostname>): <timestamp>`).
-9. Pulls with rebase from the remote.
-10. Pushes local commits.
-11. Persists the result for the TUI and notifications.
-
-If any source or manifest step fails, no Git operations are performed for that
-run. If the network is unavailable, the local commit is preserved and pushed
-on the next successful run.
-
-## Authentication
-
-dothoard runs Git noninteractively — it will never prompt for passwords or
-passphrases. You must configure credential access before the timer can push.
-
-See [docs/authentication.md](docs/authentication.md) for complete setup
-instructions covering SSH agents, HTTPS credential helpers, host keys, and
-troubleshooting.
-
-Quick check:
+## Development
 
 ```bash
-dothoard check
-```
-
-This verifies that `git ls-remote` succeeds against your configured remote
-without any interaction.
-
-## Safety and Limitations
-
-See [docs/safety.md](docs/safety.md) for detailed documentation on:
-
-- Backup-only behavior (no automatic restore).
-- Symlink safety and filesystem boundaries.
-- What happens if a secret is committed to Git history.
-- Single-writer expectations and multi-machine usage.
-- Manual conflict recovery after a rebase failure.
-- Failure recovery and self-healing behavior.
-
-## Building from Source
-
-```bash
-# Development build
-cargo build
-
-# Run tests
-cargo test --all-targets --all-features
-
-# Full quality check
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-targets --all-features
-
-# Release build (optimized, stripped)
-cargo build --release
+cargo test --all-targets --all-features -- --test-threads=1
 ```
 
-## Environment Variables
+The test suite uses temporary directories and must not touch real dotfiles,
+repositories, systemd user units, or desktop notifications. See the
+[development guide](docs/development.md).
 
-| Variable | Effect |
-|----------|--------|
-| `RUST_LOG` | Controls log verbosity (e.g. `info`, `debug`, `dothoard=trace`) |
-| `XDG_CONFIG_HOME` | Overrides config location (default: `~/.config`) |
-| `XDG_STATE_HOME` | Overrides state location (default: `~/.local/state`) |
-| `XDG_RUNTIME_DIR` | Location for the exclusive lock file |
+## Repository metadata
 
-## Targets
+GitHub repository description, topics, and social-preview settings are managed
+in the GitHub repository settings. Recommended description:
 
-CachyOS and Arch Linux. Other systemd-based distros likely work but are
-untested.
+> Safe, Git-backed dotfile backups for Linux, with unattended sync and a
+> keyboard-driven TUI.
+
+Recommended topics: `dotfiles`, `backup`, `git`, `rust`, `linux`, `ratatui`,
+`systemd`, `dotfile-manager`.
 
 ## License
 
-GPL-3.0-or-later. See [LICENSE](LICENSE) for the full text.
+GPL-3.0-or-later. See [LICENSE](LICENSE).

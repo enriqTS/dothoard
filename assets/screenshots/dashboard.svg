@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" viewBox="0 0 1200 640" role="img" aria-labelledby="title desc">
+  <title id="title">dothoard Dashboard</title><desc id="desc">A sanitized dothoard terminal dashboard showing a healthy desktop namespace and active automation.</desc>
+  <rect width="1200" height="640" fill="#111827"/><rect x="28" y="24" width="1144" height="592" rx="10" fill="#0b1220" stroke="#4b5563"/>
+  <text x="60" y="68" fill="#e5e7eb" font-family="monospace" font-size="25" font-weight="bold">dothoard  •  Dashboard</text>
+  <text x="60" y="108" fill="#67e8f9" font-family="monospace" font-size="19">▶ Dashboard   Repository   Sources   Ignore   Preview   Automation   History</text>
+  <rect x="60" y="140" width="520" height="190" rx="6" fill="#111827" stroke="#22c55e"/><text x="84" y="180" fill="#86efac" font-family="monospace" font-size="22" font-weight="bold">✓ Backup healthy</text>
+  <text x="84" y="220" fill="#d1d5db" font-family="monospace" font-size="18">Last successful backup   today, 10:42</text><text x="84" y="255" fill="#d1d5db" font-family="monospace" font-size="18">Remote synchronization  up to date</text><text x="84" y="290" fill="#d1d5db" font-family="monospace" font-size="18">Pending commits         none</text>
+  <rect x="610" y="140" width="530" height="190" rx="6" fill="#111827" stroke="#64748b"/><text x="634" y="180" fill="#e5e7eb" font-family="monospace" font-size="21" font-weight="bold">Current setup</text>
+  <text x="634" y="220" fill="#d1d5db" font-family="monospace" font-size="18">Namespace    desktop</text><text x="634" y="255" fill="#d1d5db" font-family="monospace" font-size="18">Sources      3 selected</text><text x="634" y="290" fill="#d1d5db" font-family="monospace" font-size="18">Schedule     every 5 minutes</text>
+  <rect x="60" y="358" width="1080" height="150" rx="6" fill="#111827" stroke="#64748b"/><text x="84" y="400" fill="#e5e7eb" font-family="monospace" font-size="21" font-weight="bold">Automation</text><text x="84" y="440" fill="#86efac" font-family="monospace" font-size="18">✓ User timer installed and active</text><text x="84" y="476" fill="#9ca3af" font-family="monospace" font-size="18">Next step: review Preview before changing sources.</text>
+  <text x="60" y="570" fill="#94a3b8" font-family="monospace" font-size="17">Tab: tab bar  •  ↑↓/jk: navigate  •  r: refresh  •  q: quit</text>
+</svg>

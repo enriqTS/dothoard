@@ -12,14 +12,14 @@ To restore files, use standard Git:
 
 ```bash
 cd ~/dotfiles
-git log --oneline -- home/.config/fish/config.fish   # find the version
-git show HEAD:home/.config/fish/config.fish > ~/.config/fish/config.fish
+git log --oneline -- desktop/home/.config/fish/config.fish   # find the version
+git show HEAD:desktop/home/.config/fish/config.fish > ~/.config/fish/config.fish
 ```
 
 Or check out an entire source tree:
 
 ```bash
-cp -r ~/dotfiles/home/.config/fish/ ~/.config/fish/
+cp -r ~/dotfiles/desktop/home/.config/fish/ ~/.config/fish/
 ```
 
 Automated restore (with conflict detection and selective recovery) is deferred
@@ -37,8 +37,9 @@ dothoard never follows symlinks during traversal:
   link — the raw target path is stored, but the target is never read or
   entered.
 
-- **Destination:** Before writing or deleting inside `repository/home/`,
-  dothoard verifies that no parent component in the path is a symlink. This
+- **Destination:** Before writing or deleting inside
+  `repository/<namespace>/home/`, dothoard verifies that no parent component in
+  the path is a symlink. This
   prevents symlink-based escapes that could write outside the repository.
 
 - **Traversal:** Directory walking never enters symlinked directories. Files
@@ -46,10 +47,10 @@ dothoard never follows symlinks during traversal:
 
 ## Filesystem boundaries
 
-- All writes and deletions are confined to `repository/home/` and
-  `.dothoard-manifest.toml`.
-- dothoard never modifies, stages, discards, or commits files outside those
-  paths.
+- All writes and deletions are confined to `repository/<namespace>/home/` and
+  `repository/<namespace>/.dothoard-manifest.toml`.
+- dothoard never modifies, stages, discards, or commits files outside the
+  active namespace.
 - Dirty (staged, unstaged, or untracked) paths outside the managed namespace
   cause a safe failure — dothoard refuses to run rather than risk committing
   unrelated changes.
@@ -98,7 +99,7 @@ cause predictable failures:
 |----------|----------|
 | Two dothoard instances on the same machine | Exclusive lock prevents overlap; second instance reports "already running" and exits |
 | Manual edits inside the active namespace | Detected as dirty managed paths; dothoard normalizes them on next run (overwrites with source content) |
-| External commits touching `home/` | If they conflict with dothoard's next commit, rebase fails and dothoard preserves its local commit |
+| External commits touching the active namespace | If they conflict with dothoard's next commit, rebase fails and dothoard preserves its local commit |
 | Different machine pushing to the same remote | Works if commits don't conflict; conflicts require manual resolution |
 
 ### Multi-machine usage
@@ -157,8 +158,8 @@ After manual resolution, the next `dothoard backup` run will operate normally.
 ### Preventing conflicts
 
 - Use one dothoard instance per machine (each with its own commit identity).
-- Avoid manually editing files inside `repository/home/` — let dothoard
-  manage that namespace.
+- Avoid manually editing files inside `repository/<namespace>/home/` — let
+  dothoard manage that namespace.
 - If two machines back up the same paths, coordinate changes or accept
   occasional manual resolution.
 
@@ -167,7 +168,7 @@ After manual resolution, the next `dothoard backup` run will operate normally.
 | Action | Reason |
 |--------|--------|
 | Follow symlinks during traversal | Prevents escaping intended boundaries |
-| Stage files outside `home/` or the manifest | Prevents accidental commits of unrelated work |
+| Stage files outside the active namespace or its manifest | Prevents accidental commits of unrelated work |
 | Commit when staging verification fails | Safety boundary: all staged paths must be managed |
 | Delete an entire backup when a source root disappears | Preserves data; reports an error instead |
 | Continue after a source or manifest failure | All-or-nothing: partial failures prevent Git operations |
@@ -206,8 +207,8 @@ dothoard is designed to be self-healing across runs:
 | `~/.config/dothoard/config.toml` | Configuration (no secrets) |
 | `~/.local/state/dothoard/` | Run history, status (JSON) |
 | `$XDG_RUNTIME_DIR/dothoard.lock` | Exclusive lock (empty file) |
-| Repository `home/` | Backed-up files |
-| Repository `.dothoard-manifest.toml` | Source mapping and ignore config |
+| Repository `<namespace>/home/` | Backed-up files for that namespace |
+| Repository `<namespace>/.dothoard-manifest.toml` | Namespace ownership marker, source mapping, and ignore config |
 
 None of these contain credentials. Remote URLs stored in state are redacted
 if they contain embedded credentials.
