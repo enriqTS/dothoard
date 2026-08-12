@@ -678,7 +678,7 @@ regression test that demonstrates the current failure.
   at representative dimensions rather than relying only on text-presence or
   no-panic assertions.
 
-- [ ] **TU13 - Document and visually accept the refined interaction model.**
+- [x] **TU13 - Document and visually accept the refined interaction model.**
   Update `README.md` with a concise keyboard reference, focus explanation,
   source apply/discard workflow, namespace management workflow, and first-run
   path from repository selection through automation. Manually smoke-test all

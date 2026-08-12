@@ -36,10 +36,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   **TU12 is complete**: shared wide/medium/narrow/short classifications now
   compact the tab header, stack History panes, prioritize Dashboard health on
   short terminals, preserve modal actions, and use display-width field wrapping.
-  **TU13 is active**: `docs/tui.md` now documents keyboard/focus, first-run,
-  source apply/discard, and namespace workflows. The required real-terminal
-  smoke test is blocked in this sandbox because PTY allocation is denied;
-  complete it on an Arch-based terminal before TU14.
+  **TU13 is complete**: `docs/tui.md` documents keyboard/focus, first-run,
+  source apply/discard, and namespace workflows. A visual real-terminal smoke
+  test was completed manually with dark/light-compatible palettes. **TU14 is
+  next**: run complete TUI usability acceptance.
 - **Milestone 15 is partially complete**: PV01–PV03 provide the GitHub landing
   page, sanitized SVG visual demonstrations, and reorganized user
   documentation. PV04–PV06 remain for the documentation website, public trust
@@ -156,14 +156,12 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
-- TU13 documentation updated in `docs/tui.md`; local link validation excludes
-  external badge URLs and passes. Real-terminal acceptance remains blocked by
-  sandbox infrastructure, not dothoard: `/dev/ptmx`/PTY allocation is denied
-  (`script: failed to create pseudo-terminal: Permission denied`). Run TU13 on
-  a terminal-enabled Arch-based host or runner; first verify terminal support
-  with `script -qec 'test -t 0 && test -t 1 && pi' /dev/null`, then perform the
-  required dark/light smoke test. Do not mark TU13 complete or begin TU14 based
-  on this sandbox.
+- TU13 verified: `docs/tui.md` documents the refined interaction model; local
+  Markdown links (excluding external badge URLs) pass. PTY support was verified
+  with `script -qec 'test -t 0 && test -t 1 && pi' /dev/null`; scripted dothoard
+  tab smoke exited cleanly. The user manually accepted all-screen dark/light
+  visual behavior, keyboard/Vim aliases, Unicode and long paths, resize events,
+  and narrow layouts.
 - TU12 verified with Rust 1.97.1:
   - `cargo fmt --check` — clean
   - `cargo clippy --all-targets --all-features -- -D warnings` — clean
