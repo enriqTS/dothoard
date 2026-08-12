@@ -27,8 +27,11 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   **TU09 is complete**: Repository now has a visible discovered-namespace
   management view (`m`) with active/sibling and New/Owned/Invalid/Ambiguous
   states; lifecycle commands remain routed through the existing backend.
-  History rows, details, and log views identify namespaces. **TU10 is next**:
-  clarify Sources, Ignore, Preview, and browser presentation.
+  History rows, details, and log views identify namespaces. **TU10 is complete**:
+  Sources reviews exact additions, removals, and generated ignore rules before
+  apply; Ignore names nested focus and preview rule context; Preview has labeled
+  counts; the picker identifies callers and offers ASCII-safe icons. **TU11 is
+  next**: add actionable empty, loading, stale, and failure states.
 - **Milestone 15 is partially complete**: PV01–PV03 provide the GitHub landing
   page, sanitized SVG visual demonstrations, and reorganized user
   documentation. PV04–PV06 remain for the documentation website, public trust
@@ -145,6 +148,14 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- TU10 verified with Rust 1.97.1:
+  - `cargo fmt --check` — clean
+  - `cargo clippy --all-targets --all-features -- -D warnings` — clean
+  - `cargo test --all-targets --all-features -- --test-threads=1` — clean
+  - 926 library tests, 18 acceptance tests, 1 bootstrap test, 15 Git workflow
+    tests, 49 hardening tests, 21 mirror tests, and 14 orchestration tests pass.
+  - Rendering tests cover source-diff details, labeled preview totals, Ignore
+    source/rule context and nested focus, plus picker caller context and ASCII.
 - TU09 verified with Rust 1.97.1:
   - `cargo fmt --check` — clean
   - `cargo clippy --all-targets --all-features -- -D warnings` — clean

@@ -648,7 +648,7 @@ regression test that demonstrates the current failure.
   state changes. Test new, owned, invalid, ambiguous, active, sibling,
   collision, and narrow-layout presentations.
 
-- [ ] **TU10 - Clarify Sources, Ignore, Preview, and browser presentation.** Show
+- [x] **TU10 - Clarify Sources, Ignore, Preview, and browser presentation.** Show
   pending source additions, removals, and generated ignore rules before apply.
   Make Ignore's source-selector and pattern-list focus visually distinct and
   show the active rule context in preview. Replace symbolic Preview totals with
