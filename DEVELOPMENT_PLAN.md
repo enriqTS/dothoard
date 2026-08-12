@@ -638,7 +638,7 @@ regression test that demonstrates the current failure.
   healthy states. Replace unsafe path/error truncation, provide access to full
   details, stack content on narrow terminals, and test all health combinations.
 
-- [ ] **TU09 - Make namespace management visible and history namespace-aware.**
+- [x] **TU09 - Make namespace management visible and history namespace-aware.**
   Add a Repository namespace control that lists discovered namespaces,
   identifies the active namespace, and shows ownership state. Expose create,
   select, rename, and delete actions visibly while continuing to call the

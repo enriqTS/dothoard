@@ -24,8 +24,11 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   and automation confirmations. **TU08 is complete**: Dashboard primary
   summaries now prioritize health, last success, pending push, automation,
   latest check, and a recommended action; `d` opens complete issue details.
-  **TU09 is next**: make namespace management visible and History
-  namespace-aware.
+  **TU09 is complete**: Repository now has a visible discovered-namespace
+  management view (`m`) with active/sibling and New/Owned/Invalid/Ambiguous
+  states; lifecycle commands remain routed through the existing backend.
+  History rows, details, and log views identify namespaces. **TU10 is next**:
+  clarify Sources, Ignore, Preview, and browser presentation.
 - **Milestone 15 is partially complete**: PV01–PV03 provide the GitHub landing
   page, sanitized SVG visual demonstrations, and reorganized user
   documentation. PV04–PV06 remain for the documentation website, public trust
@@ -142,6 +145,14 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- TU09 verified with Rust 1.97.1:
+  - `cargo fmt --check` — clean
+  - `cargo clippy --all-targets --all-features -- -D warnings` — clean
+  - `cargo test --all-targets --all-features -- --test-threads=1` — clean
+  - 925 library tests, 18 acceptance tests, 1 bootstrap test, 15 Git workflow
+    tests, 49 hardening tests, 21 mirror tests, and 14 orchestration tests pass.
+  - Tests cover discovered active/owned, new, ambiguous, invalid, and narrow
+    namespace presentations plus History namespace and log context.
 - TU08 verified with Rust 1.97.1:
   - `cargo fmt --check` — clean
   - `cargo clippy --all-targets --all-features -- -D warnings` — clean
