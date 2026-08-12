@@ -36,7 +36,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   **TU12 is complete**: shared wide/medium/narrow/short classifications now
   compact the tab header, stack History panes, prioritize Dashboard health on
   short terminals, preserve modal actions, and use display-width field wrapping.
-  **TU13 is next**: document and visually accept the refined interaction model.
+  **TU13 is active**: `docs/tui.md` now documents keyboard/focus, first-run,
+  source apply/discard, and namespace workflows. The required real-terminal
+  smoke test is blocked in this sandbox because PTY allocation is denied;
+  complete it on an Arch-based terminal before TU14.
 - **Milestone 15 is partially complete**: PV01–PV03 provide the GitHub landing
   page, sanitized SVG visual demonstrations, and reorganized user
   documentation. PV04–PV06 remain for the documentation website, public trust
@@ -153,6 +156,11 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- TU13 documentation updated in `docs/tui.md`; local link validation remains
+  pending because the ad-hoc checker must exclude external badge URLs. A
+  real-terminal smoke attempt failed before launching dothoard:
+  `script: failed to create pseudo-terminal: Permission denied`. Do not mark
+  TU13 or begin TU14 until the required dark/light terminal acceptance runs.
 - TU12 verified with Rust 1.97.1:
   - `cargo fmt --check` — clean
   - `cargo clippy --all-targets --all-features -- -D warnings` — clean
