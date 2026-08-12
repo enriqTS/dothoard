@@ -11,15 +11,39 @@ use ratatui::widgets::{Block, Borders, Paragraph, Tabs};
 
 use super::{App, Screen, modal, text, theme::THEME};
 
+/// Supported responsive layout classes. Width determines pane arrangement;
+/// short terminals prioritize the active control, status, and shortcut footer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LayoutClass {
+    Wide,
+    Medium,
+    Narrow,
+    Short,
+}
+
+fn layout_class(area: Rect) -> LayoutClass {
+    if area.height < 12 {
+        LayoutClass::Short
+    } else if area.width < 40 {
+        LayoutClass::Narrow
+    } else if area.width < 80 {
+        LayoutClass::Medium
+    } else {
+        LayoutClass::Wide
+    }
+}
+
 /// Draw the complete UI for one frame.
 pub fn draw(frame: &mut Frame, app: &mut App) {
+    let area = frame.area();
+    let compact_shell = !matches!(layout_class(area), LayoutClass::Wide);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3), // Tab bar
-            Constraint::Min(0),    // Screen content
-            Constraint::Length(1), // Transient status/progress
-            Constraint::Length(1), // Contextual help
+            Constraint::Length(if compact_shell { 1 } else { 3 }), // Tab bar
+            Constraint::Min(0),                                    // Screen content
+            Constraint::Length(1),                                 // Transient status/progress
+            Constraint::Length(1),                                 // Contextual help
         ])
         .split(frame.area());
 
@@ -27,13 +51,50 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_screen(frame, chunks[1], app);
     draw_status_bar(frame, chunks[2], app);
     draw_help_bar(frame, chunks[3], app);
-    draw_modal_overlay(frame, frame.area(), app);
+    draw_modal_overlay(frame, area, app);
 }
 
 /// Draw the tab bar at the top.
 fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
     use super::Focus;
 
+    let compact = area.height <= 1;
+    if compact {
+        let selected = Screen::ALL
+            .iter()
+            .position(|&screen| screen == app.active_screen)
+            .unwrap_or(0);
+        let line = if area.width >= 21 {
+            Line::from(
+                Screen::ALL
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(index, _)| {
+                        let style = if index == selected {
+                            THEME.selected()
+                        } else {
+                            THEME.key()
+                        };
+                        [
+                            Span::styled(format!(" {} ", index + 1), style),
+                            Span::raw(" "),
+                        ]
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        } else {
+            Line::from(vec![
+                Span::styled("▶ ", THEME.focused()),
+                Span::styled(format!("{}/7 ", selected + 1), THEME.selected()),
+                Span::raw(text::truncate(
+                    app.active_screen.label(),
+                    area.width.saturating_sub(7) as usize,
+                )),
+            ])
+        };
+        frame.render_widget(Paragraph::new(line), area);
+        return;
+    }
     let titles: Vec<Line> = Screen::ALL
         .iter()
         .enumerate()
@@ -58,8 +119,9 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
     } else {
         "   Tabs · dothoard "
     };
-    let tabs = Tabs::new(titles)
-        .block(
+    let mut tabs = Tabs::new(titles);
+    if !compact {
+        tabs = tabs.block(
             Block::default()
                 .borders(Borders::BOTTOM)
                 .border_style(THEME.border(tab_focused))
@@ -71,7 +133,9 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
                         THEME.muted()
                     },
                 ))),
-        )
+        );
+    }
+    let tabs = tabs
         .select(selected)
         .style(Style::default())
         .highlight_style(if tab_focused {
@@ -890,22 +954,26 @@ fn draw_dashboard(frame: &mut Frame, area: Rect, app: &App) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    // Primary health is always drawn first. Narrow terminals stack secondary
-    // configuration below it so health and the next action remain visible.
-    if inner.width < 72 {
-        let rows = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
-            .split(inner);
-        draw_dashboard_status(frame, rows[0], app);
-        draw_dashboard_info(frame, rows[1], app);
-    } else {
-        let columns = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
-            .split(inner);
-        draw_dashboard_status(frame, columns[0], app);
-        draw_dashboard_info(frame, columns[1], app);
+    // Primary health is always drawn first. Short terminals reserve their
+    // scarce rows for it; medium and narrow terminals stack secondary details.
+    match layout_class(inner) {
+        LayoutClass::Short => draw_dashboard_status(frame, inner, app),
+        LayoutClass::Narrow | LayoutClass::Medium => {
+            let rows = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+                .split(inner);
+            draw_dashboard_status(frame, rows[0], app);
+            draw_dashboard_info(frame, rows[1], app);
+        }
+        LayoutClass::Wide => {
+            let columns = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
+                .split(inner);
+            draw_dashboard_status(frame, columns[0], app);
+            draw_dashboard_info(frame, columns[1], app);
+        }
     }
 }
 
@@ -1168,7 +1236,9 @@ fn dashboard_action(app: &App) -> &'static str {
 }
 
 fn wrapped_styled_lines(prefix: &str, value: &str, width: u16, style: Style) -> Vec<Line<'static>> {
-    let width = usize::from(width).saturating_sub(prefix.len()).max(1);
+    let width = usize::from(width)
+        .saturating_sub(text::display_width(prefix))
+        .max(1);
     text::wrap(value, width)
         .into_iter()
         .map(|line| {
@@ -1181,7 +1251,9 @@ fn wrapped_styled_lines(prefix: &str, value: &str, width: u16, style: Style) -> 
 }
 
 fn wrapped_field_lines(label: &'static str, value: &str, width: u16) -> Vec<Line<'static>> {
-    let available = usize::from(width).saturating_sub(label.len() + 4).max(1);
+    let available = usize::from(width)
+        .saturating_sub(text::display_width(label).saturating_add(4))
+        .max(1);
     text::wrap(value, available)
         .into_iter()
         .enumerate()
@@ -1257,13 +1329,13 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &mut App) {
         return;
     }
 
-    // Split: list on left, detail on right.
-    let columns = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
-        .split(inner);
+    // Keep the selected run and its detail usable on narrow terminals by
+    // stacking rather than squeezing both panes into unusable columns.
+    let panes = history_panes(inner);
+    let list_area = panes[0];
+    let detail_area = panes[1];
 
-    // Left: list of runs.
+    // List of runs.
     let mut list_lines: Vec<Line> = Vec::new();
     list_lines.push(Line::from(Span::styled(
         " Recent runs:",
@@ -1273,7 +1345,7 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &mut App) {
     )));
     list_lines.push(Line::from(""));
 
-    let available_rows = columns[0].height.saturating_sub(2) as usize;
+    let available_rows = list_area.height.saturating_sub(2) as usize;
     let show_range = history.len() > available_rows && available_rows > 1;
     let visible_rows = available_rows.saturating_sub(usize::from(show_range));
     app.history_screen
@@ -1331,7 +1403,7 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &mut App) {
     }
 
     let list_paragraph = Paragraph::new(list_lines);
-    frame.render_widget(list_paragraph, columns[0]);
+    frame.render_widget(list_paragraph, list_area);
 
     // Right: detail of selected entry.
     let mut detail_lines: Vec<Line> = Vec::new();
@@ -1379,7 +1451,7 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &mut App) {
                 Style::default().fg(Color::DarkGray),
             )));
             // Wrap long messages without splitting UTF-8 characters.
-            let max_width = columns[1].width.saturating_sub(3) as usize;
+            let max_width = detail_area.width.saturating_sub(3) as usize;
             for message_line in text::wrap(msg, max_width) {
                 detail_lines.push(Line::from(vec![
                     Span::raw(" "),
@@ -1397,7 +1469,22 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &mut App) {
     }
 
     let detail_paragraph = Paragraph::new(detail_lines);
-    frame.render_widget(detail_paragraph, columns[1]);
+    frame.render_widget(detail_paragraph, detail_area);
+}
+
+/// Return list/detail rectangles, stacking below the medium-width breakpoint.
+fn history_panes(area: Rect) -> std::rc::Rc<[Rect]> {
+    if area.width < 80 {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(48), Constraint::Percentage(52)])
+            .split(area)
+    } else {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
+            .split(area)
+    }
 }
 
 /// Draw the log view for a selected history entry.
@@ -2552,6 +2639,40 @@ mod tests {
 
     use super::*;
     use crate::tui::task;
+
+    #[test]
+    fn responsive_breakpoints_cover_wide_medium_narrow_and_short() {
+        assert_eq!(layout_class(Rect::new(0, 0, 120, 30)), LayoutClass::Wide);
+        assert_eq!(layout_class(Rect::new(0, 0, 60, 24)), LayoutClass::Medium);
+        assert_eq!(layout_class(Rect::new(0, 0, 30, 24)), LayoutClass::Narrow);
+        assert_eq!(layout_class(Rect::new(0, 0, 120, 10)), LayoutClass::Short);
+    }
+
+    #[test]
+    fn history_layout_stacks_at_medium_width_and_keeps_detail_below_list() {
+        let wide = history_panes(Rect::new(0, 0, 100, 20));
+        assert_eq!(wide[0].y, wide[1].y);
+        assert!(wide[0].width < wide[1].width);
+
+        let medium = history_panes(Rect::new(0, 0, 60, 20));
+        assert_eq!(medium[0].x, medium[1].x);
+        assert!(medium[0].y < medium[1].y);
+        assert_eq!(medium[0].width, 60);
+    }
+
+    #[test]
+    fn compact_tab_bar_preserves_active_tab_and_selection_style() {
+        let backend = TestBackend::new(30, 10);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = app_on(Screen::History);
+        app.focus = crate::tui::Focus::TabBar;
+
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        let buffer = terminal.backend().buffer();
+        assert_eq!(buffer.area().height, 10);
+        assert!(buffer_text(terminal.backend()).contains("7"));
+        assert!(buffer.cell((18, 0)).is_some());
+    }
 
     /// Create a test App with a specific screen.
     fn app_on(screen: Screen) -> App {

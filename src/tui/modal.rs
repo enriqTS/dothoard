@@ -62,6 +62,9 @@ pub(crate) fn draw(frame: &mut Frame, area: Rect, spec: ModalSpec<'_>) {
     }
     lines.push(Line::from(""));
     lines.push(actions_line(spec.confirm, spec.cancel));
+    if area.height <= 5 {
+        fit_lines_to_dialog(&mut lines, area.height.saturating_sub(2) as usize);
+    }
 
     let height = u16::try_from(lines.len().saturating_add(2)).unwrap_or(u16::MAX);
     let dialog = dialog_area(area, width, height);
@@ -97,6 +100,9 @@ pub(crate) fn draw_text_input(frame: &mut Frame, area: Rect, spec: TextInputSpec
     }
     lines.push(Line::from(""));
     lines.push(actions_line(spec.submit, spec.cancel));
+    if area.height <= 5 {
+        fit_lines_to_dialog(&mut lines, area.height.saturating_sub(2) as usize);
+    }
 
     let height = u16::try_from(lines.len().saturating_add(2)).unwrap_or(u16::MAX);
     let dialog = dialog_area(area, width, height);
@@ -105,6 +111,23 @@ pub(crate) fn draw_text_input(frame: &mut Frame, area: Rect, spec: TextInputSpec
         Paragraph::new(lines).wrap(Wrap { trim: false }),
         dialog_inner(dialog),
     );
+}
+
+/// Drop secondary body content on short terminals while retaining the modal's
+/// explicit action row. The complete value remains available after resize.
+fn fit_lines_to_dialog(lines: &mut Vec<Line<'_>>, max_lines: usize) {
+    if lines.len() <= max_lines {
+        return;
+    }
+    let actions = lines.pop().expect("modal lines always include actions");
+    if max_lines == 0 {
+        return;
+    }
+    lines.truncate(max_lines.saturating_sub(2));
+    if max_lines > 1 {
+        lines.push(Line::from(Span::styled("…", THEME.muted())));
+    }
+    lines.push(actions);
 }
 
 fn draw_backdrop(frame: &mut Frame, area: Rect, dialog: Rect, title: &str) {
@@ -129,7 +152,7 @@ fn dialog_inner(dialog: Rect) -> Rect {
 fn actions_line(confirm: &str, cancel: &str) -> Line<'static> {
     Line::from(vec![
         Span::styled(confirm.to_string(), THEME.focused()),
-        Span::raw("  ·  "),
+        Span::raw(" · "),
         Span::styled(cancel.to_string(), THEME.focused()),
     ])
 }
@@ -224,6 +247,37 @@ mod tests {
         assert!(text.contains("Edit"));
         assert!(text.contains("^"));
         assert!(text.contains("Invalid"));
+    }
+
+    #[test]
+    fn short_dialog_keeps_explicit_actions_visible() {
+        let backend = TestBackend::new(30, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                draw(
+                    frame,
+                    frame.area(),
+                    ModalSpec {
+                        title: "Delete namespace",
+                        affected: Some("/a/very/long/namespace/path/with-unicode-界/home"),
+                        consequence: "This action removes only the owned namespace.",
+                        validation: Some(("Confirmation is required", THEME.warning())),
+                        confirm: "y: delete",
+                        cancel: "Esc: cancel",
+                    },
+                );
+            })
+            .unwrap();
+        let text: String = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(text.contains("y: delete"));
+        assert!(text.contains("Esc: cancel"));
     }
 
     #[test]

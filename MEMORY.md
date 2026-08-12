@@ -33,7 +33,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   counts; the picker identifies callers and offers ASCII-safe icons. **TU11 is
   complete**: all seven screens now provide actionable non-content states,
   explicit retry guidance, and guards for actions without valid targets.
-  **TU12 is next**: complete responsive layout behavior.
+  **TU12 is complete**: shared wide/medium/narrow/short classifications now
+  compact the tab header, stack History panes, prioritize Dashboard health on
+  short terminals, preserve modal actions, and use display-width field wrapping.
+  **TU13 is next**: document and visually accept the refined interaction model.
 - **Milestone 15 is partially complete**: PV01–PV03 provide the GitHub landing
   page, sanitized SVG visual demonstrations, and reorganized user
   documentation. PV04–PV06 remain for the documentation website, public trust
@@ -150,6 +153,14 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- TU12 verified with Rust 1.97.1:
+  - `cargo fmt --check` — clean
+  - `cargo clippy --all-targets --all-features -- -D warnings` — clean
+  - `cargo test --all-targets --all-features -- --test-threads=1` — clean
+  - 934 library tests plus all acceptance, bootstrap, Git workflow, hardening,
+    mirror, and orchestration tests pass.
+  - Geometry tests cover shared breakpoints, compact selected tabs, History
+    stacking, and short-modal action visibility.
 - TU11 verified with Rust 1.97.1:
   - `cargo fmt --check` — clean
   - `cargo clippy --all-targets --all-features -- -D warnings` — clean

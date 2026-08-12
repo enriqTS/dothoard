@@ -668,7 +668,7 @@ regression test that demonstrates the current failure.
   missing config, no sources, no history, unavailable automation, stale
   previews, loading, failure, retry, and recovery.
 
-- [ ] **TU12 - Complete responsive layout behavior.** Define supported wide,
+- [x] **TU12 - Complete responsive layout behavior.** Define supported wide,
   medium, narrow, and short-terminal breakpoints for the global shell and every
   screen. Stack Dashboard and History panes when columns become unusable;
   compact or scroll the seven-tab header; preserve the active tab, primary

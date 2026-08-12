@@ -53,6 +53,11 @@ pub(crate) fn width_before_cursor(text: &str, cursor: usize) -> usize {
     UnicodeWidthStr::width(&text[..boundary])
 }
 
+/// Return the terminal-cell width of complete text.
+pub(crate) fn display_width(value: &str) -> usize {
+    UnicodeWidthStr::width(value)
+}
+
 /// Truncate text to terminal cells, adding `...` when it does not fit.
 pub(crate) fn truncate(text: &str, max_width: usize) -> String {
     if UnicodeWidthStr::width(text) <= max_width {
