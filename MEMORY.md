@@ -44,8 +44,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   is accepted; next work is Milestone 15 PV04.
 - **Milestone 15 is partially complete**: PV01–PV03 provide the GitHub landing
   page, sanitized SVG visual demonstrations, and reorganized user
-  documentation. PV04–PV06 remain for the documentation website, public trust
-  automation, and acceptance.
+  documentation. **PV04 is active**: create a simple Astro Starlight site that
+  uses the existing Markdown documentation and can deploy to GitHub Pages.
+  PV05–PV06 remain for public-trust automation and acceptance.
 
 ## Durable Decisions
 
@@ -158,6 +159,15 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- PV04 implementation: `website/` contains the simple Astro Starlight source,
+  and `.github/workflows/docs.yml` builds/deploys it to GitHub Pages from
+  `main`. `npm run sync-docs` copies the authored `docs/*.md` files (excluding
+  their index) before every site build; generated copies are ignored. The
+  copied local Markdown links resolve. Site dependency installation/build is
+  **unverified** in this sandbox because npm registry requests for the scoped
+  Starlight package consistently reset or time out; run `cd website && npm
+  install && npm run build` once registry access is available, then enable
+  GitHub Pages as the repository's Actions source.
 - TU14 verified with Rust 1.97.1:
   - `cargo fmt --check` — clean
   - `cargo clippy --all-targets --all-features -- -D warnings` — clean
@@ -240,10 +250,12 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
     (`script: failed to create pseudo-terminal: Permission denied`); retain the
     dark/light real-terminal acceptance in TU13.
 - Public documentation uses `README.md` as the concise landing page and
-  `docs/README.md` as its index. PV02 visual assets are sanitized SVG terminal
-  renderings in `assets/screenshots/`; `assets/social-preview.svg` is ready to
-  upload through GitHub repository settings. Repository description, topics,
-  and social-preview selection themselves require GitHub settings access.
+  `docs/README.md` as its index. The documentation site keeps `docs/*.md` as
+  the authored source rather than duplicating them. PV02 visual assets are
+  sanitized SVG terminal renderings in `assets/screenshots/`;
+  `assets/social-preview.svg` is ready to upload through GitHub repository
+  settings. Repository description, topics, and social-preview selection
+  themselves require GitHub settings access.
 - PV01–PV03 verification: local Markdown links resolve and SVG XML parses;
   `git diff --check` is clean. With Rust 1.97.1 now available in the image,
   `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D

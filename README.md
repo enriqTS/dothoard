@@ -72,6 +72,10 @@ For commands, authentication, and a configuration-file workflow, see the
 
 ## Documentation
 
+Visit the documentation website at
+[enriqts.github.io/dothoard](https://enriqts.github.io/dothoard/) or use the
+repository guides below.
+
 | I want to… | Read |
 |---|---|
 | Install and make a first backup | [Quick start](docs/quick-start.md) |

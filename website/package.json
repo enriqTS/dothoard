@@ -1,0 +1,16 @@
+{
+  "name": "dothoard-docs",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/sync-docs.mjs && astro dev",
+    "build": "node scripts/sync-docs.mjs && astro check && astro build",
+    "preview": "astro preview",
+    "sync-docs": "node scripts/sync-docs.mjs"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "latest",
+    "astro": "7.2.1"
+  }
+}

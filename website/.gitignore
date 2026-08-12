@@ -1,0 +1,4 @@
+node_modules/
+dist/
+src/content/docs/*.md
+!src/content/docs/index.md
