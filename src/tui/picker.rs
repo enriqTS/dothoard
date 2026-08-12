@@ -25,6 +25,36 @@ use super::{text, theme::THEME};
 /// The function receives the absolute path of the entry and returns its state.
 pub type CheckFn<'a> = &'a dyn Fn(&Path) -> CheckState;
 
+/// Caller-specific presentation for the shared browser.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Presentation {
+    /// Caller label identifying the selection context without duplicating footer help.
+    pub label: &'static str,
+    /// Render ASCII-only entry icons for limited terminals.
+    pub ascii: bool,
+}
+
+impl Presentation {
+    pub const REPOSITORY: Self = Self {
+        label: "Repository",
+        ascii: false,
+    };
+    pub const SOURCES: Self = Self {
+        label: "Sources",
+        ascii: false,
+    };
+    pub const DEFAULT: Self = Self {
+        label: "Browser",
+        ascii: false,
+    };
+
+    #[must_use]
+    pub const fn ascii_safe(mut self) -> Self {
+        self.ascii = true;
+        self
+    }
+}
+
 /// Actions that the picker can produce in response to key events.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PickerAction {
@@ -119,7 +149,17 @@ pub fn handle_key(browser: &mut Browser, key: KeyEvent, viewport_height: usize) 
 /// `[ ]` for Unchecked. Pass `None` for browsers that don't need checkboxes
 /// (e.g., repository browser).
 pub fn draw(frame: &mut Frame, area: Rect, browser: &mut Browser, check_fn: Option<CheckFn>) {
-    // Keyboard help belongs to the authoritative application footer.
+    draw_with_presentation(frame, area, browser, check_fn, Presentation::DEFAULT);
+}
+
+/// Render the picker with caller-specific context and icon mode.
+pub fn draw_with_presentation(
+    frame: &mut Frame,
+    area: Rect,
+    browser: &mut Browser,
+    check_fn: Option<CheckFn>,
+    presentation: Presentation,
+) {
     let outer = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -129,7 +169,14 @@ pub fn draw(frame: &mut Frame, area: Rect, browser: &mut Browser, check_fn: Opti
         .split(area);
 
     draw_breadcrumb(frame, outer[0], browser);
-    draw_panes(frame, outer[1], browser, check_fn);
+    draw_panes(
+        frame,
+        outer[1],
+        browser,
+        check_fn,
+        presentation.ascii,
+        presentation.label,
+    );
 }
 
 /// Draw the breadcrumb/path header.
@@ -144,7 +191,14 @@ fn draw_breadcrumb(frame: &mut Frame, area: Rect, browser: &Browser) {
 }
 
 /// Draw the three panes: parent (left), current (center), preview (right).
-fn draw_panes(frame: &mut Frame, area: Rect, browser: &mut Browser, check_fn: Option<CheckFn>) {
+fn draw_panes(
+    frame: &mut Frame,
+    area: Rect,
+    browser: &mut Browser,
+    check_fn: Option<CheckFn>,
+    ascii: bool,
+    label: &'static str,
+) {
     // Adaptive layout: if terminal is narrow, collapse parent/preview.
     let constraints = if area.width >= 80 {
         vec![
@@ -179,11 +233,11 @@ fn draw_panes(frame: &mut Frame, area: Rect, browser: &mut Browser, check_fn: Op
     // Current directory pane (center).
     let viewport_height = panes[1].height.saturating_sub(2) as usize; // subtract borders
     browser.adjust_scroll_with_height(viewport_height);
-    draw_current_pane(frame, panes[1], browser, check_fn);
+    draw_current_pane(frame, panes[1], browser, check_fn, ascii, label);
 
     // Preview pane (right).
     if panes[2].width > 0 {
-        draw_preview_pane(frame, panes[2], browser);
+        draw_preview_pane(frame, panes[2], browser, ascii);
     }
 }
 
@@ -228,12 +282,14 @@ fn draw_current_pane(
     area: Rect,
     browser: &mut Browser,
     check_fn: Option<CheckFn>,
+    ascii: bool,
+    label: &'static str,
 ) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(THEME.border(true))
         .title(Line::from(Span::styled(
-            " ▶ Files [FOCUS] ",
+            format!(" ▶ Files [ACTIVE: {label}] "),
             THEME.focused(),
         )));
 
@@ -297,7 +353,7 @@ fn draw_current_pane(
                         ));
                     }
 
-                    let icon = entry_icon(e);
+                    let icon = entry_icon(e, ascii);
                     let name_width = inner
                         .width
                         .saturating_sub(3 + checkbox_width + marker_width)
@@ -324,7 +380,7 @@ fn draw_current_pane(
 }
 
 /// Draw the preview pane (directory contents or file metadata).
-fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser) {
+fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser, ascii: bool) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(THEME.border(false))
@@ -350,7 +406,7 @@ fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser) {
                         .iter()
                         .take(inner.height as usize)
                         .map(|e| {
-                            let icon = entry_icon(e);
+                            let icon = entry_icon(e, ascii);
                             let name = truncate_name(
                                 &e.display_name,
                                 inner.width.saturating_sub(3) as usize,
@@ -433,14 +489,25 @@ fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser) {
 }
 
 /// Get a short icon character for an entry.
-fn entry_icon(entry: &super::browser::Entry) -> char {
-    match entry.kind {
-        EntryKind::Directory => '📁',
-        EntryKind::Symlink => '🔗',
-        EntryKind::File if entry.executable => '⚡',
-        EntryKind::File => '📄',
-        EntryKind::Special => '⚠',
-        EntryKind::Error => '✗',
+fn entry_icon(entry: &super::browser::Entry, ascii: bool) -> &'static str {
+    if ascii {
+        match entry.kind {
+            EntryKind::Directory => "D",
+            EntryKind::Symlink => "L",
+            EntryKind::File if entry.executable => "*",
+            EntryKind::File => "F",
+            EntryKind::Special => "!",
+            EntryKind::Error => "x",
+        }
+    } else {
+        match entry.kind {
+            EntryKind::Directory => "▸",
+            EntryKind::Symlink => "↪",
+            EntryKind::File if entry.executable => "*",
+            EntryKind::File => "·",
+            EntryKind::Special => "!",
+            EntryKind::Error => "x",
+        }
     }
 }
 
@@ -1061,7 +1128,7 @@ mod tests {
             .map(|cell| cell.symbol().chars().next().unwrap_or(' '))
             .collect();
         assert!(content.contains("Parent"));
-        assert!(content.contains("▶ Files [FOCUS]"));
+        assert!(content.contains("▶ Files [ACTIVE: Browser]"));
         assert!(content.contains("Preview"));
         assert!(
             buffer
@@ -1069,6 +1136,40 @@ mod tests {
                 .iter()
                 .any(|cell| cell.modifier.contains(Modifier::REVERSED))
         );
+    }
+
+    #[test]
+    fn ascii_presentation_uses_one_cell_icons_and_caller_context() {
+        let tmp = setup_test_dir();
+        let mut browser = Browser::new(BrowserConfig {
+            root: tmp.path().to_path_buf(),
+            start: tmp.path().to_path_buf(),
+        });
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| {
+                draw_with_presentation(
+                    frame,
+                    frame.area(),
+                    &mut browser,
+                    None,
+                    Presentation::SOURCES.ascii_safe(),
+                );
+            })
+            .unwrap();
+
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol().chars().next().unwrap_or(' '))
+            .collect();
+        assert!(content.contains("▶ Files [ACTIVE: Sources]"));
+        assert!(content.contains("D") || content.contains("F"));
+        assert!(!content.contains('📁'));
     }
 
     #[test]

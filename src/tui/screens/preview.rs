@@ -60,8 +60,8 @@ impl EntryKind {
             Self::Addition => "+",
             Self::Modification => "~",
             Self::Deletion => "-",
-            Self::Exclusion => "○",
-            Self::Warning => "⚠",
+            Self::Exclusion => "i",
+            Self::Warning => "!",
         }
     }
 }
@@ -344,7 +344,7 @@ mod tests {
         assert_eq!(EntryKind::Addition.prefix(), "+");
         assert_eq!(EntryKind::Modification.prefix(), "~");
         assert_eq!(EntryKind::Deletion.prefix(), "-");
-        assert_eq!(EntryKind::Exclusion.prefix(), "○");
-        assert_eq!(EntryKind::Warning.prefix(), "⚠");
+        assert_eq!(EntryKind::Exclusion.prefix(), "i");
+        assert_eq!(EntryKind::Warning.prefix(), "!");
     }
 }

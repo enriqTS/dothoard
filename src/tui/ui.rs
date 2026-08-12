@@ -1590,7 +1590,7 @@ fn draw_preview(frame: &mut Frame, area: Rect, app: &App) {
         Span::raw("  "),
         Span::styled(
             format!(
-                "+{} ~{} -{} ○{} ⚠{}",
+                "Added: {}  Changed: {}  Deleted: {}  Ignored: {}  Warning: {}",
                 data.additions, data.modifications, data.deletions, data.exclusions, data.warnings
             ),
             Style::default()
@@ -1691,9 +1691,9 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
         && app.ignore_screen.list_focus == crate::tui::screens::ignore::ListFocus::SourceSelector;
     let mut source_tabs: Vec<Span> = vec![Span::styled(
         if source_focused {
-            "▶ Sources: "
+            "▶ Source selector [FOCUS]: "
         } else {
-            "  Sources: "
+            "  Source selector: "
         },
         if source_focused {
             THEME.focused()
@@ -1713,6 +1713,13 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
 
     if app.ignore_screen.mode == Mode::Preview {
         lines.push(Line::from(source_tabs));
+        let current_source = &sources[app.ignore_screen.source_idx];
+        lines.push(field_line(" Source", current_source.path.clone()));
+        let active_rule = current_source
+            .ignore
+            .get(app.ignore_screen.pattern_idx)
+            .map_or("No selected rule", String::as_str);
+        lines.push(field_line(" Active rule context", active_rule));
         lines.push(Line::from(Span::styled(
             " File Preview:",
             Style::default()
@@ -1759,7 +1766,7 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
                 let mut spans = vec![Span::raw("  ")];
 
                 if entry.ignored {
-                    spans.push(Span::styled("✗ ", Style::default().fg(Color::Red)));
+                    spans.push(Span::styled("[ignored] ", Style::default().fg(Color::Red)));
                     spans.push(Span::styled(
                         entry.path.clone(),
                         Style::default().fg(Color::DarkGray),
@@ -1811,9 +1818,9 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
             app.ignore_screen.list_focus == crate::tui::screens::ignore::ListFocus::PatternList;
         lines.push(Line::from(Span::styled(
             if patterns_focused {
-                "▶ Patterns:"
+                "▶ Pattern list [FOCUS]:"
             } else {
-                "  Patterns:"
+                "  Pattern list:"
             },
             if patterns_focused {
                 THEME.focused()
@@ -1883,7 +1890,13 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
                     Some(ref sel) => Some(&|path: &std::path::Path| sel.is_selected(path)),
                     None => None,
                 };
-            crate::tui::picker::draw(frame, chunks[0], browser, check_fn);
+            crate::tui::picker::draw_with_presentation(
+                frame,
+                chunks[0],
+                browser,
+                check_fn,
+                crate::tui::picker::Presentation::SOURCES,
+            );
         } else {
             let msg = Paragraph::new(Line::from(Span::styled(
                 " Loading browser...",
@@ -1993,18 +2006,19 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
         ]));
     }
 
-    // Show the explicit pending-change choice before any apply occurs.
+    // Show every pending path and generated rule before the user chooses apply.
     if app.sources_screen.mode == Mode::PendingChanges {
         lines.push(Line::from(""));
         lines.push(Line::from(vec![
             Span::raw("  "),
             Span::styled(
                 "Pending source changes require a decision.",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
+                THEME.warning(),
             ),
         ]));
+        if let Some(diff) = &app.sources_screen.pending_diff {
+            append_source_diff_lines(&mut lines, diff, inner.width);
+        }
     }
 
     // Show removal confirmation after the user explicitly chooses apply.
@@ -2033,20 +2047,7 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
                 ),
             ]));
 
-            // Show removals detail.
-            if !diff.removals.is_empty() {
-                lines.push(Line::from(""));
-                lines.push(Line::from(Span::styled(
-                    "  Sources to remove:",
-                    Style::default().fg(Color::Red),
-                )));
-                for removal in &diff.removals {
-                    lines.push(Line::from(vec![
-                        Span::raw("    "),
-                        Span::styled(format!("- {removal}"), Style::default().fg(Color::Red)),
-                    ]));
-                }
-            }
+            append_source_diff_lines(&mut lines, diff, inner.width);
         } else {
             lines.push(Line::from(vec![
                 Span::raw("  "),
@@ -2062,6 +2063,55 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
 
     let paragraph = Paragraph::new(lines);
     frame.render_widget(paragraph, inner);
+}
+
+/// Append the complete reviewed source selection diff before an apply action.
+fn append_source_diff_lines(
+    lines: &mut Vec<Line<'static>>,
+    diff: &crate::tui::selection::SelectionDiff,
+    width: u16,
+) {
+    let path_width = width.saturating_sub(8) as usize;
+    if !diff.additions.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  Sources to add:",
+            THEME.success(),
+        )));
+        for path in &diff.additions {
+            lines.push(Line::from(Span::styled(
+                format!("    + {}", text::truncate(path, path_width)),
+                THEME.success(),
+            )));
+        }
+    }
+    if !diff.removals.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  Sources to remove:",
+            THEME.error(),
+        )));
+        for path in &diff.removals {
+            lines.push(Line::from(Span::styled(
+                format!("    - {}", text::truncate(path, path_width)),
+                THEME.error(),
+            )));
+        }
+    }
+    if !diff.ignore_rules.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  Generated ignore rules:",
+            THEME.warning(),
+        )));
+        let mut sources: Vec<_> = diff.ignore_rules.iter().collect();
+        sources.sort_by(|left, right| left.0.cmp(right.0));
+        for (source, rules) in sources {
+            for rule in rules {
+                lines.push(Line::from(Span::styled(
+                    format!("    {source}: {}", text::truncate(rule, path_width)),
+                    THEME.warning(),
+                )));
+            }
+        }
+    }
 }
 
 /// Draw the repository selection screen.
@@ -2090,7 +2140,13 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
 
             // Draw the filesystem browser.
             if let Some(ref mut browser) = app.repo_screen.browser {
-                crate::tui::picker::draw(frame, chunks[0], browser, None);
+                crate::tui::picker::draw_with_presentation(
+                    frame,
+                    chunks[0],
+                    browser,
+                    None,
+                    crate::tui::picker::Presentation::REPOSITORY,
+                );
             } else {
                 let msg = Paragraph::new(Line::from(Span::styled(
                     " Press Enter or ↓ to start browsing",
@@ -3040,7 +3096,10 @@ mod tests {
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
-        assert!(content.contains("Preview") || content.contains("config.fish"));
+        assert!(content.contains("Source: .config/fish"));
+        assert!(content.contains("Active rule context: *.log"));
+        assert!(content.contains("[ignored]"));
+        assert!(content.contains("*_history"));
     }
 
     #[test]
@@ -3238,7 +3297,11 @@ mod tests {
             .expect("draw should not fail");
 
         let content = buffer_text(terminal.backend());
-        assert!(content.contains("+3"));
+        assert!(content.contains("Added: 3"));
+        assert!(content.contains("Changed: 1"));
+        assert!(content.contains("Deleted: 0"));
+        assert!(content.contains("Ignored: 2"));
+        assert!(content.contains("Warning: 0"));
         assert!(content.contains("config.fish"));
         assert!(content.contains(".bashrc"));
     }
@@ -3808,7 +3871,15 @@ mod tests {
             content.contains("back to choices"),
             "footer should show cancel action"
         );
+        assert!(
+            content.contains(".config/fish"),
+            "should show addition detail"
+        );
         assert!(content.contains(".zshrc"), "should show removal detail");
+        assert!(
+            content.contains(".bashrc: /secret"),
+            "should show generated rule"
+        );
     }
 
     /// Verify sources screen ConfirmApply renders at narrow terminal.
@@ -4008,11 +4079,11 @@ mod tests {
         app.config = Some(config);
 
         terminal.draw(|frame| draw(frame, &mut app)).unwrap();
-        assert!(buffer_text(terminal.backend()).contains("▶ Sources:"));
+        assert!(buffer_text(terminal.backend()).contains("▶ Source selector [FOCUS]:"));
 
         app.ignore_screen.list_focus = crate::tui::screens::ignore::ListFocus::PatternList;
         terminal.draw(|frame| draw(frame, &mut app)).unwrap();
-        assert!(buffer_text(terminal.backend()).contains("▶ Patterns:"));
+        assert!(buffer_text(terminal.backend()).contains("▶ Pattern list [FOCUS]:"));
         assert!(
             terminal
                 .backend()
