@@ -307,11 +307,11 @@ impl Browser {
                 if let Some(old_name) = old_name {
                     let dir = self.current_dir.clone();
                     self.ensure_cached(&dir);
-                    if let Some(DirListing::Entries(entries)) = self.cache.get(&dir) {
-                        if let Some(idx) = entries.iter().position(|e| e.name == old_name) {
-                            self.selected = idx;
-                            self.adjust_scroll();
-                        }
+                    if let Some(DirListing::Entries(entries)) = self.cache.get(&dir)
+                        && let Some(idx) = entries.iter().position(|e| e.name == old_name)
+                    {
+                        self.selected = idx;
+                        self.adjust_scroll();
                     }
                 }
                 return true;

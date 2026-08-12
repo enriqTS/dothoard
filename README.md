@@ -46,7 +46,7 @@ must be rotated.
 
 ## Five-minute quick start
 
-1. **Install prerequisites:** Rust 1.85+, Git, and a systemd user session.
+1. **Install prerequisites:** Rust 1.97+, Git, and a systemd user session.
 2. **Create or clone a dedicated Git repository**—do not share it with another
    project.
 3. **Install dothoard and open the TUI:**

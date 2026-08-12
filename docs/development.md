@@ -12,7 +12,7 @@ cd dothoard
 cargo build
 ```
 
-The minimum supported Rust version is 1.85.
+The minimum supported Rust version is 1.97.
 
 ## Verification
 

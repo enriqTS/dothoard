@@ -50,14 +50,16 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   and experimental release/AUR policy are present. **PV06 is partially
   complete**: automated documentation, command, asset, package-metadata, and
   site-build checks pass. GitHub Pages activation and final visual inspection
-  remain manual blockers before accepting PV06 and Milestone 15.
+  remain manual blockers before accepting PV06 and Milestone 15. **CI/MSRV bug
+  fixed:** source and its current dependency graph require Rust 1.97.1; Cargo
+  metadata, documentation, and CI now use that verified toolchain.
 
 ## Durable Decisions
 
 - `PLAN.md` is curated as the current product behavior and active objective;
   completed implementation steps and historical context do not remain there.
 - License: GPL-3.0-or-later.
-- MSRV: 1.85 (Rust 2024 edition).
+- MSRV: 1.97 (Rust 2024 edition).
 - The application is a Rust binary with a Ratatui interface and a short-lived
   headless backup command; it is not a persistent daemon.
 - A `systemd --user` timer runs the command after user-manager startup and at a
@@ -163,6 +165,12 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- CI/MSRV fix verified with Rust 1.97.1: `cargo +1.97.1 fmt --check`, `cargo
+  +1.97.1 clippy --all-targets --all-features -- -D warnings`, and `cargo
+  +1.97.1 test --all-targets --all-features -- --test-threads=1` all pass (935
+  library tests plus all integration suites). The codebase was also updated for
+  Rust 1.97 Clippy's `collapsible_if` lint. Rust 1.85 cannot compile the
+  established source because it uses let chains; the prior CI claim was stale.
 - PV06 automated acceptance: `dothoard --help` and `dothoard service --help`
   match every documented command; all SVG screenshots and the social-preview
   SVG parse as XML; 29 authored/generated local Markdown pages resolve their

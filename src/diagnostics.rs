@@ -129,10 +129,11 @@ pub fn extract_run_log(
         // Parse the timestamp from the beginning of the log line.
         if let Some(ts_end) = line.find(' ') {
             let ts_str = &line[..ts_end];
-            if let Ok(ts) = ts_str.parse::<DateTime<Utc>>() {
-                if ts >= *started_at && ts <= *finished_at {
-                    output.push(line);
-                }
+            if let Ok(ts) = ts_str.parse::<DateTime<Utc>>()
+                && ts >= *started_at
+                && ts <= *finished_at
+            {
+                output.push(line);
             }
         }
     }

@@ -1219,10 +1219,10 @@ impl App {
         }
 
         // Ensure browser is initialized when in browse mode.
-        if self.sources_screen.mode == screens::sources::Mode::Browse {
-            if let Some(ref paths) = self.paths {
-                self.sources_screen.ensure_browser(paths.home());
-            }
+        if self.sources_screen.mode == screens::sources::Mode::Browse
+            && let Some(ref paths) = self.paths
+        {
+            self.sources_screen.ensure_browser(paths.home());
         }
 
         let source_count = self.config.as_ref().map(|c| c.sources.len()).unwrap_or(0);
@@ -1230,16 +1230,16 @@ impl App {
         match action {
             screens::sources::Action::Consumed => {
                 // If we just switched to Browse mode, ensure browser and selection exist.
-                if self.sources_screen.mode == screens::sources::Mode::Browse {
-                    if let Some(ref paths) = self.paths {
-                        self.sources_screen.ensure_browser(paths.home());
-                        let sources = self
-                            .config
-                            .as_ref()
-                            .map(|c| c.sources.as_slice())
-                            .unwrap_or(&[]);
-                        self.sources_screen.ensure_selection(sources, paths.home());
-                    }
+                if self.sources_screen.mode == screens::sources::Mode::Browse
+                    && let Some(ref paths) = self.paths
+                {
+                    self.sources_screen.ensure_browser(paths.home());
+                    let sources = self
+                        .config
+                        .as_ref()
+                        .map(|c| c.sources.as_slice())
+                        .unwrap_or(&[]);
+                    self.sources_screen.ensure_selection(sources, paths.home());
                 }
                 true
             }

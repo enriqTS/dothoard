@@ -6,7 +6,7 @@ you review the repository, namespace, sources, and preview before a backup.
 ## Prerequisites
 
 - CachyOS or Arch Linux (the currently supported platforms)
-- Rust 1.85 or newer
+- Rust 1.97 or newer
 - Git in `PATH`
 - A working `systemd --user` session
 

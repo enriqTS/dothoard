@@ -198,10 +198,8 @@ fn parse_staged_paths(output: &str) -> Vec<String> {
             break;
         };
         paths.push(path.to_string());
-        if is_rename_or_copy {
-            if let Some(path) = fields.next() {
-                paths.push(path.to_string());
-            }
+        if is_rename_or_copy && let Some(path) = fields.next() {
+            paths.push(path.to_string());
         }
     }
 

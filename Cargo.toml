@@ -10,7 +10,7 @@ homepage = "https://github.com/enriqTS/dothoard"
 readme = "README.md"
 keywords = ["dotfiles", "backup", "git", "ratatui", "systemd"]
 categories = ["command-line-utilities", "filesystem"]
-rust-version = "1.85"
+rust-version = "1.97"
 
 [[bin]]
 name = "dothoard"

@@ -120,10 +120,11 @@ impl HistoryScreen {
             // Format: 2026-07-21T14:30:00.123456789Z ...
             if let Some(ts_end) = line.find(' ') {
                 let ts_str = &line[..ts_end];
-                if let Ok(ts) = ts_str.parse::<DateTime<Utc>>() {
-                    if ts >= started_at && ts <= finished_at {
-                        filtered.push(line);
-                    }
+                if let Ok(ts) = ts_str.parse::<DateTime<Utc>>()
+                    && ts >= started_at
+                    && ts <= finished_at
+                {
+                    filtered.push(line);
                 }
             }
         }

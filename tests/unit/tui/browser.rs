@@ -406,10 +406,10 @@ fn browser_go_parent() {
     // Should have selected "alpha" in the parent listing.
     let selected = browser.selected();
     let listing = browser.current_listing();
-    if let DirListing::Entries(entries) = listing {
-        if let Some(entry) = entries.get(selected) {
-            assert_eq!(entry.display_name, "alpha");
-        }
+    if let DirListing::Entries(entries) = listing
+        && let Some(entry) = entries.get(selected)
+    {
+        assert_eq!(entry.display_name, "alpha");
     }
 }
 
