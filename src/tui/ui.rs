@@ -1089,7 +1089,7 @@ fn draw_dashboard_info(frame: &mut Frame, area: Rect, app: &App) {
 
 fn dashboard_health(app: &App) -> (&'static str, Style) {
     if app.config.is_none() {
-        return ("UNCONFIGURED — repository setup required", THEME.warning());
+        return ("UNCONFIGURED — setup required", THEME.warning());
     }
     if app.tasks.active_task() == Some(super::task::TaskKind::Backup) {
         return ("RUNNING — backup in progress", THEME.progress());
@@ -2897,6 +2897,10 @@ mod tests {
         let backend = TestBackend::new(40, 20);
         let mut terminal = Terminal::new(backend).unwrap();
         let mut app = app_on(Screen::Dashboard);
+        // App::new may load local state outside test fixtures; this test is
+        // specifically the unconfigured first-run presentation.
+        app.config = None;
+        app.state = None;
 
         terminal.draw(|frame| draw(frame, &mut app)).unwrap();
         let content = buffer_text(terminal.backend());

@@ -3245,6 +3245,132 @@ mod tests {
         assert_eq!(source.ignore, vec!["/fish_variables"]);
     }
 
+    // --- TU14: End-to-end TUI acceptance flows ---
+
+    #[test]
+    fn e2e_preview_automation_failure_recovery_and_history_logs() {
+        use chrono::{Duration, Utc};
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+        let (mut app, temp) = configured_test_app();
+        app.config
+            .as_mut()
+            .unwrap()
+            .sources
+            .push(crate::config::SourceConfig {
+                path: ".config/fish".to_string(),
+                ignore: vec![],
+            });
+
+        // First-entry preview loads, then recovers from a stale failure via r.
+        app.active_screen = Screen::Preview;
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        let preview_request = app.preview_screen.load_state.loading_id().unwrap();
+        app.tasks
+            .sender
+            .send(task::TaskResult::BackupPreview {
+                request_id: preview_request,
+                result: Ok(preview_data("test-machine/home/.config/fish/config.fish")),
+            })
+            .unwrap();
+        app.poll_tasks();
+        assert!(app.preview_screen.load_state.data().is_some());
+        app.invalidate_backup_preview();
+        app.handle_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE));
+        let retry_request = app.preview_screen.load_state.loading_id().unwrap();
+        app.tasks
+            .sender
+            .send(task::TaskResult::BackupPreview {
+                request_id: retry_request,
+                result: Err("source temporarily unavailable".to_string()),
+            })
+            .unwrap();
+        app.poll_tasks();
+        assert!(matches!(
+            app.preview_screen.load_state,
+            task::LoadState::Failed { .. }
+        ));
+        assert!(app.preview_screen.load_state.data().is_some());
+        app.handle_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE));
+        let recovery_request = app.preview_screen.load_state.loading_id().unwrap();
+        app.tasks
+            .sender
+            .send(task::TaskResult::BackupPreview {
+                request_id: recovery_request,
+                result: Ok(preview_data(
+                    "test-machine/home/.config/fish/recovered.fish",
+                )),
+            })
+            .unwrap();
+        app.poll_tasks();
+        assert!(matches!(
+            app.preview_screen.load_state,
+            task::LoadState::Loaded(_)
+        ));
+
+        // Automation likewise retries a failed inspection without blocking input.
+        app.active_screen = Screen::Automation;
+        app.focus = Focus::TabBar;
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        let automation_request = app.automation_screen.status_state.loading_id().unwrap();
+        app.tasks
+            .sender
+            .send(task::TaskResult::AutomationInspection {
+                request_id: automation_request,
+                result: Err("user manager unavailable".to_string()),
+            })
+            .unwrap();
+        app.poll_tasks();
+        assert!(matches!(
+            app.automation_screen.status_state,
+            task::LoadState::Failed { .. }
+        ));
+        app.handle_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE));
+        let automation_retry = app.automation_screen.status_state.loading_id().unwrap();
+        app.tasks
+            .sender
+            .send(task::TaskResult::AutomationInspection {
+                request_id: automation_retry,
+                result: Ok("active".to_string()),
+            })
+            .unwrap();
+        app.poll_tasks();
+        assert_eq!(
+            app.automation_screen
+                .status_state
+                .data()
+                .map(String::as_str),
+            Some("active")
+        );
+
+        // A selected history entry opens its namespace-aware per-run log.
+        let log_name = "accepted-run.log";
+        let logs = crate::diagnostics::log_dir(temp.path().join(".local/state/dothoard").as_path());
+        std::fs::create_dir_all(&logs).unwrap();
+        std::fs::write(logs.join(log_name), "backup completed\n").unwrap();
+        app.state = Some(crate::state::AppState {
+            history: vec![crate::state::RunRecord {
+                namespace: "test-machine".to_string(),
+                started_at: Utc::now(),
+                finished_at: Utc::now() + Duration::seconds(1),
+                outcome: crate::state::RunOutcome::Success,
+                commit: None,
+                message: None,
+                log_file: Some(log_name.to_string()),
+            }],
+            ..crate::state::AppState::default()
+        });
+        app.active_screen = Screen::History;
+        app.focus = Focus::Content;
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(app.history_screen.mode, screens::history::Mode::LogView);
+        assert_eq!(
+            app.history_screen.log_namespace.as_deref(),
+            Some("test-machine")
+        );
+        assert_eq!(app.history_screen.log_lines, vec!["backup completed"]);
+    }
+
     // --- MS08: Integration testing and edge cases ---
 
     #[test]

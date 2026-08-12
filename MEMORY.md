@@ -14,7 +14,7 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - **Milestone 13 complete**: MN01–MN09 implement namespace schemas, ownership,
   namespace-scoped backup/Git behavior, lifecycle operations, TUI namespace
   selection/create/rename/delete controls, and multi-machine documentation.
-- **Milestone 14 in progress**: TU01–TU14 define the post-namespace TUI
+- **Milestone 14 complete**: TU01–TU14 define the post-namespace TUI
   usability and visual design work. **TU01–TU06 are complete**: Unicode text,
   reliable viewports, consistent interaction exits, nonblocking slow TUI reads,
   separate contextual help/status regions, and a shared semantic visual theme
@@ -39,7 +39,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   **TU13 is complete**: `docs/tui.md` documents keyboard/focus, first-run,
   source apply/discard, and namespace workflows. A visual real-terminal smoke
   test was completed manually with dark/light-compatible palettes. **TU14 is
-  next**: run complete TUI usability acceptance.
+  complete**: controlled end-to-end preview, automation failure/recovery, and
+  History log flows plus the complete serialized baseline pass. Milestone 14
+  is accepted; next work is Milestone 15 PV04.
 - **Milestone 15 is partially complete**: PV01–PV03 provide the GitHub landing
   page, sanitized SVG visual demonstrations, and reorganized user
   documentation. PV04–PV06 remain for the documentation website, public trust
@@ -156,6 +158,18 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- TU14 verified with Rust 1.97.1:
+  - `cargo fmt --check` — clean
+  - `cargo clippy --all-targets --all-features -- -D warnings` — clean
+  - `cargo test --all-targets --all-features -- --test-threads=1` — clean
+  - 935 library tests plus all acceptance, bootstrap, Git workflow, hardening,
+    mirror, and orchestration tests pass.
+  - Controlled TUI acceptance covers preview loading and failed refresh with
+    retained data, Automation first-entry recovery, and namespace-aware History
+    logs; existing interaction suites cover first run, source editing, ignore
+    preview, namespace safety, and backup result transitions.
+  - The narrow unconfigured Dashboard test was made hermetic by clearing
+    environment-loaded config/state before asserting first-run presentation.
 - TU13 verified: `docs/tui.md` documents the refined interaction model; local
   Markdown links (excluding external badge URLs) pass. PTY support was verified
   with `script -qec 'test -t 0 && test -t 1 && pi' /dev/null`; scripted dothoard

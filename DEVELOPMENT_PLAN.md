@@ -687,7 +687,7 @@ regression test that demonstrates the current failure.
   layouts. Record only durable findings and resolve visual or interaction
   defects before the milestone gate.
 
-- [ ] **TU14 - Run complete TUI usability acceptance.** Add end-to-end
+- [x] **TU14 - Run complete TUI usability acceptance.** Add end-to-end
   interaction tests for the first-run workflow, routine preview/backup flow,
   namespace switching, source editing, ignore preview, automation, History and
   logs, task failures, and recovery. Re-run the complete formatting, Clippy,
@@ -695,14 +695,15 @@ regression test that demonstrates the current failure.
   that this milestone changes no managed-path, ownership, staging, publication,
   or noninteractive-process safety boundary.
 
-**Milestone gate:** Unicode input and long filenames cannot crash rendering or
-editing; every list keeps its active item visible; back, apply, cancel, and quit
-behavior is consistent; slow work never freezes the event loop; help remains
-visible beside status; focus and modal ownership are visually explicit; the
-Dashboard presents health and next actions; namespaces are discoverable and
-appear in History; all screens remain usable at supported terminal sizes; the
-README and real-terminal smoke test match the implementation; and the complete
-quality suite passes without weakening backend safety.
+**Milestone gate: Complete.** Unicode input and long filenames cannot crash
+rendering or editing; every list keeps its active item visible; back, apply,
+cancel, and quit behavior is consistent; slow work never freezes the event
+loop; help remains visible beside status; focus and modal ownership are visually
+explicit; the Dashboard presents health and next actions; namespaces are
+discoverable and appear in History; all screens remain usable at supported
+terminal sizes; the README and real-terminal smoke test match the
+implementation; and the complete quality suite passes without weakening backend
+safety.
 
 ## Execution Order
 
