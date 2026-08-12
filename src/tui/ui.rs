@@ -7,7 +7,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs, Wrap};
 
 use super::{App, Screen, modal, text, theme};
 
@@ -191,25 +191,32 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
         .unwrap_or(0);
 
     let tab_focused = app.focus == Focus::TabBar;
-    let title = if tab_focused {
+    let marker = if tab_focused {
         " ▶ TAB FOCUS · dothoard "
     } else {
         "   Tabs · dothoard "
     };
+    let marker_style = if tab_focused {
+        theme::current().focused()
+    } else {
+        theme::current().muted()
+    };
+    let mut title_spans = vec![Span::styled(marker, marker_style)];
+    if let Some(config) = &app.config {
+        title_spans.push(Span::styled("· namespace ", theme::current().muted()));
+        title_spans.push(Span::styled(
+            config.namespace.clone(),
+            theme::current().label(),
+        ));
+        title_spans.push(Span::raw(" "));
+    }
     let mut tabs = Tabs::new(titles);
     if !compact {
         tabs = tabs.block(
             Block::default()
                 .borders(Borders::BOTTOM)
                 .border_style(theme::current().border(tab_focused))
-                .title(Line::from(Span::styled(
-                    title,
-                    if tab_focused {
-                        theme::current().focused()
-                    } else {
-                        theme::current().muted()
-                    },
-                ))),
+                .title(Line::from(title_spans)),
         );
     }
     let tabs = tabs
@@ -1056,6 +1063,10 @@ fn draw_dashboard(frame: &mut Frame, area: Rect, app: &App) {
 
     // Primary health is always drawn first. Short terminals reserve their
     // scarce rows for it; medium and narrow terminals stack secondary details.
+    // Wide terminals with room to spare arrange each section as its own card
+    // so a tall terminal fills with framed panels instead of a short block of
+    // text trailing off into empty space.
+    const CARD_MIN_HEIGHT: u16 = 20;
     match layout_class(inner) {
         LayoutClass::Short => draw_dashboard_status(frame, inner, app),
         LayoutClass::Narrow | LayoutClass::Medium => {
@@ -1065,6 +1076,14 @@ fn draw_dashboard(frame: &mut Frame, area: Rect, app: &App) {
                 .split(inner);
             draw_dashboard_status(frame, rows[0], app);
             draw_dashboard_info(frame, rows[1], app);
+        }
+        LayoutClass::Wide if inner.height >= CARD_MIN_HEIGHT => {
+            let columns = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
+                .split(inner);
+            draw_dashboard_status_cards(frame, columns[0], app);
+            draw_dashboard_info_cards(frame, columns[1], app);
         }
         LayoutClass::Wide => {
             let columns = Layout::default()
@@ -1077,27 +1096,24 @@ fn draw_dashboard(frame: &mut Frame, area: Rect, app: &App) {
     }
 }
 
-/// Primary dashboard summaries: health, last success, synchronization,
-/// automation, and the one action that best moves the user forward.
-fn draw_dashboard_status(frame: &mut Frame, area: Rect, app: &App) {
-    let mut lines = vec![section_header("Backup Health")];
+fn backup_health_lines(app: &App) -> Vec<Line<'static>> {
     let (health, health_style) = dashboard_health(app);
-    lines.push(Line::from(Span::styled(
-        format!("  {health}"),
-        health_style,
-    )));
-    lines.push(field_line(
-        "  Last successful backup",
-        app.state
-            .as_ref()
-            .and_then(|state| state.last_success.as_ref())
-            .map(format_time)
-            .unwrap_or_else(|| "Never".to_string()),
-    ));
+    vec![
+        Line::from(Span::styled(format!("  {health}"), health_style)),
+        field_line(
+            "  Last successful backup",
+            app.state
+                .as_ref()
+                .and_then(|state| state.last_success.as_ref())
+                .map(format_time)
+                .unwrap_or_else(|| "Never".to_string()),
+        ),
+    ]
+}
 
-    lines.push(section_header("Remote Synchronization"));
+fn remote_sync_lines(app: &App) -> Vec<Line<'static>> {
     let pending_push = app.state.as_ref().is_some_and(|state| state.pending_push);
-    lines.push(Line::from(Span::styled(
+    let mut lines = vec![Line::from(Span::styled(
         if pending_push {
             "  Pending commits need push"
         } else {
@@ -1108,7 +1124,7 @@ fn draw_dashboard_status(frame: &mut Frame, area: Rect, app: &App) {
         } else {
             theme::current().success()
         },
-    )));
+    ))];
     if let Some(last_push) = app
         .state
         .as_ref()
@@ -1116,19 +1132,71 @@ fn draw_dashboard_status(frame: &mut Frame, area: Rect, app: &App) {
     {
         lines.push(field_line("  Last push", format_time(last_push)));
     }
+    lines
+}
 
-    lines.push(section_header("Automation Health"));
+fn automation_health_lines(app: &App) -> Vec<Line<'static>> {
     let (automation, automation_style) = dashboard_automation(app);
-    lines.push(Line::from(Span::styled(
+    vec![Line::from(Span::styled(
         format!("  {automation}"),
         automation_style,
-    )));
+    ))]
+}
 
-    lines.push(section_header("Recommended Next Action"));
-    lines.push(Line::from(Span::styled(
+fn next_action_lines(app: &App) -> Vec<Line<'static>> {
+    vec![Line::from(Span::styled(
         format!("  {}", dashboard_action(app)),
-        theme::current().focused(),
-    )));
+        theme::current().accent(),
+    ))]
+}
+
+fn latest_check_lines(app: &App, width: u16) -> Vec<Line<'static>> {
+    let (check, check_style) = dashboard_check(app);
+    wrapped_styled_lines("  ", &check, width.saturating_sub(2), check_style)
+}
+
+fn repository_details_lines(app: &App, width: u16) -> Vec<Line<'static>> {
+    let Some(config) = &app.config else {
+        return vec![dim_line("  No repository configured. Press r to begin.")];
+    };
+    let mut lines = wrapped_field_lines("  Path", &config.repository, width);
+    lines.push(field_line("  Namespace", config.namespace.clone()));
+    lines.push(field_line("  Sources", config.sources.len().to_string()));
+    lines.push(field_line(
+        "  Schedule",
+        format!("{} min", config.interval_minutes),
+    ));
+    lines.push(field_line(
+        "  Timeout",
+        format!("{}s", config.network_timeout_seconds),
+    ));
+    lines
+}
+
+fn latest_issue_lines(app: &App, width: u16) -> Vec<Line<'static>> {
+    if let Some((issue, style)) = dashboard_issue(app) {
+        let mut lines = wrapped_styled_lines("  ", &issue, width.saturating_sub(2), style);
+        lines.push(dim_line("  Press d for complete details."));
+        lines
+    } else {
+        vec![Line::from(Span::styled(
+            "  No issues reported",
+            theme::current().success(),
+        ))]
+    }
+}
+
+/// Primary dashboard summaries: health, last success, synchronization,
+/// automation, and the one action that best moves the user forward.
+fn draw_dashboard_status(frame: &mut Frame, area: Rect, app: &App) {
+    let mut lines = vec![section_header("Backup Health")];
+    lines.extend(backup_health_lines(app));
+    lines.push(section_header("Remote Synchronization"));
+    lines.extend(remote_sync_lines(app));
+    lines.push(section_header("Automation Health"));
+    lines.extend(automation_health_lines(app));
+    lines.push(section_header("Recommended Next Action"));
+    lines.extend(next_action_lines(app));
 
     frame.render_widget(Paragraph::new(lines), area);
 }
@@ -1137,54 +1205,87 @@ fn draw_dashboard_status(frame: &mut Frame, area: Rect, app: &App) {
 /// display cells and their full check/error values remain available with `d`.
 fn draw_dashboard_info(frame: &mut Frame, area: Rect, app: &App) {
     let mut lines = vec![section_header("Latest Check")];
-    let (check, check_style) = dashboard_check(app);
-    lines.extend(wrapped_styled_lines(
-        "  ",
-        &check,
-        area.width.saturating_sub(2),
-        check_style,
-    ));
+    lines.extend(latest_check_lines(app, area.width));
     lines.push(Line::from(""));
 
     lines.push(section_header("Repository Details"));
-    if let Some(config) = &app.config {
-        lines.extend(wrapped_field_lines(
-            "  Path",
-            &config.repository,
-            area.width,
-        ));
-        lines.push(field_line("  Namespace", config.namespace.clone()));
-        lines.push(field_line("  Sources", config.sources.len().to_string()));
-        lines.push(field_line(
-            "  Schedule",
-            format!("{} min", config.interval_minutes),
-        ));
-        lines.push(field_line(
-            "  Timeout",
-            format!("{}s", config.network_timeout_seconds),
-        ));
-    } else {
-        lines.push(dim_line("  No repository configured. Press r to begin."));
-    }
+    lines.extend(repository_details_lines(app, area.width));
     lines.push(Line::from(""));
 
     lines.push(section_header("Latest Issue"));
-    if let Some((issue, style)) = dashboard_issue(app) {
-        lines.extend(wrapped_styled_lines(
-            "  ",
-            &issue,
-            area.width.saturating_sub(2),
-            style,
-        ));
-        lines.push(dim_line("  Press d for complete details."));
-    } else {
-        lines.push(Line::from(Span::styled(
-            "  No issues reported",
-            theme::current().success(),
-        )));
-    }
+    lines.extend(latest_issue_lines(app, area.width));
 
     frame.render_widget(Paragraph::new(lines), area);
+}
+
+/// Render one bordered dashboard card with its section name as the title.
+fn draw_card(frame: &mut Frame, area: Rect, title: &'static str, lines: Vec<Line<'static>>) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(theme::current().border(false))
+        .title(Line::from(Span::styled(
+            format!(" {title} "),
+            theme::current().heading(),
+        )));
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+}
+
+/// Card layout for `draw_dashboard_status` on tall, wide terminals: each
+/// section fills an equal share of the column instead of leaving the rest of
+/// a tall terminal empty below a short block of text.
+fn draw_dashboard_status_cards(frame: &mut Frame, area: Rect, app: &App) {
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Ratio(1, 4); 4])
+        .split(area);
+    draw_card(frame, rows[0], "Backup Health", backup_health_lines(app));
+    draw_card(
+        frame,
+        rows[1],
+        "Remote Synchronization",
+        remote_sync_lines(app),
+    );
+    draw_card(
+        frame,
+        rows[2],
+        "Automation Health",
+        automation_health_lines(app),
+    );
+    draw_card(
+        frame,
+        rows[3],
+        "Recommended Next Action",
+        next_action_lines(app),
+    );
+}
+
+/// Card layout for `draw_dashboard_info`, matching `draw_dashboard_status_cards`.
+fn draw_dashboard_info_cards(frame: &mut Frame, area: Rect, app: &App) {
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Ratio(1, 3); 3])
+        .split(area);
+    let card_width = rows[0].width.saturating_sub(2);
+    draw_card(
+        frame,
+        rows[0],
+        "Latest Check",
+        latest_check_lines(app, card_width),
+    );
+    draw_card(
+        frame,
+        rows[1],
+        "Repository Details",
+        repository_details_lines(app, card_width),
+    );
+    draw_card(
+        frame,
+        rows[2],
+        "Latest Issue",
+        latest_issue_lines(app, card_width),
+    );
 }
 
 fn dashboard_health(app: &App) -> (&'static str, Style) {

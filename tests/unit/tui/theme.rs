@@ -104,7 +104,7 @@ fn reduced_palette_keeps_focus_and_selection_legible_without_color() {
     let selected = Theme::REDUCED.selected();
 
     assert_eq!(focused.fg, None);
-    assert!(focused.add_modifier.contains(Modifier::UNDERLINED));
+    assert!(focused.add_modifier.contains(Modifier::BOLD));
     assert_eq!(selected.bg, None);
     assert!(selected.add_modifier.contains(Modifier::BOLD));
 }

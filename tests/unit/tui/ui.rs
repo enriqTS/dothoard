@@ -1611,7 +1611,7 @@ fn ignore_nested_focus_uses_markers_and_distinct_styles() {
             .buffer()
             .content()
             .iter()
-            .any(|cell| cell.modifier.contains(Modifier::UNDERLINED))
+            .any(|cell| cell.modifier.contains(Modifier::BOLD))
     );
 }
 

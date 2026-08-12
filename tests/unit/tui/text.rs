@@ -65,3 +65,31 @@ fn wrapping_preserves_unicode_without_replacement_characters() {
 fn wrapping_respects_newlines_and_keeps_too_wide_characters_intact() {
     assert_eq!(wrap("a\n界b", 1), vec!["a", "界", "b"]);
 }
+
+#[test]
+fn wrapping_breaks_prose_on_word_boundaries_not_mid_word() {
+    let lines = wrap("Uncommitted changes present", 26);
+
+    assert_eq!(lines, vec!["Uncommitted changes", "present"]);
+    for line in &lines {
+        assert!(!line.starts_with(' '));
+        assert!(!line.ends_with(' '));
+    }
+}
+
+#[test]
+fn wrapping_hard_breaks_a_single_word_wider_than_the_line() {
+    // A path or hash has no whitespace to break on, so it still wraps at the
+    // character level rather than overflowing.
+    let lines = wrap("/very/long/unbroken/path/with/no/spaces", 10);
+
+    assert_eq!(
+        lines,
+        vec!["/very/long", "/unbroken/", "path/with/", "no/spaces"]
+    );
+}
+
+#[test]
+fn wrapping_preserves_blank_lines_between_newlines() {
+    assert_eq!(wrap("a\n\nb", 10), vec!["a", "", "b"]);
+}

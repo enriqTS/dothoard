@@ -401,8 +401,7 @@ impl Theme {
     }
 
     pub fn focused(self) -> Style {
-        self.color(|p| p.accent)
-            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+        self.color(|p| p.accent).add_modifier(Modifier::BOLD)
     }
 
     pub fn selected(self) -> Style {

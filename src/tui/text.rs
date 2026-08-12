@@ -89,7 +89,12 @@ pub(crate) fn prefix(text: &str, max_width: usize) -> String {
     result
 }
 
-/// Wrap text into character-boundary-safe lines no wider than `max_width` cells.
+/// Wrap text into display-width-safe lines no wider than `max_width` cells.
+///
+/// Breaks preferentially fall on whitespace, so prose reads as words rather
+/// than fragments split mid-word. A run with no whitespace at all — a path,
+/// hash, or any single word wider than `max_width` — falls back to a
+/// character-level break so content is never lost or corrupted.
 pub(crate) fn wrap(text: &str, max_width: usize) -> Vec<String> {
     if text.is_empty() {
         return vec![String::new()];
@@ -97,38 +102,61 @@ pub(crate) fn wrap(text: &str, max_width: usize) -> Vec<String> {
 
     let max_width = max_width.max(1);
     let mut lines = Vec::new();
+    for paragraph in text.split('\n') {
+        wrap_paragraph(paragraph, max_width, &mut lines);
+    }
+    lines
+}
+
+fn wrap_paragraph(text: &str, max_width: usize, lines: &mut Vec<String>) {
+    if text.is_empty() {
+        lines.push(String::new());
+        return;
+    }
+
     let mut line = String::new();
     let mut width = 0;
+    // Byte offset and display width of `line` at its most recent whitespace
+    // character, i.e. the last point where breaking would land between
+    // words rather than inside one.
+    let mut last_break: Option<usize> = None;
 
     for value in text.chars() {
-        if value == '\n' {
-            lines.push(line);
-            line = String::new();
-            width = 0;
-            continue;
+        let value_width = UnicodeWidthChar::width(value).unwrap_or(0);
+
+        if value_width > 0 && !line.is_empty() && width + value_width > max_width {
+            if let Some(break_at) = last_break {
+                let rest = line[break_at..].trim_start().to_string();
+                line.truncate(break_at);
+                lines.push(line.trim_end().to_string());
+                width = UnicodeWidthStr::width(rest.as_str());
+                line = rest;
+            } else {
+                lines.push(std::mem::take(&mut line));
+                width = 0;
+            }
+            last_break = None;
         }
 
-        let value_width = UnicodeWidthChar::width(value).unwrap_or(0);
-        if value_width > 0 && !line.is_empty() && width + value_width > max_width {
-            lines.push(line);
-            line = String::new();
-            width = 0;
+        if value.is_whitespace() {
+            last_break = Some(line.len());
         }
+
         line.push(value);
         width += value_width;
-        // A wide character cannot fit in a narrower viewport without being
-        // corrupted. Keep it intact on its own line and let Ratatui clip it.
+        // A wide character (or an unbroken run with no earlier whitespace)
+        // cannot fit in a narrower viewport without being corrupted. Keep it
+        // intact on its own line and let Ratatui clip it.
         if width > max_width {
-            lines.push(line);
-            line = String::new();
+            lines.push(std::mem::take(&mut line));
             width = 0;
+            last_break = None;
         }
     }
 
     if !line.is_empty() {
-        lines.push(line);
+        lines.push(line.trim_end().to_string());
     }
-    lines
 }
 
 fn normalize_cursor(text: &str, cursor: &mut usize) {
