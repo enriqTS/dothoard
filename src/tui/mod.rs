@@ -13,6 +13,7 @@ mod status;
 pub mod task;
 mod terminal;
 mod text;
+mod theme;
 mod ui;
 mod viewport;
 

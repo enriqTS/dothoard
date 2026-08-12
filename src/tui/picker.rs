@@ -17,7 +17,7 @@ use ratatui::{
 
 use super::browser::{Browser, DirListing, EntryKind, Selection, SelectionError};
 use super::selection::CheckState;
-use super::text;
+use super::{text, theme::THEME};
 
 /// Type alias for the optional check-state callback.
 ///
@@ -138,12 +138,7 @@ fn draw_breadcrumb(frame: &mut Frame, area: Rect, browser: &Browser) {
     let path_display = text::truncate(&path_str, area.width.saturating_sub(1) as usize);
     let line = Line::from(vec![
         Span::styled(" ", Style::default()),
-        Span::styled(
-            path_display,
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Span::styled(path_display, THEME.heading()),
     ]);
     frame.render_widget(Paragraph::new(line), area);
 }
@@ -196,8 +191,8 @@ fn draw_panes(frame: &mut Frame, area: Rect, browser: &mut Browser, check_fn: Op
 fn draw_parent_pane(frame: &mut Frame, area: Rect, browser: &mut Browser) {
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray))
-        .title(" .. ");
+        .border_style(THEME.border(false))
+        .title(Line::from(Span::styled(" Parent ", THEME.label())));
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -217,7 +212,7 @@ fn draw_parent_pane(frame: &mut Frame, area: Rect, browser: &mut Browser) {
         Some(DirListing::Error(_)) => {
             vec![ListItem::new(Line::from(Span::styled(
                 "<error>",
-                Style::default().fg(Color::Red),
+                THEME.error(),
             )))]
         }
         None => Vec::new(),
@@ -236,7 +231,11 @@ fn draw_current_pane(
 ) {
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(THEME.border(true))
+        .title(Line::from(Span::styled(
+            " ▶ Files [FOCUS] ",
+            THEME.focused(),
+        )));
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -245,10 +244,7 @@ fn draw_current_pane(
     let current_dir = browser.current_dir().to_path_buf();
     match listing {
         DirListing::Entries(entries) if entries.is_empty() => {
-            let msg = Paragraph::new(Line::from(Span::styled(
-                " (empty)",
-                Style::default().fg(Color::DarkGray),
-            )));
+            let msg = Paragraph::new(Line::from(Span::styled(" (empty)", THEME.muted())));
             frame.render_widget(msg, inner);
         }
         DirListing::Entries(entries) => {
@@ -256,8 +252,9 @@ fn draw_current_pane(
             let scroll = browser.scroll_offset();
             let viewport = inner.height as usize;
 
-            // Checkbox prefix width: "[●] " = 4 chars when active.
+            // Selection marker plus optional checkbox prefix.
             let checkbox_width: u16 = if check_fn.is_some() { 4 } else { 0 };
+            let marker_width: u16 = 2;
 
             let items: Vec<ListItem> = entries
                 .iter()
@@ -272,7 +269,14 @@ fn draw_current_pane(
                         entry_style(e.kind, false)
                     };
 
-                    let mut spans: Vec<Span> = Vec::new();
+                    let mut spans: Vec<Span> = vec![Span::styled(
+                        if is_selected { "▶ " } else { "  " },
+                        if is_selected {
+                            THEME.focused()
+                        } else {
+                            THEME.muted()
+                        },
+                    )];
 
                     // Checkbox prefix.
                     if let Some(ref check) = check_fn {
@@ -286,7 +290,7 @@ fn draw_current_pane(
                         spans.push(Span::styled(
                             format!("{indicator} "),
                             if is_selected {
-                                ind_style.bg(Color::DarkGray)
+                                ind_style.patch(THEME.selected())
                             } else {
                                 ind_style
                             },
@@ -294,7 +298,10 @@ fn draw_current_pane(
                     }
 
                     let icon = entry_icon(e);
-                    let name_width = inner.width.saturating_sub(3 + checkbox_width) as usize;
+                    let name_width = inner
+                        .width
+                        .saturating_sub(3 + checkbox_width + marker_width)
+                        as usize;
                     let name = truncate_name(&e.display_name, name_width);
                     spans.push(Span::styled(format!("{icon} "), style));
                     spans.push(Span::styled(name, style));
@@ -309,7 +316,7 @@ fn draw_current_pane(
         DirListing::Error(e) => {
             let msg = Paragraph::new(Line::from(Span::styled(
                 format!(" Error: {e}"),
-                Style::default().fg(Color::Red),
+                THEME.error(),
             )));
             frame.render_widget(msg, inner);
         }
@@ -320,7 +327,8 @@ fn draw_current_pane(
 fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser) {
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(THEME.border(false))
+        .title(Line::from(Span::styled(" Preview ", THEME.label())));
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -334,10 +342,7 @@ fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser) {
             let preview = browser.preview_listing();
             match preview {
                 Some(DirListing::Entries(entries)) if entries.is_empty() => {
-                    let msg = Paragraph::new(Line::from(Span::styled(
-                        " (empty)",
-                        Style::default().fg(Color::DarkGray),
-                    )));
+                    let msg = Paragraph::new(Line::from(Span::styled(" (empty)", THEME.muted())));
                     frame.render_widget(msg, inner);
                 }
                 Some(DirListing::Entries(entries)) => {
@@ -360,10 +365,8 @@ fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser) {
                     frame.render_widget(list, inner);
                 }
                 Some(DirListing::Error(e)) => {
-                    let msg = Paragraph::new(Line::from(Span::styled(
-                        format!(" {e}"),
-                        Style::default().fg(Color::Red),
-                    )));
+                    let msg =
+                        Paragraph::new(Line::from(Span::styled(format!(" {e}"), THEME.error())));
                     frame.render_widget(msg, inner);
                 }
                 None => {}
@@ -386,27 +389,27 @@ fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser) {
                 EntryKind::Directory => "Directory",
             };
             lines.push(Line::from(vec![
-                Span::styled(" Type: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(" Type: ", THEME.label()),
                 Span::raw(kind_str),
             ]));
 
             if let Some(size) = entry.size {
                 lines.push(Line::from(vec![
-                    Span::styled(" Size: ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(" Size: ", THEME.label()),
                     Span::raw(format_size(size)),
                 ]));
             }
 
             if entry.executable {
                 lines.push(Line::from(vec![
-                    Span::styled(" Exec: ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(" Exec: ", THEME.label()),
                     Span::styled("yes", Style::default().fg(Color::Green)),
                 ]));
             }
 
             if let Some(ref target) = entry.link_target {
                 lines.push(Line::from(vec![
-                    Span::styled(" Target: ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(" Target: ", THEME.label()),
                     Span::styled(target.clone(), Style::default().fg(Color::Magenta)),
                 ]));
             }
@@ -415,7 +418,7 @@ fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser) {
                 lines.push(Line::from(""));
                 lines.push(Line::from(Span::styled(
                     " ⚠ Non-UTF-8 name (cannot select)",
-                    Style::default().fg(Color::Yellow),
+                    THEME.warning(),
                 )));
             }
 
@@ -423,10 +426,7 @@ fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser) {
             frame.render_widget(paragraph, inner);
         }
         None => {
-            let msg = Paragraph::new(Line::from(Span::styled(
-                " (no selection)",
-                Style::default().fg(Color::DarkGray),
-            )));
+            let msg = Paragraph::new(Line::from(Span::styled(" (no selection)", THEME.muted())));
             frame.render_widget(msg, inner);
         }
     }
@@ -456,7 +456,7 @@ fn entry_style(kind: EntryKind, selected: bool) -> Style {
         EntryKind::Error => Style::default().fg(Color::Red),
     };
     if selected {
-        base.bg(Color::DarkGray)
+        base.patch(THEME.selected())
     } else {
         base
     }
@@ -1038,6 +1038,37 @@ mod tests {
             .map(|cell| cell.symbol().chars().next().unwrap_or(' '))
             .collect();
         assert!(content.contains('['), "should contain checkbox brackets");
+    }
+
+    #[test]
+    fn pane_focus_and_selection_are_visible_without_color() {
+        let tmp = setup_test_dir();
+        let mut browser = Browser::new(BrowserConfig {
+            root: tmp.path().to_path_buf(),
+            start: tmp.path().to_path_buf(),
+        });
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        terminal
+            .draw(|frame| draw(frame, frame.area(), &mut browser, None))
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let content: String = buffer
+            .content()
+            .iter()
+            .map(|cell| cell.symbol().chars().next().unwrap_or(' '))
+            .collect();
+        assert!(content.contains("Parent"));
+        assert!(content.contains("▶ Files [FOCUS]"));
+        assert!(content.contains("Preview"));
+        assert!(
+            buffer
+                .content()
+                .iter()
+                .any(|cell| cell.modifier.contains(Modifier::REVERSED))
+        );
     }
 
     #[test]

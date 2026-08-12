@@ -9,7 +9,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Tabs};
 
-use super::{App, Screen, text};
+use super::{App, Screen, text, theme::THEME};
 
 /// Draw the complete UI for one frame.
 pub fn draw(frame: &mut Frame, app: &mut App) {
@@ -39,7 +39,7 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
         .map(|(i, screen)| {
             let num = format!("{}", i + 1);
             Line::from(vec![
-                Span::styled(num, Style::default().fg(Color::DarkGray)),
+                Span::styled(num, THEME.key()),
                 Span::raw(":"),
                 Span::raw(screen.label()),
             ])
@@ -51,32 +51,33 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
         .position(|&s| s == app.active_screen)
         .unwrap_or(0);
 
-    // Highlight style depends on whether the tab bar has focus.
-    let highlight_style = match app.focus {
-        Focus::TabBar => Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-        Focus::Content => Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD),
+    let tab_focused = app.focus == Focus::TabBar;
+    let title = if tab_focused {
+        " ▶ TAB FOCUS · dothoard "
+    } else {
+        "   Tabs · dothoard "
     };
-
-    // Border style: brighter when focused.
-    let border_style = match app.focus {
-        Focus::TabBar => Style::default().fg(Color::Cyan),
-        Focus::Content => Style::default().fg(Color::DarkGray),
-    };
-
     let tabs = Tabs::new(titles)
         .block(
             Block::default()
                 .borders(Borders::BOTTOM)
-                .border_style(border_style)
-                .title(" dothoard "),
+                .border_style(THEME.border(tab_focused))
+                .title(Line::from(Span::styled(
+                    title,
+                    if tab_focused {
+                        THEME.focused()
+                    } else {
+                        THEME.muted()
+                    },
+                ))),
         )
         .select(selected)
-        .style(Style::default().fg(Color::White))
-        .highlight_style(highlight_style);
+        .style(Style::default())
+        .highlight_style(if tab_focused {
+            THEME.selected()
+        } else {
+            THEME.heading()
+        });
 
     frame.render_widget(tabs, area);
 }
@@ -96,10 +97,64 @@ fn draw_screen(frame: &mut Frame, area: Rect, app: &mut App) {
 
 /// Border style for the active screen block, based on focus.
 fn content_border_style(app: &App) -> Style {
-    match app.focus {
-        super::Focus::Content => Style::default().fg(Color::Cyan),
-        super::Focus::TabBar => Style::default().fg(Color::DarkGray),
-    }
+    THEME.border(app.focus == super::Focus::Content)
+}
+
+/// Title text names both the screen and the interaction mode that owns input.
+fn screen_title(app: &App, screen: &'static str) -> Line<'static> {
+    use crate::tui::screens::{automation::ConfirmAction, history, ignore, repository, sources};
+
+    let mode = match app.active_screen {
+        Screen::Dashboard if app.tasks.is_busy() => "Running",
+        Screen::Dashboard => "Overview",
+        Screen::Repository
+            if app.repo_screen.confirm_state == repository::ConfirmState::AskInitialize
+                || app.repo_screen.confirm_state == repository::ConfirmState::AskAttach
+                || app.repo_screen.namespace_confirmation.is_some() =>
+        {
+            "Confirming"
+        }
+        Screen::Repository => match app.repo_screen.mode {
+            repository::RepoMode::Browser => "Browsing",
+            repository::RepoMode::TextInput | repository::RepoMode::NamespaceInput => "Editing",
+        },
+        Screen::Sources => match app.sources_screen.mode {
+            sources::Mode::List => "Browsing",
+            sources::Mode::Browse => "Selecting",
+            sources::Mode::AddInput => "Editing",
+            sources::Mode::PendingChanges => "Reviewing",
+            sources::Mode::ConfirmDelete | sources::Mode::ConfirmApply => "Confirming",
+        },
+        Screen::Ignore => match app.ignore_screen.mode {
+            ignore::Mode::List => "Browsing",
+            ignore::Mode::AddInput => "Editing",
+            ignore::Mode::Preview => "Previewing",
+        },
+        Screen::Preview if app.preview_screen.load_state.is_loading() => "Running",
+        Screen::Preview => "Previewing",
+        Screen::Automation if app.automation_screen.confirm != ConfirmAction::None => "Confirming",
+        Screen::Automation if app.automation_screen.status_state.is_loading() => "Running",
+        Screen::Automation => "Inspecting",
+        Screen::History if app.history_screen.mode == history::Mode::LogView => "Previewing",
+        Screen::History => "Browsing",
+    };
+    let owns_focus = app.focus == super::Focus::Content;
+    let marker = if owns_focus {
+        "▶ CONTENT"
+    } else {
+        "  Content"
+    };
+    Line::from(vec![
+        Span::styled(
+            format!(" {marker} · {screen} "),
+            if owns_focus {
+                THEME.focused()
+            } else {
+                THEME.muted()
+            },
+        ),
+        Span::styled(format!("[{mode}] "), THEME.label()),
+    ])
 }
 
 /// Draw transient feedback and progress independently from keyboard help.
@@ -152,18 +207,12 @@ fn draw_status_bar(frame: &mut Frame, area: Rect, app: &App) {
     };
 
     if let Some(message) = app.status_message.as_ref().or(fallback.as_ref()) {
-        let color = match message.kind {
-            StatusKind::Success => Color::Green,
-            StatusKind::Running => Color::Cyan,
-            StatusKind::Warning => Color::Yellow,
-            StatusKind::Error => Color::Red,
-        };
         let rendered = format!(" {}: {}", message.kind.label(), message.text);
         let rendered = text::truncate(&rendered, area.width as usize);
         frame.render_widget(
             Paragraph::new(Line::from(Span::styled(
                 rendered,
-                Style::default().fg(color),
+                THEME.status(message.kind),
             ))),
             area,
         );
@@ -528,7 +577,7 @@ fn draw_dashboard(frame: &mut Frame, area: Rect, app: &App) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(content_border_style(app))
-        .title(" Dashboard ");
+        .title(screen_title(app, "Dashboard"));
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -704,19 +753,14 @@ fn draw_dashboard_info(frame: &mut Frame, area: Rect, app: &App) {
 
 /// Create a section header line.
 fn section_header(title: &'static str) -> Line<'static> {
-    Line::from(Span::styled(
-        title,
-        Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD),
-    ))
+    Line::from(Span::styled(title, THEME.heading()))
 }
 
 /// Create a "label: value" field line with owned strings.
 fn field_line(label: &'static str, value: impl Into<String>) -> Line<'static> {
     let val: String = value.into();
     Line::from(vec![
-        Span::styled(label, Style::default().fg(Color::DarkGray)),
+        Span::styled(label, THEME.label()),
         Span::raw(": "),
         Span::raw(val),
     ])
@@ -724,10 +768,7 @@ fn field_line(label: &'static str, value: impl Into<String>) -> Line<'static> {
 
 /// Create a dim informational line with an owned string.
 fn dim_line(text: impl Into<String>) -> Line<'static> {
-    Line::from(Span::styled(
-        text.into(),
-        Style::default().fg(Color::DarkGray),
-    ))
+    Line::from(Span::styled(text.into(), THEME.muted()))
 }
 
 /// Format a DateTime for display.
@@ -742,7 +783,7 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &mut App) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(content_border_style(app))
-        .title(" History ");
+        .title(screen_title(app, "History"));
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -815,7 +856,7 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &mut App) {
         };
 
         let style = if i == app.history_screen.selected {
-            Style::default().add_modifier(Modifier::BOLD)
+            THEME.selected()
         } else {
             Style::default()
         };
@@ -956,7 +997,7 @@ fn draw_automation(frame: &mut Frame, area: Rect, app: &App) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(content_border_style(app))
-        .title(" Automation ");
+        .title(screen_title(app, "Automation"));
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -1060,7 +1101,7 @@ fn draw_preview(frame: &mut Frame, area: Rect, app: &App) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(content_border_style(app))
-        .title(" Backup Preview ");
+        .title(screen_title(app, "Backup Preview"));
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -1180,7 +1221,7 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(content_border_style(app))
-        .title(" Ignore Rules ");
+        .title(screen_title(app, "Ignore Rules"));
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -1201,21 +1242,30 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
         return;
     }
 
-    // Source selector.
-    let source_tabs: Vec<Span> = sources
-        .iter()
-        .enumerate()
-        .flat_map(|(i, s)| {
-            let style = if i == app.ignore_screen.source_idx {
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(Color::DarkGray)
-            };
-            vec![Span::styled(format!(" {} ", s.path), style), Span::raw("|")]
-        })
-        .collect();
+    // Source selector. Focus is reinforced with a marker and underline, not color alone.
+    let source_focused = app.ignore_screen.mode == Mode::List
+        && app.ignore_screen.list_focus == crate::tui::screens::ignore::ListFocus::SourceSelector;
+    let mut source_tabs: Vec<Span> = vec![Span::styled(
+        if source_focused {
+            "▶ Sources: "
+        } else {
+            "  Sources: "
+        },
+        if source_focused {
+            THEME.focused()
+        } else {
+            THEME.label()
+        },
+    )];
+    for (i, source) in sources.iter().enumerate() {
+        let style = if i == app.ignore_screen.source_idx {
+            THEME.selected()
+        } else {
+            THEME.muted()
+        };
+        source_tabs.push(Span::styled(format!(" {} ", source.path), style));
+        source_tabs.push(Span::raw("|"));
+    }
 
     if app.ignore_screen.mode == Mode::Preview {
         lines.push(Line::from(source_tabs));
@@ -1313,9 +1363,19 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
     if current_source.ignore.is_empty() {
         lines.push(dim_line("  No ignore patterns."));
     } else {
+        let patterns_focused =
+            app.ignore_screen.list_focus == crate::tui::screens::ignore::ListFocus::PatternList;
         lines.push(Line::from(Span::styled(
-            "  Patterns:",
-            Style::default().fg(Color::Cyan),
+            if patterns_focused {
+                "▶ Patterns:"
+            } else {
+                "  Patterns:"
+            },
+            if patterns_focused {
+                THEME.focused()
+            } else {
+                THEME.label()
+            },
         )));
         for (i, pattern) in current_source.ignore.iter().enumerate() {
             let marker = if i == app.ignore_screen.pattern_idx {
@@ -1324,7 +1384,7 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
                 "  "
             };
             let style = if i == app.ignore_screen.pattern_idx {
-                Style::default().add_modifier(Modifier::BOLD)
+                THEME.selected()
             } else {
                 Style::default()
             };
@@ -1358,7 +1418,7 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(content_border_style(app))
-        .title(" Sources ");
+        .title(screen_title(app, "Sources"));
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -1417,7 +1477,10 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
 
     if sources.is_empty() {
         lines.push(Line::from(""));
-        lines.push(dim_line("  No sources configured."));
+        lines.push(Line::from(Span::styled(
+            "  No sources configured.",
+            THEME.disabled(),
+        )));
         lines.push(Line::from(""));
         lines.push(dim_line("  Add a source to begin backing up files."));
     } else {
@@ -1437,9 +1500,7 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
                 "  "
             };
             let style = if i == app.sources_screen.selected {
-                Style::default()
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD)
+                THEME.selected()
             } else {
                 Style::default()
             };
@@ -1567,7 +1628,7 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(content_border_style(app))
-        .title(" Repository ");
+        .title(screen_title(app, "Repository"));
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -3201,6 +3262,96 @@ mod tests {
         assert!(content.contains("apply"));
         assert!(content.contains("discard"));
         assert!(content.contains("continue editing"));
+    }
+
+    #[test]
+    fn focus_and_selection_have_visible_non_color_language() {
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = app_on(Screen::Sources);
+        app.config = Some(crate::config::Config {
+            sources: vec![crate::config::SourceConfig {
+                path: ".config/fish".to_string(),
+                ignore: Vec::new(),
+            }],
+            ..crate::config::Config::new("~/repo", "desktop")
+        });
+
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        let tab_text = buffer_text(terminal.backend());
+        assert!(tab_text.contains("▶ TAB FOCUS"));
+        assert!(!tab_text.contains("▶ CONTENT"));
+
+        app.focus = crate::tui::Focus::Content;
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let content_text = buffer_text(terminal.backend());
+        assert!(content_text.contains("▶ CONTENT"));
+        assert!(content_text.contains("[Browsing]"));
+        assert!(
+            buffer
+                .content()
+                .iter()
+                .any(|cell| cell.modifier.contains(Modifier::REVERSED))
+        );
+    }
+
+    #[test]
+    fn screen_titles_name_edit_preview_confirm_and_running_modes() {
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = app_on(Screen::Sources);
+        app.focus = crate::tui::Focus::Content;
+
+        app.sources_screen.mode = crate::tui::screens::sources::Mode::AddInput;
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        assert!(buffer_text(terminal.backend()).contains("[Editing]"));
+
+        app.sources_screen.mode = crate::tui::screens::sources::Mode::ConfirmDelete;
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        assert!(buffer_text(terminal.backend()).contains("[Confirming]"));
+
+        app.active_screen = Screen::Ignore;
+        app.ignore_screen.mode = crate::tui::screens::ignore::Mode::Preview;
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        assert!(buffer_text(terminal.backend()).contains("[Previewing]"));
+
+        app.active_screen = Screen::Preview;
+        app.preview_screen.load_state = task::LoadState::Loading {
+            request_id: task::RequestId::for_test(7),
+            previous: None,
+        };
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        assert!(buffer_text(terminal.backend()).contains("[Running]"));
+    }
+
+    #[test]
+    fn ignore_nested_focus_uses_markers_and_distinct_styles() {
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = app_on(Screen::Ignore);
+        app.focus = crate::tui::Focus::Content;
+        let mut config = crate::config::Config::new("~/repo", "desktop");
+        config.sources.push(crate::config::SourceConfig {
+            path: ".config/fish".to_string(),
+            ignore: vec!["*.log".to_string()],
+        });
+        app.config = Some(config);
+
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        assert!(buffer_text(terminal.backend()).contains("▶ Sources:"));
+
+        app.ignore_screen.list_focus = crate::tui::screens::ignore::ListFocus::PatternList;
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        assert!(buffer_text(terminal.backend()).contains("▶ Patterns:"));
+        assert!(
+            terminal
+                .backend()
+                .buffer()
+                .content()
+                .iter()
+                .any(|cell| cell.modifier.contains(Modifier::UNDERLINED))
+        );
     }
 
     /// Verify sources browse renders at various sizes without panic.
