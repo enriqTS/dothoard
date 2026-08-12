@@ -7,7 +7,7 @@
 [![Rust CI](https://github.com/enriqTS/dothoard/actions/workflows/ci.yml/badge.svg)](https://github.com/enriqTS/dothoard/actions/workflows/ci.yml)
 [![License: GPL--3.0--or--later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
-![dothoard Dashboard](assets/screenshots/dashboard.svg)
+![dothoard quick start walkthrough](assets/screenshots/quickstart.gif)
 
 `dothoard` copies selected files and directories from your home directory into a
 dedicated Git repository, then commits and pushes them on demand or through a
@@ -28,6 +28,8 @@ smoke-tested platforms are CachyOS and Arch Linux; other systemd-based Linux
 distributions may work but are not yet supported.
 
 ## Why dothoard?
+
+![dothoard Dashboard](assets/screenshots/dashboard.png)
 
 - **Safe boundaries:** it never follows symlinks while traversing, and every
   write or deletion stays inside the active namespace in the repository.
@@ -69,7 +71,7 @@ must be rotated.
 For commands, authentication, and a configuration-file workflow, see the
 [quick-start guide](docs/quick-start.md).
 
-![dothoard source browser](assets/screenshots/sources.svg)
+![dothoard source browser](assets/screenshots/sources.png)
 
 ## Documentation
 
@@ -116,7 +118,7 @@ namespace; and commits, rebases, and pushes noninteractively. A source or
 manifest failure prevents Git publication for that run. A network failure keeps
 the local commit so a later run can push it.
 
-![dothoard backup preview](assets/screenshots/preview.svg)
+![dothoard backup preview](assets/screenshots/preview.png)
 
 ## Repository layout
 
