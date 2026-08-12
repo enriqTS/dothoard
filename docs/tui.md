@@ -15,7 +15,24 @@ content. Tab or Shift+Tab returns to the tab bar from any content state.
 - `r` refreshes data where a screen supports it.
 
 The bottom shortcut footer is the authoritative list of keys for the current
-mode. A separate status row reports progress, warnings, and errors.
+mode. A separate status row reports progress, warnings, and errors. On narrow
+or short terminals the tab header compacts while preserving the selected tab;
+Dashboard and History stack their primary panes before secondary details.
+
+## Keyboard reference
+
+| Context | Keys |
+|---|---|
+| Tab bar | Left/Right or `h`/`l`: select tab; Down/`j`, Enter, or Tab: enter content |
+| Any content | Tab or Shift+Tab: tab bar; `q`: quit; Ctrl+C: quit unless text or a confirmation owns input |
+| Lists and previews | Up/Down or `j`/`k`: move; Home/End and PageUp/PageDown where shown |
+| Filesystem browser | Enter: open directory; Space: select/toggle; `:` or `/`: text entry |
+| Refreshable screens | `r`: refresh; Preview and Automation load automatically on first entry when configured |
+| History | Enter: view the selected run's logs; Esc: return from logs |
+
+Focus is explicit: `▶` and underline identify tab/content or nested-control
+focus, while reverse video marks the selected row. Screen titles name modes such
+as Browsing, Editing, Previewing, Confirming, and Running.
 
 ## First-run workflow
 
@@ -43,3 +60,16 @@ deselected beneath a selected directory becomes an anchored ignore rule instead
 of a separate source removal.
 
 For the complete key ownership matrix, see [TUI key transitions](tui-key-transitions.md).
+
+## Namespace workflow
+
+Open **Repository** and press `m` to inspect the active namespace and direct
+repository siblings. Ownership is shown as New, Owned, Invalid, or Ambiguous;
+only New and Owned entries can be selected. Press `n` to create/select a name,
+`r` to rename the active namespace, or `d` to delete it after choosing a
+replacement. Confirmation dialogs show the affected path. Invalid and ambiguous
+namespaces, root-level legacy paths, and siblings remain unmanaged and are
+never adopted or changed.
+
+Changing namespaces invalidates source, ignore, and backup previews. Review the
+new namespace's Sources, Ignore, and Preview before running a backup.
