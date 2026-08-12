@@ -31,7 +31,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   Sources reviews exact additions, removals, and generated ignore rules before
   apply; Ignore names nested focus and preview rule context; Preview has labeled
   counts; the picker identifies callers and offers ASCII-safe icons. **TU11 is
-  next**: add actionable empty, loading, stale, and failure states.
+  complete**: all seven screens now provide actionable non-content states,
+  explicit retry guidance, and guards for actions without valid targets.
+  **TU12 is next**: complete responsive layout behavior.
 - **Milestone 15 is partially complete**: PV01–PV03 provide the GitHub landing
   page, sanitized SVG visual demonstrations, and reorganized user
   documentation. PV04–PV06 remain for the documentation website, public trust
@@ -148,6 +150,15 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- TU11 verified with Rust 1.97.1:
+  - `cargo fmt --check` — clean
+  - `cargo clippy --all-targets --all-features -- -D warnings` — clean
+  - `cargo test --all-targets --all-features -- --test-threads=1` — clean
+  - 930 library tests plus all acceptance, bootstrap, Git workflow, hardening,
+    mirror, and orchestration tests pass.
+  - Non-content displays identify the next step or retry key; unavailable
+    backup, push, source, automation, history-log, and unsafe-namespace actions
+    are guarded and omitted from contextual help.
 - TU10 verified with Rust 1.97.1:
   - `cargo fmt --check` — clean
   - `cargo clippy --all-targets --all-features -- -D warnings` — clean

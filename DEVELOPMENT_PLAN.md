@@ -658,7 +658,7 @@ regression test that demonstrates the current failure.
   and use predictable-width symbols or an ASCII-safe fallback. Add focused,
   empty, populated, warning, and long-path rendering tests.
 
-- [ ] **TU11 - Add actionable empty, loading, stale, and failure states.** Audit
+- [x] **TU11 - Add actionable empty, loading, stale, and failure states.** Audit
   all seven screens and ensure each non-content state explains why data is
   absent, identifies the next valid action, and disables actions without a
   valid target. Load Preview and Automation on first entry when configuration

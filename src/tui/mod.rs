@@ -929,7 +929,17 @@ impl App {
 
         match key.code {
             KeyCode::Char('b') if !self.tasks.is_busy() => {
-                if let Some(ref paths) = self.paths {
+                if self.paths.is_none() {
+                    self.error("Cannot run backup: paths not resolved.");
+                } else if self
+                    .config
+                    .as_ref()
+                    .is_none_or(|config| config.sources.is_empty())
+                {
+                    self.warning(
+                        "Configure a repository and at least one source before backing up.",
+                    );
+                } else if let Some(ref paths) = self.paths {
                     if self.tasks.spawn_backup(paths.clone()) {
                         self.running("Backup in progress...");
                     }
@@ -939,7 +949,11 @@ impl App {
                 true
             }
             KeyCode::Char('c') if !self.tasks.is_busy() => {
-                if let Some(ref paths) = self.paths {
+                if self.paths.is_none() {
+                    self.error("Cannot run check: paths not resolved.");
+                } else if self.config.is_none() {
+                    self.warning("Select and validate a repository before running a check.");
+                } else if let Some(ref paths) = self.paths {
                     if self.tasks.spawn_check(paths.clone()) {
                         self.running("Check in progress...");
                     }
@@ -949,7 +963,9 @@ impl App {
                 true
             }
             KeyCode::Char('p') if !self.tasks.is_busy() => {
-                if let Some(ref paths) = self.paths {
+                if self.config.is_none() {
+                    self.warning("Select and validate a repository before pushing.");
+                } else if let Some(ref paths) = self.paths {
                     if self.tasks.spawn_push(paths.clone()) {
                         self.running("Push in progress...");
                     }
@@ -1194,6 +1210,14 @@ impl App {
 
     /// Sources content key handling.
     fn handle_sources_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
+        if self.sources_screen.mode == screens::sources::Mode::List
+            && key.code == crossterm::event::KeyCode::Char('a')
+            && self.config.is_none()
+        {
+            self.warning("Select and validate a repository before adding sources.");
+            return true;
+        }
+
         // Ensure browser is initialized when in browse mode.
         if self.sources_screen.mode == screens::sources::Mode::Browse {
             if let Some(ref paths) = self.paths {
@@ -1292,7 +1316,15 @@ impl App {
                 true
             }
             screens::preview::Action::RunBackup => {
-                if self.tasks.is_busy() {
+                if self
+                    .config
+                    .as_ref()
+                    .is_none_or(|config| config.sources.is_empty())
+                {
+                    self.warning(
+                        "Configure a repository and at least one source before backing up.",
+                    );
+                } else if self.tasks.is_busy() {
                     self.warning("A task is already running.");
                 } else if let Some(ref paths) = self.paths {
                     if self.tasks.spawn_backup(paths.clone()) {
@@ -1304,7 +1336,9 @@ impl App {
                 true
             }
             screens::preview::Action::Push => {
-                if self.tasks.is_busy() {
+                if self.config.is_none() {
+                    self.warning("Select and validate a repository before pushing.");
+                } else if self.tasks.is_busy() {
                     self.warning("A task is already running.");
                 } else if let Some(ref paths) = self.paths {
                     if self.tasks.spawn_push(paths.clone()) {
@@ -1321,6 +1355,15 @@ impl App {
 
     /// Automation content key handling.
     fn handle_automation_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
+        if matches!(
+            key.code,
+            crossterm::event::KeyCode::Char('i') | crossterm::event::KeyCode::Char('x')
+        ) && self.automation_screen.confirm == screens::automation::ConfirmAction::None
+            && (self.config.is_none() || self.paths.is_none())
+        {
+            self.warning("Select and validate a repository before changing automation.");
+            return true;
+        }
         let action = self.automation_screen.handle_key(key);
         match action {
             screens::automation::Action::Consumed => true,
@@ -1333,15 +1376,19 @@ impl App {
                     && let Some(ref paths) = self.paths
                 {
                     self.automation_screen.install(config, paths.home());
+                    self.invalidate_automation_status();
+                } else {
+                    self.error("Cannot install automation without a validated repository.");
                 }
-                self.invalidate_automation_status();
                 true
             }
             screens::automation::Action::Remove => {
                 if let Some(ref paths) = self.paths {
                     self.automation_screen.remove(paths.home());
+                    self.invalidate_automation_status();
+                } else {
+                    self.error("Cannot remove automation: application paths are unavailable.");
                 }
-                self.invalidate_automation_status();
                 true
             }
             screens::automation::Action::NotConsumed => false,
@@ -3413,6 +3460,41 @@ mod tests {
         // Config has the new source.
         assert_eq!(app.config.as_ref().unwrap().sources.len(), 1);
         assert_eq!(app.config.as_ref().unwrap().sources[0].path, ".config");
+    }
+
+    #[test]
+    fn dashboard_backup_requires_configured_source() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+        let (mut app, _temp) = configured_test_app();
+        app.focus = Focus::Content;
+        app.handle_key_content(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE));
+
+        assert!(
+            app.status_message
+                .as_ref()
+                .is_some_and(|message| message.text.contains("repository and at least one source"))
+        );
+    }
+
+    #[test]
+    fn automation_changes_require_configured_repository() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+        let mut app = test_app();
+        app.active_screen = Screen::Automation;
+        app.focus = Focus::Content;
+        app.handle_key_content(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE));
+
+        assert_eq!(
+            app.automation_screen.confirm,
+            screens::automation::ConfirmAction::None
+        );
+        assert!(
+            app.status_message
+                .as_ref()
+                .is_some_and(|message| message.text.contains("Select and validate a repository"))
+        );
     }
 
     #[test]

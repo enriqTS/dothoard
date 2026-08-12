@@ -209,8 +209,9 @@ impl HistoryScreen {
         use crossterm::event::KeyCode;
 
         match key.code {
-            // Enter log view mode.
-            KeyCode::Enter => Action::ViewLogs,
+            // A log can be opened only for an existing run.
+            KeyCode::Enter if history_len > 0 => Action::ViewLogs,
+            KeyCode::Enter => Action::Consumed,
             // Navigate history list.
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.selected > 0 {
@@ -458,10 +459,18 @@ mod tests {
     }
 
     #[test]
-    fn enter_returns_view_logs_action() {
+    fn enter_returns_view_logs_action_for_selected_run() {
         let mut screen = HistoryScreen::new();
         let result = screen.handle_key(key(KeyCode::Enter), 5);
         assert_eq!(result, Action::ViewLogs);
+    }
+
+    #[test]
+    fn enter_is_disabled_when_history_is_empty() {
+        let mut screen = HistoryScreen::new();
+        let result = screen.handle_key(key(KeyCode::Enter), 0);
+        assert_eq!(result, Action::Consumed);
+        assert_eq!(screen.mode, Mode::History);
     }
 
     #[test]

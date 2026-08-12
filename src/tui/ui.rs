@@ -519,15 +519,20 @@ fn help_bar_content_focus(app: &App) -> Line<'static> {
         ]),
         Screen::Dashboard => {
             let mut spans = vec![Span::styled("Tab", THEME.key()), Span::raw(" tabs  ")];
-            if !app.tasks.is_busy() {
+            if !app.tasks.is_busy() && app.config.is_some() {
                 spans.extend([
-                    Span::styled("b", THEME.key()),
-                    Span::raw(" backup  "),
                     Span::styled("c", THEME.key()),
                     Span::raw(" check  "),
                     Span::styled("p", THEME.key()),
                     Span::raw(" push  "),
                 ]);
+                if app
+                    .config
+                    .as_ref()
+                    .is_some_and(|config| !config.sources.is_empty())
+                {
+                    spans.extend([Span::styled("b", THEME.key()), Span::raw(" backup  ")]);
+                }
             }
             spans.extend([
                 Span::styled("a", THEME.key()),
@@ -544,31 +549,45 @@ fn help_bar_content_focus(app: &App) -> Line<'static> {
         Screen::Repository => help_bar_repository(app),
         Screen::Sources => help_bar_sources(app),
         Screen::Ignore => help_bar_ignore(app),
-        Screen::Preview => Line::from(vec![
-            Span::styled("Tab", Style::default().fg(Color::Cyan)),
-            Span::raw(" tabs  "),
-            Span::styled("r", Style::default().fg(Color::Cyan)),
-            Span::raw(" refresh  "),
-            Span::styled("b", Style::default().fg(Color::Cyan)),
-            Span::raw(" backup  "),
-            Span::styled("p", Style::default().fg(Color::Cyan)),
-            Span::raw(" push  "),
-            Span::styled("↑↓/jk", Style::default().fg(Color::Cyan)),
-            Span::raw(" scroll"),
-        ]),
+        Screen::Preview => {
+            let mut spans = vec![
+                Span::styled("Tab", THEME.key()),
+                Span::raw(" tabs  "),
+                Span::styled("r", THEME.key()),
+                Span::raw(" refresh  "),
+            ];
+            if app.config.is_some() {
+                spans.extend([Span::styled("p", THEME.key()), Span::raw(" push  ")]);
+                if app
+                    .config
+                    .as_ref()
+                    .is_some_and(|config| !config.sources.is_empty())
+                {
+                    spans.extend([Span::styled("b", THEME.key()), Span::raw(" backup  ")]);
+                }
+            }
+            spans.extend([Span::styled("↑↓/jk", THEME.key()), Span::raw(" scroll")]);
+            Line::from(spans)
+        }
         Screen::Automation => {
             use crate::tui::screens::automation::ConfirmAction;
             if app.automation_screen.confirm == ConfirmAction::None {
-                Line::from(vec![
-                    Span::styled("Tab", Style::default().fg(Color::Cyan)),
+                let mut spans = vec![
+                    Span::styled("Tab", THEME.key()),
                     Span::raw(" tabs  "),
-                    Span::styled("r", Style::default().fg(Color::Cyan)),
-                    Span::raw(" refresh  "),
-                    Span::styled("i", Style::default().fg(Color::Cyan)),
-                    Span::raw(" install  "),
-                    Span::styled("x", Style::default().fg(Color::Cyan)),
-                    Span::raw(" remove"),
-                ])
+                    Span::styled("r", THEME.key()),
+                    Span::raw(" refresh"),
+                ];
+                if app.config.is_some() && app.paths.is_some() {
+                    spans.extend([
+                        Span::raw("  "),
+                        Span::styled("i", THEME.key()),
+                        Span::raw(" install  "),
+                        Span::styled("x", THEME.key()),
+                        Span::raw(" remove"),
+                    ]);
+                }
+                Line::from(spans)
             } else {
                 Line::from(vec![
                     Span::styled("Tab", Style::default().fg(Color::Cyan)),
@@ -1462,7 +1481,7 @@ fn draw_automation(frame: &mut Frame, area: Rect, app: &App) {
     match &app.automation_screen.status_state {
         LoadState::NotLoaded => {
             lines.push(dim_line(
-                "  Status not loaded. Entering this screen checks it.",
+                "  Status not loaded. Press r to check automation status.",
             ));
         }
         LoadState::Loading { previous, .. } => {
@@ -1476,14 +1495,16 @@ fn draw_automation(frame: &mut Frame, area: Rect, app: &App) {
         }
         LoadState::Loaded(status) => lines.push(field_line("  Status", status.clone())),
         LoadState::Stale { previous } => {
-            lines.push(dim_line("  Automation status is stale."));
+            lines.push(dim_line(
+                "  Automation status is stale. Press r to refresh.",
+            ));
             if let Some(status) = previous {
                 lines.push(field_line("  Previous", status.clone()));
             }
         }
         LoadState::Failed { error, previous } => {
             lines.push(Line::from(Span::styled(
-                format!("  Status check failed: {error}"),
+                format!("  Status check failed: {error}. Press r to retry."),
                 Style::default().fg(Color::Red),
             )));
             if let Some(status) = previous {
@@ -1559,10 +1580,10 @@ fn draw_preview(frame: &mut Frame, area: Rect, app: &App) {
             Style::default().fg(Color::Yellow),
         ))),
         LoadState::Stale { .. } => {
-            lines.push(dim_line("  Preview is stale."));
+            lines.push(dim_line("  Preview is stale. Press r to refresh."));
         }
         LoadState::Failed { error, .. } => lines.push(Line::from(Span::styled(
-            format!("  Preview failed: {error}"),
+            format!("  Preview failed: {error}. Press r to retry."),
             Style::default().fg(Color::Red),
         ))),
         LoadState::NotLoaded | LoadState::Loaded(_) => {}
@@ -1573,7 +1594,7 @@ fn draw_preview(frame: &mut Frame, area: Rect, app: &App) {
         let message = if app.preview_screen.load_state.is_loading() {
             "  Waiting for the backup planner."
         } else {
-            "  Preview has not been generated."
+            "  Preview has not been generated. Press r to create one."
         };
         lines.push(dim_line(message));
         lines.push(Line::from(""));
@@ -1733,9 +1754,11 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
                 "  Generating ignore preview...",
                 Style::default().fg(Color::Yellow),
             ))),
-            LoadState::Stale { .. } => lines.push(dim_line("  Preview is stale.")),
+            LoadState::Stale { .. } => {
+                lines.push(dim_line("  Preview is stale. Press r to refresh."))
+            }
             LoadState::Failed { error, .. } => lines.push(Line::from(Span::styled(
-                format!("  Preview failed: {error}"),
+                format!("  Preview failed: {error}. Press r to retry."),
                 Style::default().fg(Color::Red),
             ))),
             LoadState::NotLoaded | LoadState::Loaded(_) => {}
@@ -1748,8 +1771,10 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
             app.ignore_screen.set_preview_viewport_height(0);
             let message = if app.ignore_screen.preview_state.is_loading() {
                 "  Waiting for filesystem scan."
+            } else if matches!(app.ignore_screen.preview_state, LoadState::NotLoaded) {
+                "  No preview yet. Press p to scan this source."
             } else {
-                "  No files found."
+                "  No matching files found for this source."
             };
             lines.push(dim_line(message));
         } else {
@@ -1899,7 +1924,7 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
             );
         } else {
             let msg = Paragraph::new(Line::from(Span::styled(
-                " Loading browser...",
+                " Browser is not ready. Press Esc, then a to try again.",
                 Style::default().fg(Color::DarkGray),
             )));
             frame.render_widget(msg, chunks[0]);
@@ -1939,7 +1964,12 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
             THEME.disabled(),
         )));
         lines.push(Line::from(""));
-        lines.push(dim_line("  Add a source to begin backing up files."));
+        let next_step = if app.config.is_some() {
+            "  Press a to add a source and begin backing up files."
+        } else {
+            "  Select and validate a repository before adding sources."
+        };
+        lines.push(dim_line(next_step));
     } else {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
@@ -2197,10 +2227,13 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
                 ))),
                 LoadState::Failed { error, .. } => lines.push(Line::from(vec![
                     Span::raw(" "),
-                    Span::styled(format!("✗ {error}"), Style::default().fg(Color::Red)),
+                    Span::styled(
+                        format!("✗ {error}. Select a directory to retry."),
+                        Style::default().fg(Color::Red),
+                    ),
                 ])),
                 LoadState::Stale { .. } => lines.push(dim_line(
-                    " Repository validation is stale. Select or validate again.",
+                    " Repository validation is stale. Select a directory to validate again.",
                 )),
                 LoadState::NotLoaded => {
                     lines.push(dim_line(" Select an existing Git worktree to validate it."))
@@ -2355,7 +2388,10 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
                 ))),
                 LoadState::Failed { error, .. } => lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled(format!("✗ {error}"), Style::default().fg(Color::Red)),
+                    Span::styled(
+                        format!("✗ {error}. Press Enter to retry."),
+                        Style::default().fg(Color::Red),
+                    ),
                 ])),
                 LoadState::Stale { .. } => {
                     lines.push(dim_line("  Validation is stale. Press Enter to retry."));
@@ -2802,8 +2838,8 @@ mod tests {
 
         let content = buffer_text(terminal.backend());
         assert!(content.contains("Warning: Test status message"));
-        assert!(content.contains("backup"));
-        assert!(content.contains("check"));
+        assert!(content.contains("automation"));
+        assert!(content.contains("repository"));
     }
 
     #[test]
@@ -3627,7 +3663,7 @@ mod tests {
         let backend = TestBackend::new(100, 30);
         let mut terminal = Terminal::new(backend).unwrap();
 
-        let mut app = App::new();
+        let mut app = app_with_state();
         app.focus = crate::tui::Focus::Content;
         app.active_screen = Screen::Dashboard;
 

@@ -355,8 +355,12 @@ impl RepoScreen {
                 KeyResult::Consumed
             }
             (_, KeyCode::Enter) => {
-                if let Some(item) = self.selected_namespace() {
-                    self.begin_namespace(NamespaceAction::SelectOrCreate, &item.name.clone());
+                if let Some(name) = self
+                    .selected_namespace()
+                    .filter(|item| item.ownership.can_proceed())
+                    .map(|item| item.name.clone())
+                {
+                    self.begin_namespace(NamespaceAction::SelectOrCreate, &name);
                 }
                 KeyResult::Consumed
             }
@@ -774,6 +778,22 @@ mod tests {
         screen.handle_key(key(KeyCode::Enter));
         assert_eq!(screen.mode, RepoMode::NamespaceInput);
         assert_eq!(screen.namespace_input, "notebook");
+    }
+
+    #[test]
+    fn namespace_list_does_not_offer_unsafe_entry_for_selection() {
+        let mut screen = RepoScreen::new();
+        screen.namespaces = vec![NamespaceSummary {
+            name: "ambiguous".to_string(),
+            ownership: OwnershipInfo::Ambiguous("missing manifest".to_string()),
+            active: false,
+        }];
+        screen.mode = RepoMode::Namespaces;
+
+        let result = screen.handle_key(key(KeyCode::Enter));
+
+        assert_eq!(result, KeyResult::Consumed);
+        assert_eq!(screen.mode, RepoMode::Namespaces);
     }
 
     #[test]
