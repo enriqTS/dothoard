@@ -107,6 +107,8 @@ pub struct App {
     pub config: Option<crate::config::Config>,
     /// Transient status displayed independently from contextual help.
     pub status_message: Option<status::StatusMessage>,
+    /// Dashboard detail-view state.
+    pub dashboard_screen: screens::dashboard::DashboardScreen,
     /// Repository selection screen state.
     pub repo_screen: screens::repository::RepoScreen,
     /// Sources management screen state.
@@ -159,6 +161,7 @@ impl App {
             state,
             config,
             status_message: None,
+            dashboard_screen: screens::dashboard::DashboardScreen::default(),
             repo_screen,
             sources_screen: screens::sources::SourcesScreen::new(),
             ignore_screen: screens::ignore::IgnoreScreen::new(),
@@ -772,7 +775,8 @@ impl App {
             ),
             Screen::Ignore => self.ignore_screen.mode == screens::ignore::Mode::AddInput,
             Screen::Automation => self.automation_screen.confirm != ConfirmAction::None,
-            Screen::Dashboard | Screen::Preview | Screen::History => false,
+            Screen::Dashboard => self.dashboard_screen.detail.is_some(),
+            Screen::Preview | Screen::History => false,
         }
     }
 
@@ -820,6 +824,13 @@ impl App {
                     if let Some(ref paths) = self.paths {
                         self.repo_screen.ensure_browser(paths.home());
                     }
+                } else if self.active_screen == Screen::Dashboard
+                    && matches!(
+                        self.automation_screen.status_state,
+                        task::LoadState::NotLoaded | task::LoadState::Stale { .. }
+                    )
+                {
+                    self.start_automation_inspection();
                 } else if self.active_screen == Screen::Preview
                     && matches!(
                         self.preview_screen.load_state,
@@ -899,6 +910,13 @@ impl App {
     fn handle_dashboard_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
         use crossterm::event::KeyCode;
 
+        if self.dashboard_screen.detail.is_some() {
+            if key.code == KeyCode::Esc {
+                self.dashboard_screen.close_detail();
+            }
+            return true;
+        }
+
         match key.code {
             KeyCode::Char('b') if !self.tasks.is_busy() => {
                 if let Some(ref paths) = self.paths {
@@ -920,8 +938,71 @@ impl App {
                 }
                 true
             }
+            KeyCode::Char('p') if !self.tasks.is_busy() => {
+                if let Some(ref paths) = self.paths {
+                    if self.tasks.spawn_push(paths.clone()) {
+                        self.running("Push in progress...");
+                    }
+                } else {
+                    self.error("Cannot push: paths not resolved.");
+                }
+                true
+            }
+            KeyCode::Char('a') => {
+                self.active_screen = Screen::Automation;
+                if matches!(
+                    self.automation_screen.status_state,
+                    task::LoadState::NotLoaded | task::LoadState::Stale { .. }
+                ) {
+                    self.start_automation_inspection();
+                }
+                true
+            }
+            KeyCode::Char('r') => {
+                self.active_screen = Screen::Repository;
+                if let Some(ref paths) = self.paths {
+                    self.repo_screen.ensure_browser(paths.home());
+                }
+                true
+            }
+            KeyCode::Char('d') => {
+                if let Some(detail) = self.dashboard_detail() {
+                    self.dashboard_screen.open_detail(detail.0, detail.1);
+                } else {
+                    self.warning("No error, warning, or check issue is available to show.");
+                }
+                true
+            }
             _ => false,
         }
+    }
+
+    fn dashboard_detail(&self) -> Option<(String, String)> {
+        if let Some(check) = &self.last_check
+            && let Some(item) = check.results.iter().find(|item| {
+                matches!(
+                    item.status,
+                    task::CheckItemStatus::Error | task::CheckItemStatus::Warning
+                )
+            })
+        {
+            return Some((
+                format!("Check: {}", item.label),
+                item.detail.clone().unwrap_or_else(|| item.label.clone()),
+            ));
+        }
+        self.state.as_ref().and_then(|state| {
+            state
+                .latest_error
+                .as_ref()
+                .map(|error| ("Latest backup error".to_string(), error.clone()))
+                .or_else(|| {
+                    state
+                        .latest_warning
+                        .as_ref()
+                        .map(|warning| ("Latest backup warning".to_string(), warning.clone()))
+                })
+        })
     }
 
     fn handle_namespace_action(&mut self) {
@@ -1280,6 +1361,7 @@ mod tests {
             state: None,
             config: None,
             status_message: None,
+            dashboard_screen: screens::dashboard::DashboardScreen::default(),
             repo_screen: screens::repository::RepoScreen::new(),
             sources_screen: screens::sources::SourcesScreen::new(),
             ignore_screen: screens::ignore::IgnoreScreen::new(),
@@ -1767,6 +1849,35 @@ mod tests {
             app.handle_key(ctrl_c);
             assert!(!app.should_quit);
         }
+    }
+
+    #[test]
+    fn dashboard_detail_owns_input_and_closes_with_escape() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+        let mut app = test_app();
+        app.focus = Focus::Content;
+        app.last_check = Some(task::CheckResult {
+            healthy: false,
+            results: vec![task::CheckItem {
+                label: "Repository".to_string(),
+                status: task::CheckItemStatus::Error,
+                detail: Some("a complete diagnostic with a long path /one/two/three".to_string()),
+            }],
+        });
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
+        assert_eq!(
+            app.dashboard_screen
+                .detail
+                .as_ref()
+                .map(|detail| detail.value.as_str()),
+            Some("a complete diagnostic with a long path /one/two/three")
+        );
+        app.handle_key(KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE));
+        assert!(!app.should_quit);
+        app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(app.dashboard_screen.detail.is_none());
     }
 
     #[test]
@@ -2585,6 +2696,21 @@ mod tests {
 
         assert!(app.preview_screen.load_state.is_loading());
         assert!(app.tasks.is_load_active(task::LoadTaskKind::BackupPreview));
+    }
+
+    #[test]
+    fn dashboard_starts_automation_inspection_on_first_content_entry() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let (mut app, _temp) = configured_test_app();
+        app.active_screen = Screen::Dashboard;
+
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert!(app.automation_screen.status_state.is_loading());
+        assert!(
+            app.tasks
+                .is_load_active(task::LoadTaskKind::AutomationInspection)
+        );
     }
 
     #[test]

@@ -105,6 +105,21 @@ fn draw_modal_overlay(frame: &mut Frame, area: Rect, app: &App) {
     use crate::tui::task::LoadState;
 
     match app.active_screen {
+        Screen::Dashboard if app.dashboard_screen.detail.is_some() => {
+            let detail = app.dashboard_screen.detail.as_ref().expect("checked above");
+            modal::draw(
+                frame,
+                area,
+                modal::ModalSpec {
+                    title: &detail.title,
+                    affected: None,
+                    consequence: &detail.value,
+                    validation: None,
+                    confirm: "d: details",
+                    cancel: "Esc: close",
+                },
+            );
+        }
         Screen::Repository => {
             if let Some(question) = app.repo_screen.namespace_confirmation.as_deref() {
                 let affected = app.config.as_ref().map(|config| {
@@ -495,21 +510,32 @@ fn help_bar_tab_focus() -> Line<'static> {
 /// Help bar when content has focus.
 fn help_bar_content_focus(app: &App) -> Line<'static> {
     match app.active_screen {
+        Screen::Dashboard if app.dashboard_screen.detail.is_some() => Line::from(vec![
+            Span::styled("Tab", THEME.key()),
+            Span::raw(" tabs  "),
+            Span::styled("Esc", THEME.key()),
+            Span::raw(" close details"),
+        ]),
         Screen::Dashboard => {
-            let mut spans = vec![
-                Span::styled("Tab", Style::default().fg(Color::Cyan)),
-                Span::raw(" tabs  "),
-            ];
+            let mut spans = vec![Span::styled("Tab", THEME.key()), Span::raw(" tabs  ")];
             if !app.tasks.is_busy() {
                 spans.extend([
-                    Span::styled("b", Style::default().fg(Color::Cyan)),
+                    Span::styled("b", THEME.key()),
                     Span::raw(" backup  "),
-                    Span::styled("c", Style::default().fg(Color::Cyan)),
+                    Span::styled("c", THEME.key()),
                     Span::raw(" check  "),
+                    Span::styled("p", THEME.key()),
+                    Span::raw(" push  "),
                 ]);
             }
             spans.extend([
-                Span::styled("q", Style::default().fg(Color::Cyan)),
+                Span::styled("a", THEME.key()),
+                Span::raw(" automation  "),
+                Span::styled("r", THEME.key()),
+                Span::raw(" repository  "),
+                Span::styled("d", THEME.key()),
+                Span::raw(" details  "),
+                Span::styled("q", THEME.key()),
                 Span::raw(" quit"),
             ]);
             Line::from(spans)
@@ -830,119 +856,105 @@ fn draw_dashboard(frame: &mut Frame, area: Rect, app: &App) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    // Split inner area into two columns: status on left, info on right.
-    let columns = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
-        .split(inner);
-
-    draw_dashboard_status(frame, columns[0], app);
-    draw_dashboard_info(frame, columns[1], app);
+    // Primary health is always drawn first. Narrow terminals stack secondary
+    // configuration below it so health and the next action remain visible.
+    if inner.width < 72 {
+        let rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+            .split(inner);
+        draw_dashboard_status(frame, rows[0], app);
+        draw_dashboard_info(frame, rows[1], app);
+    } else {
+        let columns = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
+            .split(inner);
+        draw_dashboard_status(frame, columns[0], app);
+        draw_dashboard_info(frame, columns[1], app);
+    }
 }
 
-/// Left column: backup/push/commit status.
+/// Primary dashboard summaries: health, last success, synchronization,
+/// automation, and the one action that best moves the user forward.
 fn draw_dashboard_status(frame: &mut Frame, area: Rect, app: &App) {
-    let mut lines: Vec<Line> = Vec::new();
+    let mut lines = vec![section_header("Backup Health")];
+    let (health, health_style) = dashboard_health(app);
+    lines.push(Line::from(Span::styled(
+        format!("  {health}"),
+        health_style,
+    )));
+    lines.push(field_line(
+        "  Last successful backup",
+        app.state
+            .as_ref()
+            .and_then(|state| state.last_success.as_ref())
+            .map(format_time)
+            .unwrap_or_else(|| "Never".to_string()),
+    ));
 
-    // Running indicator
-    if app.tasks.is_busy() {
-        let kind = match app.tasks.active_task() {
-            Some(super::task::TaskKind::Backup) => "backup",
-            Some(super::task::TaskKind::Check) => "check",
-            Some(super::task::TaskKind::Push) => "push",
-            None => "task",
-        };
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled("● ", Style::default().fg(Color::Yellow)),
-            Span::styled(
-                format!("Running {kind}..."),
-                Style::default().fg(Color::Yellow),
-            ),
-        ]));
-        lines.push(Line::from(""));
-    }
-
-    // Repository
-    lines.push(section_header("Repository"));
-    if let Some(ref config) = app.config {
-        lines.push(field_line("  Path", config.repository.clone()));
-        lines.push(field_line("  Namespace", config.namespace.clone()));
-        lines.push(field_line("  Remote", config.remote.clone()));
-    } else {
-        lines.push(dim_line("  Not configured"));
-    }
-    lines.push(Line::from(""));
-
-    // Last backup
-    lines.push(section_header("Backup"));
-    if let Some(ref state) = app.state {
-        if let Some(ref ts) = state.last_success {
-            lines.push(field_line("  Last success", format_time(ts)));
+    lines.push(section_header("Remote Synchronization"));
+    let pending_push = app.state.as_ref().is_some_and(|state| state.pending_push);
+    lines.push(Line::from(Span::styled(
+        if pending_push {
+            "  Pending commits need push"
         } else {
-            lines.push(dim_line("  No successful backup yet"));
-        }
-        if let Some(ref ts) = state.last_attempt {
-            lines.push(field_line("  Last attempt", format_time(ts)));
-        }
-    } else {
-        lines.push(dim_line("  No state available"));
-    }
-    lines.push(Line::from(""));
-
-    // Last commit
-    lines.push(section_header("Commit"));
-    if let Some(ref state) = app.state {
-        if let Some(ref sha) = state.last_commit {
-            let short = text::prefix(sha, 8);
-            lines.push(field_line("  Last SHA", short));
+            "  No pending commits"
+        },
+        if pending_push {
+            THEME.warning()
         } else {
-            lines.push(dim_line("  No commits yet"));
-        }
-    } else {
-        lines.push(dim_line("  —"));
-    }
-    lines.push(Line::from(""));
-
-    // Push status
-    lines.push(section_header("Push"));
-    if let Some(ref state) = app.state {
-        if let Some(ref ts) = state.last_push {
-            lines.push(field_line("  Last push", format_time(ts)));
-        }
-        if state.pending_push {
-            lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled(
-                    "⚠ Pending commits not yet pushed",
-                    Style::default().fg(Color::Yellow),
-                ),
-            ]));
-        } else if state.last_push.is_some() {
-            lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled("✓ Up to date", Style::default().fg(Color::Green)),
-            ]));
-        } else {
-            lines.push(dim_line("  No push yet"));
-        }
-    } else {
-        lines.push(dim_line("  —"));
+            THEME.success()
+        },
+    )));
+    if let Some(last_push) = app
+        .state
+        .as_ref()
+        .and_then(|state| state.last_push.as_ref())
+    {
+        lines.push(field_line("  Last push", format_time(last_push)));
     }
 
-    let paragraph = Paragraph::new(lines);
-    frame.render_widget(paragraph, area);
+    lines.push(section_header("Automation Health"));
+    let (automation, automation_style) = dashboard_automation(app);
+    lines.push(Line::from(Span::styled(
+        format!("  {automation}"),
+        automation_style,
+    )));
+
+    lines.push(section_header("Recommended Next Action"));
+    lines.push(Line::from(Span::styled(
+        format!("  {}", dashboard_action(app)),
+        THEME.focused(),
+    )));
+
+    frame.render_widget(Paragraph::new(lines), area);
 }
 
-/// Right column: timer, errors, config summary.
+/// Secondary configuration and diagnostics. All long values are wrapped by
+/// display cells and their full check/error values remain available with `d`.
 fn draw_dashboard_info(frame: &mut Frame, area: Rect, app: &App) {
-    let mut lines: Vec<Line> = Vec::new();
+    let mut lines = vec![section_header("Latest Check")];
+    let (check, check_style) = dashboard_check(app);
+    lines.extend(wrapped_styled_lines(
+        "  ",
+        &check,
+        area.width.saturating_sub(2),
+        check_style,
+    ));
+    lines.push(Line::from(""));
 
-    // Timer / automation
-    lines.push(section_header("Automation"));
-    if let Some(ref config) = app.config {
+    lines.push(section_header("Repository Details"));
+    if let Some(config) = &app.config {
+        lines.extend(wrapped_field_lines(
+            "  Path",
+            &config.repository,
+            area.width,
+        ));
+        lines.push(field_line("  Namespace", config.namespace.clone()));
+        lines.push(field_line("  Sources", config.sources.len().to_string()));
         lines.push(field_line(
-            "  Interval",
+            "  Schedule",
             format!("{} min", config.interval_minutes),
         ));
         lines.push(field_line(
@@ -950,53 +962,203 @@ fn draw_dashboard_info(frame: &mut Frame, area: Rect, app: &App) {
             format!("{}s", config.network_timeout_seconds),
         ));
     } else {
-        lines.push(dim_line("  Not configured"));
+        lines.push(dim_line("  No repository configured. Press r to begin."));
     }
     lines.push(Line::from(""));
 
-    // Sources
-    lines.push(section_header("Sources"));
-    if let Some(ref config) = app.config {
-        if config.sources.is_empty() {
-            lines.push(dim_line("  No sources configured"));
+    lines.push(section_header("Latest Issue"));
+    if let Some((issue, style)) = dashboard_issue(app) {
+        lines.extend(wrapped_styled_lines(
+            "  ",
+            &issue,
+            area.width.saturating_sub(2),
+            style,
+        ));
+        lines.push(dim_line("  Press d for complete details."));
+    } else {
+        lines.push(Line::from(Span::styled(
+            "  No issues reported",
+            THEME.success(),
+        )));
+    }
+
+    frame.render_widget(Paragraph::new(lines), area);
+}
+
+fn dashboard_health(app: &App) -> (&'static str, Style) {
+    if app.config.is_none() {
+        return ("UNCONFIGURED — repository setup required", THEME.warning());
+    }
+    if app.tasks.active_task() == Some(super::task::TaskKind::Backup) {
+        return ("RUNNING — backup in progress", THEME.progress());
+    }
+    if app
+        .state
+        .as_ref()
+        .is_some_and(|state| state.latest_error.is_some())
+        || app.last_check.as_ref().is_some_and(|check| !check.healthy)
+    {
+        return ("NEEDS ATTENTION — review the latest issue", THEME.error());
+    }
+    if app
+        .state
+        .as_ref()
+        .and_then(|state| state.last_success.as_ref())
+        .is_none()
+    {
+        return ("NO SUCCESSFUL BACKUP YET", THEME.warning());
+    }
+    ("HEALTHY", THEME.success())
+}
+
+fn dashboard_automation(app: &App) -> (String, Style) {
+    use crate::tui::task::LoadState;
+    match &app.automation_screen.status_state {
+        LoadState::Loaded(status) => {
+            let style = if status == "active" {
+                THEME.success()
+            } else {
+                THEME.warning()
+            };
+            (status.clone(), style)
+        }
+        LoadState::Loading { .. } => ("Checking automation status…".to_string(), THEME.progress()),
+        LoadState::Stale {
+            previous: Some(status),
+        } => (format!("Stale: {status}"), THEME.warning()),
+        LoadState::Stale { previous: None } | LoadState::NotLoaded => (
+            "Unavailable — not inspected yet (press a)".to_string(),
+            THEME.warning(),
+        ),
+        LoadState::Failed { error, previous } => (
+            previous.as_ref().map_or_else(
+                || format!("Unavailable: {error}"),
+                |status| format!("Unavailable: {error}; previous {status}"),
+            ),
+            THEME.error(),
+        ),
+    }
+}
+
+fn dashboard_check(app: &App) -> (String, Style) {
+    if app.tasks.active_task() == Some(super::task::TaskKind::Check) {
+        return ("Checking repository…".to_string(), THEME.progress());
+    }
+    let Some(check) = &app.last_check else {
+        return if app.config.is_some() {
+            ("Unavailable — run check (c)".to_string(), THEME.warning())
         } else {
-            for (i, src) in config.sources.iter().enumerate().take(6) {
-                if i == 5 && config.sources.len() > 6 {
-                    lines.push(dim_line(format!(
-                        "  ...and {} more",
-                        config.sources.len() - 5
-                    )));
-                    break;
-                }
-                lines.push(field_line("  ", src.path.clone()));
+            (
+                "Unavailable — configure repository first".to_string(),
+                THEME.warning(),
+            )
+        };
+    };
+    if check.healthy {
+        ("All checks passed".to_string(), THEME.success())
+    } else if let Some(item) = first_check_issue(check) {
+        (
+            format!(
+                "{}: {}",
+                item.label,
+                item.detail.as_deref().unwrap_or("needs attention")
+            ),
+            THEME.error(),
+        )
+    } else {
+        (
+            "Checks reported an unspecified issue".to_string(),
+            THEME.error(),
+        )
+    }
+}
+
+fn dashboard_issue(app: &App) -> Option<(String, Style)> {
+    if let Some(check) = &app.last_check
+        && let Some(item) = first_check_issue(check)
+    {
+        return Some((
+            format!(
+                "{}: {}",
+                item.label,
+                item.detail.as_deref().unwrap_or("needs attention")
+            ),
+            THEME.error(),
+        ));
+    }
+    app.state.as_ref().and_then(|state| {
+        state
+            .latest_error
+            .as_ref()
+            .map(|error| (error.clone(), THEME.error()))
+            .or_else(|| {
+                state
+                    .latest_warning
+                    .as_ref()
+                    .map(|warning| (warning.clone(), THEME.warning()))
+            })
+    })
+}
+
+fn first_check_issue(check: &super::task::CheckResult) -> Option<&super::task::CheckItem> {
+    check
+        .results
+        .iter()
+        .find(|item| item.status == super::task::CheckItemStatus::Error)
+        .or_else(|| {
+            check
+                .results
+                .iter()
+                .find(|item| item.status == super::task::CheckItemStatus::Warning)
+        })
+}
+
+fn dashboard_action(app: &App) -> &'static str {
+    if app.config.is_none() {
+        "Configure repository (r)"
+    } else if app
+        .state
+        .as_ref()
+        .is_some_and(|state| state.latest_error.is_some())
+        || app.last_check.as_ref().is_some_and(|check| !check.healthy)
+    {
+        "Run a check (c)"
+    } else if app.state.as_ref().is_some_and(|state| state.pending_push) {
+        "Push pending commits (p)"
+    } else if !matches!(app.automation_screen.status_state, super::task::LoadState::Loaded(ref status) if status == "active")
+    {
+        "Review automation (a)"
+    } else {
+        "No action needed — run backup when ready (b)"
+    }
+}
+
+fn wrapped_styled_lines(prefix: &str, value: &str, width: u16, style: Style) -> Vec<Line<'static>> {
+    let width = usize::from(width).saturating_sub(prefix.len()).max(1);
+    text::wrap(value, width)
+        .into_iter()
+        .map(|line| {
+            Line::from(vec![
+                Span::raw(prefix.to_string()),
+                Span::styled(line, style),
+            ])
+        })
+        .collect()
+}
+
+fn wrapped_field_lines(label: &'static str, value: &str, width: u16) -> Vec<Line<'static>> {
+    let available = usize::from(width).saturating_sub(label.len() + 4).max(1);
+    text::wrap(value, available)
+        .into_iter()
+        .enumerate()
+        .map(|(index, line)| {
+            if index == 0 {
+                field_line(label, line)
+            } else {
+                Line::from(Span::raw(format!("    {line}")))
             }
-        }
-    } else {
-        lines.push(dim_line("  —"));
-    }
-    lines.push(Line::from(""));
-
-    // Latest error
-    lines.push(section_header("Latest Error"));
-    if let Some(ref state) = app.state {
-        if let Some(ref err) = state.latest_error {
-            let display = text::truncate(err, 60);
-            lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled(display, Style::default().fg(Color::Red)),
-            ]));
-        } else {
-            lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled("None", Style::default().fg(Color::Green)),
-            ]));
-        }
-    } else {
-        lines.push(dim_line("  —"));
-    }
-
-    let paragraph = Paragraph::new(lines);
-    frame.render_widget(paragraph, area);
+        })
+        .collect()
 }
 
 /// Create a section header line.
@@ -2283,9 +2445,9 @@ mod tests {
             .iter()
             .map(|cell| cell.symbol().chars().next().unwrap_or(' '))
             .collect();
-        assert!(content.contains("Repository"));
-        assert!(content.contains("Backup"));
-        assert!(content.contains("Commit"));
+        assert!(content.contains("Backup Health"));
+        assert!(content.contains("Remote Synchronization"));
+        assert!(content.contains("Automation Health"));
     }
 
     #[test]
@@ -2390,7 +2552,89 @@ mod tests {
             .iter()
             .map(|cell| cell.symbol().chars().next().unwrap_or(' '))
             .collect();
-        assert!(content.contains("Running backup"));
+        assert!(content.contains("RUNNING — backup in progress"));
+    }
+
+    #[test]
+    fn dashboard_prioritizes_health_check_automation_and_next_action() {
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = app_with_state();
+        app.state.as_mut().unwrap().pending_push = true;
+        app.last_check = Some(task::CheckResult {
+            healthy: false,
+            results: vec![
+                task::CheckItem {
+                    label: "Remote".to_string(),
+                    status: task::CheckItemStatus::Warning,
+                    detail: Some("remote is slow".to_string()),
+                },
+                task::CheckItem {
+                    label: "Repository".to_string(),
+                    status: task::CheckItemStatus::Error,
+                    detail: Some("repository needs repair".to_string()),
+                },
+            ],
+        });
+        app.automation_screen.status_state = task::LoadState::Loaded("active".to_string());
+
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("Backup Health"));
+        assert!(content.contains("Last successful backup"));
+        assert!(content.contains("Pending commits need push"));
+        assert!(content.contains("Automation Health"));
+        assert!(content.contains("Repository: repository needs repair"));
+        assert!(content.contains("Run a check (c)"));
+    }
+
+    #[test]
+    fn dashboard_unconfigured_and_narrow_layout_keep_primary_action_visible() {
+        let backend = TestBackend::new(40, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = app_on(Screen::Dashboard);
+
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("Backup Health"));
+        assert!(content.contains("UNCONFIGURED"));
+        assert!(content.contains("Configure repository (r)"));
+    }
+
+    #[test]
+    fn dashboard_distinguishes_check_and_automation_unavailable_states() {
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = app_with_state();
+        app.automation_screen.status_state = task::LoadState::Failed {
+            error: "user manager unavailable".to_string(),
+            previous: None,
+        };
+        app.tasks.active = Some(task::TaskKind::Check);
+
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("Checking repository"));
+        assert!(content.contains("Unavailable: user manager unavailable"));
+    }
+
+    #[test]
+    fn dashboard_detail_modal_keeps_complete_unicode_issue_available() {
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut app = app_on(Screen::Dashboard);
+        app.dashboard_screen.open_detail(
+            "Check: repository",
+            "Complete issue: /very/long/界/path remains available without truncation.",
+        );
+
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        let content = buffer_text(terminal.backend());
+        assert!(content.contains("Check: repository"));
+        assert!(content.contains("Complete issue:"));
+        assert!(content.contains("very/long"));
+        assert!(content.contains("path remains available"));
+        assert!(content.contains("Esc: close"));
     }
 
     /// Status feedback and contextual help remain visible at the same time.

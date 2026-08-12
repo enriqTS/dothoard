@@ -4,6 +4,7 @@
 //! provides has a module here that manages input, validation, and interaction.
 
 pub mod automation;
+pub mod dashboard;
 pub mod history;
 pub mod ignore;
 pub mod preview;
