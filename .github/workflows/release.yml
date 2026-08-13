@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+    env:
+      TARGET: x86_64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+      - run: cargo test --all-targets --all-features -- --test-threads=1
+      - run: cargo build --release
+
+      - name: Package release archive
+        run: |
+          set -euo pipefail
+          NAME="dothoard-${GITHUB_REF_NAME}-${TARGET}"
+          mkdir -p "dist/${NAME}"
+          cp target/release/dothoard "dist/${NAME}/"
+          cp README.md LICENSE "dist/${NAME}/"
+          tar -C dist -czf "dist/${NAME}.tar.gz" "${NAME}"
+          (cd dist && sha256sum "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256")
+
+      - name: Draft GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.tar.gz.sha256
+          draft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true

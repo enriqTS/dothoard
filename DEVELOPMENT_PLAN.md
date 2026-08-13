@@ -762,6 +762,14 @@ its release readiness is explicitly established.
   and safety statements against the implementation. Confirm that a new visitor
   can understand the project and first-run path from the first page, and that
   the documentation site builds successfully.
+- [x] **PV07 - Automate release builds and provide an install script.** Add a
+  tag-triggered GitHub Actions workflow that repeats the CI quality baseline,
+  builds an x86_64 Linux binary, and uploads it with a checksum as a draft
+  Release for a maintainer to finish and publish. Add `scripts/install.sh`, a
+  POSIX-sh curl-pipeable installer that detects platform, downloads and
+  checksum-verifies the requested (default latest) release, and installs to
+  `$INSTALL_DIR` (default `~/.local/bin`). Update the README and
+  `docs/quick-start.md`/`docs/releases.md`/`docs/development.md` accordingly.
 
 **Milestone gate:** The GitHub page and documentation website clearly explain
 what dothoard does, who it is for, how to try it, and why its safety model is

@@ -54,7 +54,14 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   fixed:** source and its current dependency graph require Rust 1.97.1; Cargo
   metadata, documentation, and CI now use that verified toolchain. The site
   homepage intentionally uses Starlight's splash template; its action links
-  are explicitly rooted at `/dothoard/` for GitHub Pages.
+  are explicitly rooted at `/dothoard/` for GitHub Pages. **PV07 is complete**:
+  `.github/workflows/release.yml` builds and quality-gates a tag-triggered
+  (`v*`) x86_64 Linux release and drafts a GitHub Release with a checksum for
+  a maintainer to finish and publish; `scripts/install.sh` is a curl-pipeable
+  installer that verifies the checksum before installing. README,
+  quick-start, releases, and development docs describe both. PV06 remains the
+  only open item in Milestone 15 (manual GitHub Pages activation and visual
+  review).
 
 ## Durable Decisions
 
@@ -164,6 +171,15 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   `.`/`..`, absolute paths, and other characters are rejected. Configuration
   schema version 2 adds the required `namespace` field; old configuration can
   deserialize only to report validation errors and has no automatic migration.
+- Release builds target only `x86_64-unknown-linux-gnu`, matching the
+  currently supported platforms. The release workflow (tag push matching
+  `v*`) reruns the full CI quality baseline, then uploads the binary and a
+  `.sha256` checksum as a **draft** GitHub Release; a maintainer edits the
+  notes to the documented pre-release format and publishes it, which is also
+  what makes it visible to anonymous GitHub API requests and
+  `scripts/install.sh`. The installer defaults `INSTALL_DIR` to
+  `~/.local/bin` (no sudo) and verifies the published checksum before
+  installing.
 
 ## Verification
 
@@ -345,6 +361,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - `docs/safety.md` — safety model, limitations, conflict recovery
 - `Makefile` — build, install, test targets
 - `scripts/build-release.sh` — full quality + release build script
+- `scripts/install.sh` — curl-pipeable release installer with checksum
+  verification
+- `.github/workflows/release.yml` — tag-triggered quality-gated release build
 - `tests/acceptance.rs` — 18 tests covering all V1 acceptance criteria
 
 ## Deferred Work

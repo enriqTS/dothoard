@@ -50,13 +50,26 @@ must be rotated.
 
 ## Five-minute quick start
 
-1. **Install prerequisites:** Rust 1.97+, Git, and a systemd user session.
+1. **Install prerequisites:** Git and a systemd user session (plus Rust 1.97+
+   if building from source).
 2. **Create or clone a dedicated Git repository**—do not share it with another
    project.
-3. **Install dothoard and open the TUI:**
+3. **Install dothoard.** Download a prebuilt binary (pre-release; see the
+   [release policy](docs/releases.md)):
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/enriqTS/dothoard/main/scripts/install.sh | sh
+   ```
+
+   Or build from source with Rust 1.97+:
 
    ```bash
    cargo install --path .
+   ```
+
+   Then open the TUI:
+
+   ```bash
    dothoard
    ```
 

@@ -6,11 +6,25 @@ you review the repository, namespace, sources, and preview before a backup.
 ## Prerequisites
 
 - CachyOS or Arch Linux (the currently supported platforms)
-- Rust 1.97 or newer
 - Git in `PATH`
 - A working `systemd --user` session
+- Rust 1.97 or newer, only if building from source
 
-Install from a source checkout:
+## Install
+
+Download a prebuilt binary from the latest [GitHub Release](https://github.com/enriqTS/dothoard/releases)
+(pre-release; see [Experimental releases](releases.md)):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/enriqTS/dothoard/main/scripts/install.sh | sh
+dothoard --version
+```
+
+The script installs to `~/.local/bin` by default; set `INSTALL_DIR` to change
+that, or `VERSION` to pin a specific release tag. It only supports x86_64
+Linux; other platforms must build from source.
+
+Or build from a source checkout:
 
 ```bash
 cargo install --path .

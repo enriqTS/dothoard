@@ -41,3 +41,14 @@ restricted staging, and noninteractive process execution—are defined in
 
 See [Contributing](contributing.md) for the contribution workflow and
 [Experimental releases](releases.md) for the pre-release and AUR policy.
+
+## Cutting a release
+
+Pushing a tag matching `v*` (for example `v1.1.0-alpha.2`) triggers
+`.github/workflows/release.yml`, which runs the full quality baseline above,
+builds an x86_64 Linux binary, and uploads it with a checksum as a **draft**
+GitHub Release. Edit the draft's generated notes to cover the fields listed in
+[Experimental releases](releases.md#pre-release-policy) — version, commit,
+date, user-visible changes, supported platforms, verification performed, and
+upgrade notes — then publish it. Until it is published, the release is not
+visible to `scripts/install.sh` or anonymous API requests.
