@@ -162,7 +162,12 @@ impl App {
         };
         if let Some(ref c) = config {
             repo_screen.set_namespace(&c.namespace);
+        } else if let Some(ref app_paths) = paths {
+            // First run starts directly in repository setup. Namespace selection
+            // follows repository validation so existing manifests can be listed.
+            repo_screen.ensure_browser(app_paths.home());
         }
+        let first_run = config.is_none();
 
         if let Some(id) = paths
             .as_ref()
@@ -172,8 +177,16 @@ impl App {
         }
 
         Self {
-            focus: Focus::TabBar,
-            active_screen: Screen::Dashboard,
+            focus: if first_run {
+                Focus::Content
+            } else {
+                Focus::TabBar
+            },
+            active_screen: if first_run {
+                Screen::Repository
+            } else {
+                Screen::Dashboard
+            },
             should_quit: false,
             tasks: task::TaskManager::new(),
             last_backup: None,
@@ -362,11 +375,17 @@ impl App {
                                 .config
                                 .as_ref()
                                 .map(|config| config.namespace.clone())
-                                .unwrap_or_else(|| self.repo_screen.namespace_input.clone());
+                                .unwrap_or_default();
                             let _ = self
                                 .repo_screen
                                 .refresh_namespaces(&info.path, &active_namespace);
-                            if info.ownership.needs_confirmation() {
+                            if self.config.is_none() {
+                                // A fresh installation must choose or create a namespace after
+                                // selecting the repository; no machine name is inferred.
+                                self.repo_screen.confirm_state =
+                                    screens::repository::ConfirmState::None;
+                                self.repo_screen.mode = screens::repository::RepoMode::Namespaces;
+                            } else if info.ownership.needs_confirmation() {
                                 self.repo_screen.confirm_state = match info.ownership {
                                     screens::repository::OwnershipInfo::New => {
                                         screens::repository::ConfirmState::AskInitialize
@@ -1128,7 +1147,11 @@ impl App {
             self.error("Cannot manage namespace: paths not resolved.");
             return;
         };
-        let Some(mut config) = self.config.clone() else {
+        let mut config = if let Some(config) = self.config.clone() {
+            config
+        } else if let Some(info) = self.repo_screen.validation.data() {
+            crate::config::Config::new(info.path.display().to_string(), requested.clone())
+        } else {
             self.warning("Select a repository first, then choose its namespace.");
             self.repo_screen.mode = screens::repository::RepoMode::Browser;
             return;
@@ -1178,7 +1201,12 @@ impl App {
         };
         match result {
             Ok(_) => {
+                let source_count = config.sources.len();
                 self.config = Some(config);
+                self.sources_screen.selection = None;
+                self.sources_screen.selected = 0;
+                self.ignore_screen.source_idx = 0;
+                self.ignore_screen.pattern_idx = 0;
                 self.repo_screen.set_namespace(&requested);
                 let _ = self.repo_screen.refresh_namespaces(&repository, &requested);
                 self.repo_screen.namespace_action = screens::repository::NamespaceAction::None;
@@ -1186,7 +1214,9 @@ impl App {
                 self.invalidate_repository_validation();
                 self.invalidate_dependent_previews();
                 self.invalidate_automation_status();
-                self.success(format!("Active namespace: {requested}"));
+                self.success(format!(
+                    "Active namespace: {requested} ({source_count} sources active)"
+                ));
             }
             Err(e) => self.error(format!("Namespace operation failed: {e}")),
         }
@@ -1203,7 +1233,7 @@ impl App {
                 .config
                 .as_ref()
                 .map(|c| c.namespace.as_str())
-                .unwrap_or("desktop");
+                .unwrap_or("");
             match key.code {
                 KeyCode::Char('m') => {
                     if let Some(config) = &self.config

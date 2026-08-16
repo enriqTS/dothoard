@@ -6,8 +6,9 @@
 //! - A portable description of the backed-up sources and their ignore rules.
 //! - A format-versioned schema for forward compatibility.
 //!
-//! The local configuration remains authoritative for operation. The manifest
-//! is not applied without review — it describes what was last backed up.
+//! Selecting an owned namespace validates and copies this portable source
+//! selection into local configuration. Later local edits remain authoritative
+//! until a successful backup updates the manifest.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};

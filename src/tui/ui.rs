@@ -2506,13 +2506,19 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
             lines.push(Line::from(""));
             if app.repo_screen.namespaces.is_empty() {
                 lines.push(dim_line(
-                    "  No repository selected. Create a namespace after selecting a repository.",
+                    "  No namespaces found. Press n to create the first one.",
                 ));
             }
             for (index, item) in app.repo_screen.namespaces.iter().enumerate() {
                 let selected = index == app.repo_screen.namespace_selected;
                 let marker = if selected { "▶" } else { " " };
-                let active = if item.active { " active" } else { " sibling" };
+                let active = if item.active {
+                    " active"
+                } else if app.config.is_some() {
+                    " sibling"
+                } else {
+                    " available"
+                };
                 let state_style = match item.ownership {
                     crate::tui::screens::repository::OwnershipInfo::New => {
                         theme::current().warning()

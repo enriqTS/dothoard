@@ -102,6 +102,8 @@ pub fn select(
     require_usable(namespace, &state)?;
     let mut updated = config.clone();
     updated.namespace = namespace.to_string();
+    updated.sources = sources_from_ownership(repository, namespace, &state)?;
+    validate_restored_config(namespace, &updated)?;
     updated.save(config_path)?;
     *config = updated;
     Ok(state)
@@ -192,6 +194,8 @@ pub fn delete(
 
     let mut updated = config.clone();
     updated.namespace = replacement_namespace.to_string();
+    updated.sources = sources_from_ownership(repository, replacement_namespace, &replacement)?;
+    validate_restored_config(replacement_namespace, &updated)?;
     updated.save(config_path)?;
     *config = updated;
 
@@ -205,6 +209,44 @@ fn validate_name(namespace: &str) -> Result<(), NamespaceError> {
         namespace: namespace.to_string(),
         reason: error.to_string(),
     })
+}
+
+fn sources_from_ownership(
+    repository: &Path,
+    namespace: &str,
+    state: &OwnershipState,
+) -> Result<Vec<crate::config::SourceConfig>, NamespaceError> {
+    if !matches!(state, OwnershipState::Owned { .. }) {
+        return Ok(Vec::new());
+    }
+    let manifest = Manifest::load_from_directory(&mapping::namespace_dir(repository, namespace))?;
+    Ok(manifest
+        .sources
+        .into_iter()
+        .map(|source| crate::config::SourceConfig {
+            path: source.path,
+            ignore: source.ignore,
+        })
+        .collect())
+}
+
+fn validate_restored_config(namespace: &str, config: &Config) -> Result<(), NamespaceError> {
+    let errors = config.validate();
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(NamespaceError::Ownership {
+            namespace: namespace.to_string(),
+            reason: format!(
+                "manifest source configuration is invalid: {}",
+                errors
+                    .into_iter()
+                    .map(|error| error.to_string())
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ),
+        })
+    }
 }
 
 fn require_usable(namespace: &str, state: &OwnershipState) -> Result<(), NamespaceError> {

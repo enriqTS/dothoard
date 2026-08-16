@@ -144,10 +144,10 @@ impl RepoScreen {
             validation: LoadState::NotLoaded,
             confirm_state: ConfirmState::None,
             selection_error: None,
-            namespace_input: "desktop".to_string(),
-            namespace_cursor: 7,
+            namespace_input: String::new(),
+            namespace_cursor: 0,
             namespace_action: NamespaceAction::None,
-            namespace_origin: "desktop".to_string(),
+            namespace_origin: String::new(),
             namespace_confirmation: None,
             namespaces: Vec::new(),
             namespace_selected: 0,
@@ -165,10 +165,10 @@ impl RepoScreen {
             validation: LoadState::NotLoaded,
             confirm_state: ConfirmState::None,
             selection_error: None,
-            namespace_input: "desktop".to_string(),
-            namespace_cursor: 7,
+            namespace_input: String::new(),
+            namespace_cursor: 0,
             namespace_action: NamespaceAction::None,
-            namespace_origin: "desktop".to_string(),
+            namespace_origin: String::new(),
             namespace_confirmation: None,
             namespaces: Vec::new(),
             namespace_selected: 0,
@@ -218,7 +218,8 @@ impl RepoScreen {
                 ownership,
             });
         }
-        if !namespaces.iter().any(|item| item.name == active) {
+        if validate_namespace(active).is_ok() && !namespaces.iter().any(|item| item.name == active)
+        {
             namespaces.push(NamespaceSummary {
                 name: active.to_string(),
                 ownership: OwnershipInfo::New,
@@ -622,9 +623,15 @@ impl RepoScreen {
         let runner = GitRunner::new(std::time::Duration::from_secs(u64::from(timeout_seconds)));
         let info = validate_repository(&runner, &expanded, remote)
             .map_err(|e| format!("Not a valid repository: {e}"))?;
-        let state = classify_ownership(&expanded, namespace)
-            .map_err(|e| format!("Failed to classify ownership: {e}"))?;
-        let ownership = ownership_info(state);
+        let ownership = if namespace.is_empty() {
+            // First-run repository validation intentionally precedes namespace
+            // selection so the repository's owned namespaces can be listed.
+            OwnershipInfo::New
+        } else {
+            let state = classify_ownership(&expanded, namespace)
+                .map_err(|e| format!("Failed to classify ownership: {e}"))?;
+            ownership_info(state)
+        };
 
         Ok(RepoInfo {
             path: expanded,

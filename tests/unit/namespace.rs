@@ -36,6 +36,72 @@ fn create_requires_confirmation_and_rejects_collisions() {
 }
 
 #[test]
+fn selecting_owned_namespace_restores_manifest_sources_and_ignores() {
+    let tmp = tempfile::tempdir().unwrap();
+    let config_path = tmp.path().join("config.toml");
+    let mut config = config(tmp.path(), "desktop");
+    config.sources = vec![SourceConfig {
+        path: ".config/desktop".to_string(),
+        ignore: vec!["cache/".to_string()],
+    }];
+
+    let notebook = tmp.path().join("notebook");
+    fs::create_dir_all(notebook.join("home")).unwrap();
+    let expected = vec![SourceConfig {
+        path: ".config/fish".to_string(),
+        ignore: vec!["fish_variables".to_string(), "completions/".to_string()],
+    }];
+    Manifest::from_sources("notebook", &expected)
+        .save(&notebook)
+        .unwrap();
+
+    select(&config_path, &mut config, tmp.path(), "notebook").unwrap();
+
+    assert_eq!(config.namespace, "notebook");
+    assert_eq!(config.sources, expected);
+    assert_eq!(Config::load(&config_path).unwrap().sources, expected);
+}
+
+#[test]
+fn selecting_owned_namespace_refuses_invalid_manifest_sources() {
+    let tmp = tempfile::tempdir().unwrap();
+    let config_path = tmp.path().join("config.toml");
+    let mut config = config(tmp.path(), "desktop");
+    let notebook = tmp.path().join("notebook");
+    fs::create_dir_all(notebook.join("home")).unwrap();
+    Manifest::from_sources(
+        "notebook",
+        &[SourceConfig {
+            path: "../outside".to_string(),
+            ignore: vec![],
+        }],
+    )
+    .save(&notebook)
+    .unwrap();
+
+    let result = select(&config_path, &mut config, tmp.path(), "notebook");
+
+    assert!(matches!(result, Err(NamespaceError::Ownership { .. })));
+    assert_eq!(config.namespace, "desktop");
+}
+
+#[test]
+fn selecting_new_namespace_clears_previous_namespace_sources() {
+    let tmp = tempfile::tempdir().unwrap();
+    let config_path = tmp.path().join("config.toml");
+    let mut config = config(tmp.path(), "desktop");
+    config.sources = vec![SourceConfig {
+        path: ".config/desktop".to_string(),
+        ignore: vec![],
+    }];
+
+    select(&config_path, &mut config, tmp.path(), "notebook").unwrap();
+
+    assert_eq!(config.namespace, "notebook");
+    assert!(config.sources.is_empty());
+}
+
+#[test]
 fn select_refuses_ambiguous_and_persists_usable_namespace() {
     let tmp = tempfile::tempdir().unwrap();
     let config_path = tmp.path().join("config.toml");
@@ -136,8 +202,19 @@ fn delete_requires_replacement_and_only_removes_owned_paths() {
         delete(&config_path, &mut config, tmp.path(), "desktop", true),
         Err(NamespaceError::ReplacementRequired)
     ));
+    config.sources = vec![SourceConfig {
+        path: ".config/desktop".to_string(),
+        ignore: vec![],
+    }];
     delete(&config_path, &mut config, tmp.path(), "notebook", true).unwrap();
     assert_eq!(config.namespace, "notebook");
+    assert_eq!(
+        config.sources,
+        vec![SourceConfig {
+            path: ".bashrc".to_string(),
+            ignore: vec![],
+        }]
+    );
     assert!(!tmp.path().join("desktop/home").exists());
     assert!(!tmp.path().join("desktop/.dothoard-manifest.toml").exists());
     assert_eq!(

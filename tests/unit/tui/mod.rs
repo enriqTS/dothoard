@@ -1241,6 +1241,80 @@ fn source_add_failure_keeps_error_message() {
 // --- TU04: slow work must not complete inline ---
 
 #[test]
+fn first_run_repository_validation_opens_namespace_selection() {
+    let (mut app, temp) = configured_test_app();
+    app.config = None;
+    app.repo_screen.namespace_input.clear();
+    let request_id = app
+        .tasks
+        .spawn_repository_validation(
+            String::new(),
+            temp.path().to_path_buf(),
+            String::new(),
+            "origin".to_string(),
+            120,
+        )
+        .unwrap();
+    app.repo_screen.validation.begin(request_id, false);
+    app.tasks
+        .sender
+        .send(task::TaskResult::RepositoryValidation {
+            request_id,
+            result: Ok(screens::repository::RepoInfo {
+                path: temp.path().join("repo"),
+                branch: "main".to_string(),
+                ownership: screens::repository::OwnershipInfo::New,
+            }),
+        })
+        .unwrap();
+
+    std::fs::create_dir_all(temp.path().join("repo")).unwrap();
+    app.poll_tasks();
+
+    assert_eq!(
+        app.repo_screen.mode,
+        screens::repository::RepoMode::Namespaces
+    );
+    assert_eq!(
+        app.repo_screen.confirm_state,
+        screens::repository::ConfirmState::None
+    );
+}
+
+#[test]
+fn first_run_namespace_selection_restores_sources_from_manifest() {
+    let (mut app, temp) = configured_test_app();
+    app.config = None;
+    let repository = temp.path().join("repo");
+    let namespace = repository.join("notebook");
+    std::fs::create_dir_all(namespace.join("home")).unwrap();
+    crate::backup::manifest::Manifest::from_sources(
+        "notebook",
+        &[crate::config::SourceConfig {
+            path: ".config/fish".to_string(),
+            ignore: vec!["fish_variables".to_string()],
+        }],
+    )
+    .save(&namespace)
+    .unwrap();
+    app.repo_screen.validation = task::LoadState::Loaded(screens::repository::RepoInfo {
+        path: repository,
+        branch: "main".to_string(),
+        ownership: screens::repository::OwnershipInfo::New,
+    });
+    app.repo_screen.namespace_action = screens::repository::NamespaceAction::SelectOrCreate;
+    app.repo_screen.namespace_input = "notebook".to_string();
+
+    app.handle_namespace_action();
+
+    let config = app.config.expect("first-run configuration");
+    assert_eq!(config.namespace, "notebook");
+    assert_eq!(config.sources.len(), 1);
+    assert_eq!(config.sources[0].path, ".config/fish");
+    assert_eq!(config.sources[0].ignore, vec!["fish_variables"]);
+}
+
+#[test]
 fn repository_validation_does_not_run_inline() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 

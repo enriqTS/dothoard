@@ -10,6 +10,21 @@ fn key_mod(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
 }
 
 #[test]
+fn first_run_has_no_implicit_namespace() {
+    let screen = RepoScreen::new();
+    assert!(screen.namespace_input.is_empty());
+    assert!(screen.namespace_origin.is_empty());
+}
+
+#[test]
+fn discovery_without_an_active_namespace_does_not_invent_one() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut screen = RepoScreen::new();
+    screen.refresh_namespaces(tmp.path(), "").unwrap();
+    assert!(screen.namespaces.is_empty());
+}
+
+#[test]
 fn discovers_active_sibling_and_unsafe_namespace_states() {
     use crate::backup::manifest::Manifest;
 
