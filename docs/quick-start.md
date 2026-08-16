@@ -35,7 +35,8 @@ dothoard --version
 
 Use a repository that contains only dothoard-managed namespaces and any content
 you deliberately maintain alongside them. Do not point dothoard at another
-project's repository.
+project's repository. You may prepare a local clone yourself or let first-run
+setup clone an existing remote into a new local path.
 
 ```bash
 mkdir ~/dotfiles
@@ -61,16 +62,30 @@ Run:
 dothoard
 ```
 
-1. First launch opens **Repository** setup automatically. Select the repository
-   clone.
-2. Select an existing namespace or explicitly create one, for example
-   `desktop`. Dothoard does not choose a default. Selecting an owned namespace
-   restores its manifest's source paths and ignore rules.
-3. Open **Sources** and review the restored selections or select regular files,
+1. **Repository:** choose **Use an existing clone** to browse to a dedicated
+   worktree, or **Clone from a Git URL** and enter both the remote URL and a new
+   local destination. The destination's parent must already exist. Cloning and
+   validation run in the background; authentication, transport, timeout,
+   existing-destination, and repository-validation errors remain visible for
+   correction or retry. Credential-bearing URLs are redacted from diagnostics.
+2. **Namespace:** select an existing namespace or explicitly create one, for
+   example `desktop`. Dothoard does not choose a default. Selecting an owned
+   namespace restores its manifest's source paths and ignore rules.
+3. **Automation:** choose systemd, cron, or external and set the interval in
+   minutes. Cron accepts 1–59 minutes. This records the choice but does not
+   install automation yet.
+4. **Theme:** move through the complete list with Up/Down or `j`/`k`. Each
+   highlighted theme applies immediately; press Enter to keep the highlighted
+   theme and open the main tabs.
+5. Open **Sources** and review the restored selections or select regular files,
    directories, or source-root symlinks below `$HOME` for a new namespace.
-4. Open **Ignore** to add source-relative Git-style exclusions when needed.
-5. Open **Preview** and inspect the exact changes and warnings.
-6. Start a manual backup only after the preview looks correct.
+6. Open **Ignore** to add source-relative Git-style exclusions when needed.
+7. Open **Preview** and inspect the exact changes and warnings.
+8. Start a manual backup only after the preview looks correct.
+
+If the application exits after namespace selection but before setup finishes,
+the next launch resumes at Automation instead of exposing a partially completed
+main interface.
 
 The TUI never follows a selected symlink's target. A source-root symlink is
 stored as a link; a symlink in a source's parent path is rejected.

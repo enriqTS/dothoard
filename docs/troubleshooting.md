@@ -1,5 +1,19 @@
 # Troubleshooting
 
+## First-run repository cloning fails
+
+The setup screen keeps the complete actionable error and does not advance. Check
+that the Git URL is correct, noninteractive SSH or HTTPS authentication is ready,
+and the local destination is absolute (or begins with `~/`), does not already
+exist, and has an existing non-symlinked parent directory. Correct either field
+and press Enter to retry. A successfully cloned repository is validated before
+namespace setup; if validation fails, press Enter to rerun validation after
+correcting the repository externally. Credential-bearing URLs are redacted from
+logs and displayed Git errors.
+
+See [Authentication](authentication.md) for SSH agents, host keys, and HTTPS
+credential helpers.
+
 ## `dothoard check` reports an invalid repository
 
 Choose an existing dedicated Git worktree with a branch and configured remote.

@@ -80,6 +80,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   quick-start, releases, and development docs describe both. PV06 remains the
   only open item in Milestone 15 (manual GitHub Pages activation and visual
   review).
+- **Milestone 18 complete:** IS01–IS04 add a dedicated resumable first-run
+  setup for existing or safely cloned repositories, explicit namespaces,
+  automation backend/interval selection, and live-preview theme selection
+  before the main tabs open.
 - **Maintenance UI01–UI05 complete**: filesystem pickers hide `.git` and mark
   Git repository directories with `⎇` (or ASCII `G`); configured Repository
   browsing remains inside the selected clone without exposing its parent, and
@@ -226,6 +230,11 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- IS04 verified with Rust 1.97.1: the complete formatting, Clippy, and
+  serialized all-target/all-feature suite pass (1013 library tests plus all
+  integration suites); all local links across 16 Markdown files resolve; the
+  Astro site builds 16 pages with zero diagnostics; and an isolated PTY first-run
+  launch rendered and exited cleanly without touching real user paths.
 - IS03 verified with Rust 1.97.1: formatting, full Clippy with warnings denied,
   and the complete serialized all-target/all-feature suite pass (1013 library
   tests plus all integration suites). Tests cover every backend/theme,
@@ -477,8 +486,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   setup lists systemd, cron, and external backends, validates/persists the
   interval without installing automation, lists every theme, live-applies list
   movement, and persists the highlighted theme before opening Dashboard. An
-  incomplete marker resumes interrupted setup at Automation. **IS04 is active:**
-  update user documentation and complete acceptance/site verification.
+  incomplete marker resumes interrupted setup at Automation. **IS04 is
+  complete:** README, quick start, TUI, and troubleshooting documentation match
+  the flow; automated and PTY smoke acceptance pass. Milestone 18 is accepted.
 - **AP05 complete:** `automation_backend = "external"` records user-owned
   scheduling without executing setup commands. `dothoard service print-command`
   emits a shell-quoted invocation containing the resolved executable and

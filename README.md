@@ -55,8 +55,8 @@ must be rotated.
 1. **Install prerequisites:** Git and either a systemd user session or a
    compatible cron implementation for managed automation (plus Rust 1.97+ if
    building from source).
-2. **Create or clone a dedicated Git repository**—do not share it with another
-   project.
+2. **Prepare a dedicated Git remote or existing local clone**—do not share it
+   with another project. The first-run setup can clone the remote for you.
 3. **Install dothoard.** Download a prebuilt binary (pre-release; see the
    [release policy](docs/releases.md)):
 
@@ -76,12 +76,14 @@ must be rotated.
    dothoard
    ```
 
-4. On first launch, dothoard opens **Repository** setup. Choose the clone, then
-   select an existing namespace or explicitly create one—there is no default.
-   Selecting an existing namespace restores its source selections and ignore
-   rules from the manifest. After setup, Repository can browse inside the
-   selected clone but cannot move to its parent; press `c` to choose another
-   location starting from `~/`.
+4. On first launch, complete the four setup screens before the main tabs open:
+   choose an existing clone or enter a Git URL and a new local destination;
+   select or create an explicit namespace; choose systemd, cron, or external
+   automation and its interval; then move through the complete theme list for
+   an immediate live preview and finish on the one you prefer. Clone and
+   validation failures remain on screen so you can correct the URL/path or
+   retry. Selecting an owned namespace restores its source selections and
+   ignore rules from the manifest.
 5. In **Sources**, review or change files and directories below `$HOME`. The
    browser Preview pane shows a selected regular file's content (up to 256
    KiB); use `Ctrl+↑`/`Ctrl+↓`, `Ctrl+k`/`Ctrl+j`, or the pointer wheel over the
@@ -117,10 +119,10 @@ repository guides below.
 | Solve a common problem | [Troubleshooting](docs/troubleshooting.md) and [FAQ](docs/faq.md) |
 | Build or contribute | [Development](docs/development.md) and [Contributing](docs/contributing.md) |
 
-The TUI follows the terminal's configured foreground, background, and ANSI
-colors by default, including live palette updates from desktop personalization
-tools. Press `Ctrl+T` to choose a fixed built-in theme or return to the system
-palette.
+The setup flow previews themes live before the main interface opens. Later, the
+TUI follows the terminal's configured foreground, background, and ANSI colors by
+default, including live palette updates from desktop personalization tools.
+Press `Ctrl+T` to choose a fixed built-in theme or return to the system palette.
 
 ## Commands
 

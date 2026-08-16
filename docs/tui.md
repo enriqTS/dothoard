@@ -83,24 +83,39 @@ until it is changed in the picker.
 
 ## First-run workflow
 
-1. **Repository:** an unconfigured installation starts here. Select an existing
-   dedicated clone, then explicitly create or choose a discovered namespace;
-   no namespace is preselected.
-2. **Sources:** selecting an owned namespace restores its manifest selections
+An unconfigured installation uses a four-step setup shell; the seven main tabs
+remain hidden until setup finishes.
+
+1. **Repository:** choose an existing dedicated clone with the filesystem
+   browser, or choose Clone and enter a Git URL plus a new destination path.
+   Clone and repository validation run outside the render thread. Failures stay
+   visible and retryable; no configuration is reported complete after failure.
+2. **Namespace:** explicitly create or choose a discovered namespace; none is
+   preselected. Selecting an owned namespace restores its manifest selections
+   and ignore rules.
+3. **Automation:** choose systemd, cron, or external and edit the interval. This
+   persists the desired backend but does not install or modify a scheduler.
+4. **Theme:** Up/Down or `j`/`k` traverses the complete theme list and applies
+   the highlighted palette immediately. Enter persists it and opens Dashboard.
+   Interrupted setup resumes before the main tabs open.
+
+After setup:
+
+1. **Sources:** selecting an owned namespace restores its manifest selections
    and ignore rules. Review them, or select source files, directories, or
    source-root symlinks below `$HOME` for a new namespace. Space toggles
    selection in the browser. When a regular file is highlighted, the picker
    Preview pane shows its metadata and cached content (up to 256 KiB).
    `Ctrl+↑`/`Ctrl+↓` or `Ctrl+k`/`Ctrl+j` scrolls the content without moving the
    selected file; `Ctrl+R` reloads the directory and content preview.
-3. **Ignore:** edit source-relative ignore rules and inspect matches.
-4. **Preview:** review planned additions, changes, deletions, exclusions, and
+2. **Ignore:** edit source-relative ignore rules and inspect matches.
+3. **Preview:** review planned additions, changes, deletions, exclusions, and
    warnings.
-5. **Automation:** press `b` to select systemd, cron, or external automation.
+4. **Automation:** press `b` to select systemd, cron, or external automation.
    Install, remove, refresh, or inspect managed backends; for external
    automation, run `dothoard service print-command` and configure the scheduler
    yourself.
-6. **History:** inspect namespace-aware run results and logs.
+5. **History:** inspect namespace-aware run results and logs.
 
 ## Sources apply/discard flow
 

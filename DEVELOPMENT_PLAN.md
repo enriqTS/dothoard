@@ -867,14 +867,14 @@ existing repository, scheduler, and theme safety behavior.
   scheduler. Present the complete theme list and live-apply every highlighted
   option; finishing persists the highlighted theme and opens the main tabs.
   Add key-handling, rendering, failure, retry, and persistence tests.
-- [ ] **IS04 - Document and accept first-run setup.** Update the README and user
+- [x] **IS04 - Document and accept first-run setup.** Update the README and user
   documentation for existing/clone repository choices, clone failures,
   namespace selection, automation interval, and live theme preview. Run the
   complete formatting, Clippy, serialized test, and website-build baseline and
   manually smoke-test setup in a real terminal.
 
-**Milestone gate:** A fresh user completes repository, namespace, automation,
-and theme configuration before entering the main application. Cloning never
+**Milestone gate: Complete.** A fresh user completes repository, namespace,
+automation, and theme configuration before entering the main application. Cloning never
 blocks rendering, never prompts interactively, never exposes credentials, and
 never overwrites an existing destination. Every failure remains actionable and
 retryable, theme changes preview immediately, and the complete quality suite
