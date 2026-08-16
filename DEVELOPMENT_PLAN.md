@@ -810,3 +810,8 @@ managed-path and sibling-namespace safety boundaries remain unchanged.
   inaccessible; expose `c` as an explicit change action that restarts selection
   at `$HOME`. Cover listing, interaction,
   root-boundary, help, and rendering behavior with regressions.
+- [x] **UI02 - Preview selected file contents.** Extend the shared picker Preview
+  pane to show cached, refreshable regular-file content using a direct `cat`
+  invocation while preserving no-follow safety. Limit previews to 256 KiB,
+  sanitize control characters for terminal rendering, retain file metadata,
+  and cover content, refresh, and oversized-file behavior with regressions.

@@ -67,10 +67,12 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   quick-start, releases, and development docs describe both. PV06 remains the
   only open item in Milestone 15 (manual GitHub Pages activation and visual
   review).
-- **Maintenance UI01 complete**: filesystem pickers hide `.git` and mark Git
-  repository directories with `⎇` (or ASCII `G`); configured Repository
-  browsing remains inside the selected clone without exposing its
-  parent, and `c` explicitly restarts replacement selection at `$HOME`.
+- **Maintenance UI01–UI02 complete**: filesystem pickers hide `.git` and mark
+  Git repository directories with `⎇` (or ASCII `G`); configured Repository
+  browsing remains inside the selected clone without exposing its parent, and
+  `c` explicitly restarts replacement selection at `$HOME`. Highlighted regular
+  files now show cached, refreshable `cat` content in the Preview pane with a
+  256 KiB limit and no-follow opened-file safety.
 
 ## Durable Decisions
 
@@ -153,7 +155,8 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   ownership. Changed source-browser sessions require an apply/discard/continue
   choice; removals retain a separate confirmation.
 - Repository and source paths use a shared three-pane filesystem browser;
-  Enter opens directories and Space selects an entry.
+  Enter opens directories and Space selects an entry. Highlighted regular files
+  show metadata and cached `cat` content up to 256 KiB; `Ctrl+R` refreshes it.
 - Source browsing is rooted at `$HOME`, shows hidden entries, and never enters
   symlinked directories. Repository browsing may traverse the local filesystem.
 - Browser uses ranger/yazi-style three-pane layout: parent context, current
@@ -198,6 +201,13 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- UI02 verified with Rust 1.97.1: `cargo +1.97.1 fmt --check`, `cargo +1.97.1
+  clippy --all-targets --all-features -- -D warnings`, and `cargo +1.97.1 test
+  --all-targets --all-features -- --test-threads=1` pass (969 library tests plus
+  all integration suites). Regressions cover rendered Unicode content, cached
+  preview refresh, 256 KiB refusal, and option-like filenames. `cat` reads an
+  already-opened `O_NOFOLLOW` regular file through stdin, so it cannot follow a
+  selected-path symlink race.
 - UI01 verified with Rust 1.97.1: `cargo +1.97.1 fmt --check`, `cargo +1.97.1
   clippy --all-targets --all-features -- -D warnings`, and `cargo +1.97.1 test
   --all-targets --all-features -- --test-threads=1` pass (966 library tests plus

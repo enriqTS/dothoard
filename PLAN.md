@@ -277,8 +277,11 @@ The keyboard-first TUI has seven screens:
 - **History:** Recent namespace-aware runs, details, errors, and filtered logs.
 
 Repository and source selection use a shared no-follow filesystem browser.
-Repository browsing may traverse the local filesystem; source browsing cannot
-move above `$HOME`. `.git` metadata directories are hidden from pickers, while
+Its Preview pane shows directory contents, symlink metadata, and the actual
+content of selected regular files through `cat`; regular-file output is cached,
+refreshable, display-safe, and limited to 256 KiB. Repository browsing may
+traverse the local filesystem; source browsing cannot move above `$HOME`.
+`.git` metadata directories are hidden from pickers, while
 their containing directories use a Git-repository icon. After
 a repository is configured, Repository browsing is rooted at the selected
 repository: its contents remain visible, but its parent cannot be viewed or
