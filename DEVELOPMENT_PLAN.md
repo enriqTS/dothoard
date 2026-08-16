@@ -800,3 +800,11 @@ the implicit first-run namespace.
 then explicitly selects or creates a namespace. Selecting an existing owned
 namespace restores its validated source and ignore configuration, while all
 managed-path and sibling-namespace safety boundaries remain unchanged.
+
+## Maintenance
+
+- [x] **UI01 - Simplify configured repository selection.** Hide `.git`
+  directories from filesystem pickers. Once configured, show only the selected
+  repository path without parent or content browsing; expose `c` as an explicit
+  change action that restarts selection at `$HOME`. Cover listing, interaction,
+  root-boundary, help, and rendering behavior with regressions.

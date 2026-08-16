@@ -26,7 +26,8 @@ Dashboard and History stack their primary panes before secondary details.
 | Tab bar | Left/Right or `h`/`l`: select tab; Down/`j`, Enter, or Tab: enter content |
 | Any content | Tab or Shift+Tab: tab bar; `q`: quit; Ctrl+C: quit unless text or a confirmation owns input |
 | Lists and previews | Up/Down or `j`/`k`: move; Home/End and PageUp/PageDown where shown |
-| Filesystem browser | Enter: open directory; Space: select/toggle; `:` or `/`: text entry |
+| Filesystem browser | Enter: open directory; Space: select/toggle; `:` or `/`: text entry; `.git` directories are hidden |
+| Configured repository | `c`: leave the selected-repository view and choose a replacement starting at `~/` |
 | Refreshable screens | `r`: refresh; Preview and Automation load automatically on first entry when configured |
 | History | Enter: view the selected run's logs; Esc: return from logs |
 | Anywhere | `Ctrl+T`: open the theme picker |
