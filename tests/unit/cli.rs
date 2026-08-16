@@ -13,6 +13,7 @@ fn parses_every_planned_command() {
         vec![BINARY_NAME],
         vec![BINARY_NAME, "backup"],
         vec![BINARY_NAME, "check"],
+        vec![BINARY_NAME, "service", "select", "cron"],
         vec![BINARY_NAME, "service", "install"],
         vec![BINARY_NAME, "service", "remove"],
         vec![BINARY_NAME, "service", "status"],
@@ -37,7 +38,15 @@ fn exposes_the_planned_command_hierarchy() {
         .collect::<Vec<_>>();
 
     assert_eq!(command_names, ["backup", "check", "service"]);
-    assert_eq!(service_command_names, ["install", "remove", "status"]);
+    assert_eq!(
+        service_command_names,
+        ["select", "install", "remove", "status"]
+    );
+}
+
+#[test]
+fn rejects_unknown_automation_backend() {
+    assert!(Cli::try_parse_from([BINARY_NAME, "service", "select", "launchd"]).is_err());
 }
 
 #[test]

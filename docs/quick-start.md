@@ -85,11 +85,20 @@ dothoard service install
 dothoard service status
 ```
 
-The timer runs one minute after the user manager starts and again after each
-configured interval (five minutes by default). On a system without a systemd
-user manager, an external scheduler can invoke the absolute `dothoard backup`
-path; dothoard does not yet install or inspect that schedule. See [Backup
-automation](automation.md) before configuring cron or another scheduler.
+The default systemd timer runs one minute after the user manager starts and
+again after each configured interval (five minutes by default). To use cron,
+remove installed systemd automation first, then select and install cron:
+
+```bash
+dothoard service remove
+dothoard service select cron
+dothoard service install
+dothoard service status
+```
+
+You can also press `b` in the TUI's Automation screen while no selected backend
+is installed. See [Backup automation](automation.md) for cron environment,
+timing, and status limitations.
 
 ## Configuration-file alternative
 
@@ -101,6 +110,7 @@ repository = "~/dotfiles"
 remote = "origin"
 namespace = "desktop"
 interval_minutes = 5
+automation_backend = "systemd"
 network_timeout_seconds = 120
 
 [[sources]]

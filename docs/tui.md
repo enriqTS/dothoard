@@ -96,8 +96,8 @@ until it is changed in the picker.
 3. **Ignore:** edit source-relative ignore rules and inspect matches.
 4. **Preview:** review planned additions, changes, deletions, exclusions, and
    warnings.
-5. **Automation:** install or inspect the systemd user timer after a successful
-   manual backup.
+5. **Automation:** press `b` to select systemd or cron while automation is
+   uninstalled, then install, remove, refresh, or inspect the selected backend.
 6. **History:** inspect namespace-aware run results and logs.
 
 ## Sources apply/discard flow

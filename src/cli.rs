@@ -2,7 +2,7 @@
 
 use std::process::ExitCode;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use thiserror::Error;
 
 use crate::app::BINARY_NAME;
@@ -51,12 +51,32 @@ pub enum Command {
 
 #[derive(Debug, Subcommand)]
 pub enum ServiceCommand {
+    /// Select the managed automation backend.
+    Select {
+        #[arg(value_enum)]
+        backend: BackendArg,
+    },
     /// Install and enable managed backup automation.
     Install,
     /// Disable and remove managed backup automation.
     Remove,
     /// Show automation status.
     Status,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum BackendArg {
+    Systemd,
+    Cron,
+}
+
+impl From<BackendArg> for crate::config::AutomationBackend {
+    fn from(value: BackendArg) -> Self {
+        match value {
+            BackendArg::Systemd => Self::Systemd,
+            BackendArg::Cron => Self::Cron,
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -79,6 +99,9 @@ pub enum CliError {
     #[error("configuration is invalid: {0}")]
     Validation(String),
 
+    #[error("remove the installed {backend} automation before selecting another backend")]
+    BackendInUse { backend: automation::Backend },
+
     #[error("TUI error: {0}")]
     Tui(String),
 }
@@ -97,6 +120,7 @@ impl CliError {
             Self::Paths(_) => exit_code::config_error(),
             Self::Automation(_) => exit_code::FAILURE,
             Self::Config(_) | Self::Validation(_) => exit_code::config_error(),
+            Self::BackendInUse { .. } => exit_code::FAILURE,
             Self::Tui(_) => exit_code::FAILURE,
         }
     }
@@ -112,6 +136,7 @@ pub fn execute(cli: Cli) -> Result<ExitCode, CliError> {
         Some(Command::Backup) => execute_backup(),
         Some(Command::Check) => execute_check(),
         Some(Command::Service { command }) => match command {
+            ServiceCommand::Select { backend } => execute_service_select(backend),
             ServiceCommand::Install => execute_service_install(),
             ServiceCommand::Remove => execute_service_remove(),
             ServiceCommand::Status => execute_service_status(),
@@ -160,14 +185,37 @@ fn execute_check() -> Result<ExitCode, CliError> {
     }
 }
 
+/// Execute the `service select` command.
+fn execute_service_select(backend: BackendArg) -> Result<ExitCode, CliError> {
+    let paths = AppPaths::from_environment()?;
+    let mut config = load_and_validate_config(&paths)?;
+    let current = automation::selected_backend(&config);
+    let selected = backend.into();
+
+    if current == selected {
+        return Ok(exit_code::SUCCESS);
+    }
+    if automation::is_installed(&config, &paths)? {
+        return Err(CliError::BackendInUse { backend: current });
+    }
+
+    config.automation_backend = selected;
+    automation::validate(&config, &paths)?;
+    config
+        .save(paths.config_file())
+        .map_err(|error| CliError::Config(Box::new(error)))?;
+    tracing::info!(backend = %selected, "automation backend selected");
+    Ok(exit_code::SUCCESS)
+}
+
 /// Execute the `service install` command.
 fn execute_service_install() -> Result<ExitCode, CliError> {
     let paths = AppPaths::from_environment()?;
     let config = load_and_validate_config(&paths)?;
-    automation::install(&config, paths.home())?;
+    automation::install(&config, &paths)?;
 
     tracing::info!(
-        backend = %automation::selected_backend(),
+        backend = %automation::selected_backend(&config),
         interval_minutes = config.interval_minutes,
         "automation installed and started"
     );
@@ -178,9 +226,10 @@ fn execute_service_install() -> Result<ExitCode, CliError> {
 /// Execute the `service remove` command.
 fn execute_service_remove() -> Result<ExitCode, CliError> {
     let paths = AppPaths::from_environment()?;
-    automation::remove(paths.home())?;
+    let config = load_and_validate_config(&paths)?;
+    automation::remove(&config, &paths)?;
 
-    tracing::info!(backend = %automation::selected_backend(), "automation removed");
+    tracing::info!(backend = %automation::selected_backend(&config), "automation removed");
 
     Ok(exit_code::SUCCESS)
 }
@@ -189,7 +238,7 @@ fn execute_service_remove() -> Result<ExitCode, CliError> {
 fn execute_service_status() -> Result<ExitCode, CliError> {
     let paths = AppPaths::from_environment()?;
     let config = load_and_validate_config(&paths)?;
-    let automation_status = automation::status(&config, paths.home())?;
+    let automation_status = automation::status(&config, &paths)?;
 
     tracing::info!(status = %automation_status, "automation status");
 

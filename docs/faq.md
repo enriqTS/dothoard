@@ -26,10 +26,9 @@ files.
 
 ## Can I schedule backups without systemd?
 
-Yes. An external scheduler can run the absolute `dothoard backup` path today,
-although dothoard currently installs and inspects only its systemd user timer.
-See [Backup automation](automation.md) for a cron example and environment
-requirements.
+Yes. Select the managed `cron` backend, or have an external scheduler run the
+absolute `dothoard backup` path. See [Backup automation](automation.md) for
+switching, cron timing, status, and environment requirements.
 
 ## What happens offline?
 

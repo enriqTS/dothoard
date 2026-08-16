@@ -5,6 +5,7 @@ pub mod automation;
 pub mod backup;
 pub mod cli;
 pub mod config;
+pub mod cron;
 pub mod diagnostics;
 pub mod git;
 pub mod locking;

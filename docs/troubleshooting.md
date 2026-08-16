@@ -42,6 +42,17 @@ absolute executable path, `HOME`, `PATH`, `XDG_RUNTIME_DIR`, and credential
 agent variables. Use the minimal-environment test in [Backup
 automation](automation.md), and inspect `~/.local/state/dothoard/logs/`.
 
+## Cron automation is stale or refuses installation
+
+Cron intervals must be from 1 through 59 minutes, and the executable and
+runtime-directory paths must be safely representable without shell quoting.
+Dothoard refuses duplicate, incomplete, or unowned managed markers rather than
+risk replacing unrelated crontab content. Inspect with `crontab -l`; repair an
+ambiguous marker block manually only after preserving the complete crontab.
+
+Dothoard verifies its block but cannot verify that the cron daemon is active.
+Check that separately using the operating system's service tools.
+
 ## The systemd timer differs from configuration
 
 Reinstall the generated units after changing the interval:

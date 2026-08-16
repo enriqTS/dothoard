@@ -52,8 +52,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   and comparable scheduler usage, environment, timing, overlap, missed-run,
   logging, credential, and notification constraints are documented. **AP02 is
   complete**: generic automation lifecycle/status concepts now isolate systemd,
-  and CLI, health checks, and TUI callers use that facade. AP03 is active; AP04
-  is next.
+  and CLI, health checks, and TUI callers use that facade. **AP03 is complete**:
+  configuration-selected cron automation, safe managed-block lifecycle, CLI/TUI
+  backend selection, provider-aware status, and user documentation are present.
+  AP04 is active.
 - **Milestone 15 is partially complete**: PV01–PV03 provide the GitHub landing
   page, sanitized SVG visual demonstrations, and reorganized user
   documentation. **PV04 is complete**: a simple Astro Starlight website uses
@@ -443,10 +445,15 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Active Resume Point
 
-- Implement AP03: add explicit configuration-selected cron automation with
-  safely delimited crontab lifecycle management and controlled-command tests.
-- Systemd remains the selected managed backend until AP03; external schedulers
-  can already invoke the scheduler-independent backup command.
+- Implement AP04: complete provider lifecycle/health/TUI acceptance, controlled
+  command verification, final documentation/support review, and milestone gate.
+- AP03 verification with Rust 1.97.1: formatting, full Clippy with warnings
+  denied, and the complete serialized all-target/all-feature suite pass (992
+  library tests plus all integration suites). Cron regressions cover generation,
+  interval/path refusal, unrelated-content preservation, idempotence, refresh,
+  removal, staleness, and malformed/duplicate/unowned marker refusal without a
+  real crontab. CLI help, 16 local documentation files, and the 16-page site
+  build also pass.
 - AP02 verification with Rust 1.97.1: `cargo fmt --check`, full Clippy with
   warnings denied, and the complete serialized all-target/all-feature test suite
   pass (980 library tests plus all integration suites). Facade and TUI

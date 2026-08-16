@@ -299,19 +299,32 @@ pub fn run_check(paths: &AppPaths) -> CheckReport {
 
 /// Check the selected automation backend's installation for staleness.
 fn check_automation(results: &mut Vec<CheckResult>, paths: &AppPaths, config: &Config) {
-    let backend = automation::selected_backend();
+    let backend = automation::selected_backend(config);
     let label = backend.description().to_string();
 
-    if !automation::is_installed(paths.home()) {
-        results.push(CheckResult {
-            category: "automation",
-            label,
-            status: CheckStatus::Warning("automation not installed".to_string()),
-        });
-        return;
+    match automation::is_installed(config, paths) {
+        Ok(true) => {}
+        Ok(false) => {
+            results.push(CheckResult {
+                category: "automation",
+                label,
+                status: CheckStatus::Warning("automation not installed".to_string()),
+            });
+            return;
+        }
+        Err(error) => {
+            results.push(CheckResult {
+                category: "automation",
+                label,
+                status: CheckStatus::Warning(format!(
+                    "failed to inspect automation installation: {error}"
+                )),
+            });
+            return;
+        }
     }
 
-    match automation::is_stale(config, paths.home()) {
+    match automation::is_stale(config, paths) {
         Ok(true) => {
             results.push(CheckResult {
                 category: "automation",

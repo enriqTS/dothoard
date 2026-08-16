@@ -121,6 +121,7 @@ impl AcceptanceEnv {
             repository: self.repository.to_str().unwrap().to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
+            automation_backend: dothoard::config::AutomationBackend::Systemd,
             network_timeout_seconds: 10,
             sources: sources.to_vec(),
         };
@@ -560,6 +561,7 @@ fn ac08_timer_unit_has_correct_schedule() {
         repository: "/tmp/test-repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 7,
+        automation_backend: dothoard::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![],
     };
@@ -586,6 +588,7 @@ fn ac08_service_unit_has_finite_timeout() {
         repository: "/tmp/test-repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: dothoard::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![],
     };
@@ -752,6 +755,7 @@ fn ac11_systemd_service_invokes_binary_directly() {
         repository: "/home/user/dotfiles".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: dothoard::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![],
     };

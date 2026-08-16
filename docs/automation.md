@@ -12,26 +12,46 @@ noninteractive Git operation, network timeouts, state history, run logs, and
 failure/recovery notification attempts whether it is started manually or by a
 scheduler.
 
-## Managed systemd automation
+## Selecting a managed backend
 
-Systemd user timers are currently the only automation backend that dothoard
-installs, removes, and inspects itself:
+The explicit `automation_backend` setting defaults to `systemd` and can be
+changed to `cron`. Use the Automation screen's `b` key or the CLI:
 
 ```bash
+dothoard service select cron
 dothoard service install
 dothoard service status
-dothoard service remove
 ```
 
-The timer starts one minute after the user manager starts and schedules the
-next run after the previous backup becomes inactive. The CLI, health check, and
-TUI use a scheduler-neutral automation layer, which currently selects the
-systemd backend.
+Dothoard refuses to switch while the selected backend remains installed. This
+prevents accidentally leaving two schedules active:
 
-## Using cron manually
+```bash
+dothoard service remove
+dothoard service select systemd
+dothoard service install
+```
 
-Cron can invoke the backup command today even though dothoard does not yet
-manage crontabs. First find the absolute executable path:
+The systemd backend writes dothoard's user service and timer. It starts one
+minute after the user manager starts and schedules the next run after the
+previous backup becomes inactive.
+
+The cron backend installs a deterministic block between dothoard ownership
+markers in the user's crontab. It preserves every unrelated entry, updates only
+that block, and refuses missing ownership lines, duplicate markers, and
+malformed marker ordering. The executable and runtime paths must be absolute
+shell-safe tokens, `XDG_RUNTIME_DIR` is captured in the managed command, and
+`interval_minutes` must be from 1 through 59. Dothoard can verify block presence
+and staleness but cannot verify that the cron daemon itself is running.
+
+Cron uses fixed wall-clock boundaries, does not replay missed runs, and does not
+provide systemd's completion-relative interval or startup run. Test after reboot
+and login before relying on it.
+
+## Using a custom cron entry
+
+You can keep cron outside dothoard's lifecycle management and invoke the backup
+command yourself. First find the absolute executable path:
 
 ```bash
 command -v dothoard
@@ -76,9 +96,9 @@ env -i \
   /home/alice/.local/bin/dothoard check
 ```
 
-The current check will show the non-fatal warning `systemd user timer: warning:
-automation not installed` when cron is used without systemd. Explicit cron
-backend selection and cron-aware health status are planned next.
+When using a custom cron entry, leave the managed backend uninstalled and
+expect `dothoard check` to report a non-fatal automation warning. Dothoard can
+only inspect cron entries inside its own managed marker block.
 
 ### Cron behavior differences
 

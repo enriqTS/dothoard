@@ -117,6 +117,7 @@ impl OrcEnv {
             repository: self.repository.to_str().unwrap().to_string(),
             remote: "origin".to_string(),
             interval_minutes: 5,
+            automation_backend: dothoard::config::AutomationBackend::Systemd,
             network_timeout_seconds: 10,
             sources: sources.to_vec(),
         };
@@ -439,6 +440,7 @@ fn backup_fails_with_invalid_config() {
         repository: env.repository.to_str().unwrap().to_string(),
         remote: "origin".to_string(),
         interval_minutes: 0,
+        automation_backend: dothoard::config::AutomationBackend::Systemd,
         network_timeout_seconds: 10,
         sources: vec![],
     };

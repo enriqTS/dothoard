@@ -9,6 +9,7 @@ repository = "~/dotfiles"
 remote = "origin"
 namespace = "desktop"
 interval_minutes = 5
+automation_backend = "systemd"
 network_timeout_seconds = 120
 
 [[sources]]
@@ -24,7 +25,8 @@ ignore = ["fish_variables", "*.log", "cache/"]
 | `repository` | Yes | Existing dedicated Git worktree; `~` is supported. |
 | `remote` | No | Git remote name; defaults to `origin`. |
 | `namespace` | Yes | Explicit portable name for this machine. |
-| `interval_minutes` | No | Timer interval; defaults to 5 and must be at least 1. |
+| `interval_minutes` | No | Automation interval; defaults to 5 and must be at least 1. Cron supports at most 59. |
+| `automation_backend` | No | Managed scheduler: `systemd` (default) or `cron`. |
 | `network_timeout_seconds` | No | Timeout for network Git work; defaults to 120. |
 | `sources` | No | Home-relative files or directories to back up. |
 

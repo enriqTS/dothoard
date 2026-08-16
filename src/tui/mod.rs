@@ -809,16 +809,13 @@ impl App {
                 .fail("No configuration loaded.".to_string(), true);
             return;
         };
-        let Some(paths) = self.paths.as_ref() else {
+        let Some(paths) = self.paths.clone() else {
             self.automation_screen
                 .status_state
                 .fail("Application paths are unavailable.".to_string(), true);
             return;
         };
-        if let Some(request_id) = self
-            .tasks
-            .spawn_automation_inspection(config, paths.home().to_path_buf())
-        {
+        if let Some(request_id) = self.tasks.spawn_automation_inspection(config, paths) {
             self.automation_screen.status_state.begin(request_id, true);
         }
     }
@@ -1620,6 +1617,47 @@ impl App {
         let action = self.automation_screen.handle_key(key);
         match action {
             screens::automation::Action::Consumed => true,
+            screens::automation::Action::SelectNextBackend => {
+                if let Some(ref config) = self.config
+                    && let Some(ref paths) = self.paths
+                {
+                    match crate::automation::is_installed(config, paths) {
+                        Ok(true) => self.warning(format!(
+                            "Remove installed {} automation before switching backends.",
+                            crate::automation::selected_backend(config)
+                        )),
+                        Ok(false) => {
+                            let mut updated = config.clone();
+                            updated.automation_backend =
+                                crate::automation::selected_backend(config).next();
+                            match crate::automation::validate(&updated, paths) {
+                                Ok(()) => match updated.save(paths.config_file()) {
+                                    Ok(()) => {
+                                        let backend = updated.automation_backend;
+                                        self.config = Some(updated);
+                                        self.invalidate_automation_status();
+                                        self.success(format!(
+                                            "Selected {backend} automation; install it when ready."
+                                        ));
+                                    }
+                                    Err(error) => self.error(format!(
+                                        "Failed to save automation backend: {error}"
+                                    )),
+                                },
+                                Err(error) => {
+                                    self.error(format!("Cannot select automation backend: {error}"))
+                                }
+                            }
+                        }
+                        Err(error) => self.error(format!(
+                            "Cannot inspect installed automation before switching: {error}"
+                        )),
+                    }
+                } else {
+                    self.error("Cannot select automation without a validated repository.");
+                }
+                true
+            }
             screens::automation::Action::RefreshStatus => {
                 self.start_automation_inspection();
                 true
@@ -1628,7 +1666,7 @@ impl App {
                 if let Some(ref config) = self.config
                     && let Some(ref paths) = self.paths
                 {
-                    self.automation_screen.install(config, paths.home());
+                    self.automation_screen.install(config, paths);
                     self.invalidate_automation_status();
                 } else {
                     self.error("Cannot install automation without a validated repository.");
@@ -1636,11 +1674,13 @@ impl App {
                 true
             }
             screens::automation::Action::Remove => {
-                if let Some(ref paths) = self.paths {
-                    self.automation_screen.remove(paths.home());
+                if let Some(ref config) = self.config
+                    && let Some(ref paths) = self.paths
+                {
+                    self.automation_screen.remove(config, paths);
                     self.invalidate_automation_status();
                 } else {
-                    self.error("Cannot remove automation: application paths are unavailable.");
+                    self.error("Cannot remove automation without a validated repository.");
                 }
                 true
             }

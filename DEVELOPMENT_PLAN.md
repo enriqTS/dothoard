@@ -818,7 +818,7 @@ state persistence, and notifications for every scheduler.
   generation and management behind generic install, remove, status, refresh,
   and staleness concepts. Update CLI checks and TUI language to depend on the
   generic layer while preserving systemd unit content and behavior exactly.
-- [ ] **AP03 - Add explicit cron automation.** Add a configuration-selected cron
+- [x] **AP03 - Add explicit cron automation.** Add a configuration-selected cron
   backend with deterministic, clearly delimited managed content and safe
   install, removal, status, and update behavior. Preserve unrelated crontab
   content, reject malformed or ambiguous managed blocks, invoke `crontab`

@@ -551,6 +551,7 @@ fn sources_screen_renders_list() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![
             crate::config::SourceConfig {
@@ -624,6 +625,7 @@ fn ignore_screen_renders_patterns() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![crate::config::SourceConfig {
             path: ".config/fish".to_string(),
@@ -653,6 +655,7 @@ fn ignore_screen_renders_preview_mode() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![crate::config::SourceConfig {
             path: ".config/fish".to_string(),
@@ -697,6 +700,7 @@ fn ignore_preview_renders_scrolled_range_from_actual_height() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![crate::config::SourceConfig {
             path: ".config/fish".to_string(),
@@ -897,8 +901,12 @@ fn automation_screen_renders() {
     let mut terminal = Terminal::new(backend).unwrap();
 
     let mut app = app_on(Screen::Automation);
-    app.automation_screen.status_state = crate::tui::task::LoadState::Loaded("active".to_string());
-    app.config = Some(crate::config::Config::new("~/repo", "test-machine"));
+    app.automation_screen.status_state = crate::tui::task::LoadState::Loaded(
+        "installed (scheduler activity not inspected)".to_string(),
+    );
+    let mut config = crate::config::Config::new("~/repo", "test-machine");
+    config.automation_backend = crate::config::AutomationBackend::Cron;
+    app.config = Some(config);
 
     terminal
         .draw(|frame| draw(frame, &mut app))
@@ -907,8 +915,8 @@ fn automation_screen_renders() {
     let content = buffer_text(terminal.backend());
     assert!(content.contains("Backup Automation"));
     assert!(content.contains("Backend"));
-    assert!(content.contains("systemd user timer"));
-    assert!(content.contains("active"));
+    assert!(content.contains("user crontab"));
+    assert!(content.contains("scheduler activity not inspected"));
 }
 
 /// Verify automation screen shows confirmation dialog.
@@ -1459,6 +1467,7 @@ fn sources_screen_confirm_apply_shows_summary() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![crate::config::SourceConfig {
             path: ".bashrc".to_string(),
@@ -1517,6 +1526,7 @@ fn sources_screen_confirm_apply_narrow() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![],
     });

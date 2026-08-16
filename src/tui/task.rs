@@ -412,7 +412,7 @@ impl TaskManager {
     pub fn spawn_automation_inspection(
         &mut self,
         config: crate::config::Config,
-        home: PathBuf,
+        paths: crate::paths::AppPaths,
     ) -> Option<RequestId> {
         let request_id = self.begin_load(LoadTaskKind::AutomationInspection)?;
         if !self.spawn_workers {
@@ -420,7 +420,8 @@ impl TaskManager {
         }
         let sender = self.sender.clone();
         thread::spawn(move || {
-            let result = crate::tui::screens::automation::AutomationScreen::inspect(&config, &home);
+            let result =
+                crate::tui::screens::automation::AutomationScreen::inspect(&config, &paths);
             let _ = sender.send(TaskResult::AutomationInspection { request_id, result });
         });
         Some(request_id)

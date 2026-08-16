@@ -73,6 +73,8 @@ impl AutomationScreen {
         }
 
         match key.code {
+            // Select the next available backend.
+            KeyCode::Char('b') => Action::SelectNextBackend,
             // Refresh status.
             KeyCode::Char('r') => Action::RefreshStatus,
             // Install automation.
@@ -92,16 +94,16 @@ impl AutomationScreen {
     /// Inspect automation status on a background worker.
     pub fn inspect(
         config: &crate::config::Config,
-        home: &std::path::Path,
+        paths: &crate::paths::AppPaths,
     ) -> Result<String, String> {
-        crate::automation::status(config, home)
+        crate::automation::status(config, paths)
             .map(|status| status.to_string())
             .map_err(|e| e.to_string())
     }
 
     /// Install the selected automation backend.
-    pub fn install(&mut self, config: &crate::config::Config, home: &std::path::Path) {
-        match crate::automation::install(config, home) {
+    pub fn install(&mut self, config: &crate::config::Config, paths: &crate::paths::AppPaths) {
+        match crate::automation::install(config, paths) {
             Ok(()) => {
                 self.message = Some(Message {
                     text: format!(
@@ -121,8 +123,8 @@ impl AutomationScreen {
     }
 
     /// Remove the selected automation backend.
-    pub fn remove(&mut self, home: &std::path::Path) {
-        match crate::automation::remove(home) {
+    pub fn remove(&mut self, config: &crate::config::Config, paths: &crate::paths::AppPaths) {
+        match crate::automation::remove(config, paths) {
             Ok(()) => {
                 self.message = Some(Message {
                     text: "Automation removed.".to_string(),
@@ -144,6 +146,8 @@ impl AutomationScreen {
 pub enum Action {
     Consumed,
     NotConsumed,
+    /// Persist selection of the next automation backend.
+    SelectNextBackend,
     /// Refresh the status display.
     RefreshStatus,
     /// Install the selected automation backend (confirmed).

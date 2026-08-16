@@ -12,6 +12,13 @@ fn new_screen_is_not_loaded() {
 }
 
 #[test]
+fn b_selects_next_backend() {
+    let mut screen = AutomationScreen::new();
+    let action = screen.handle_key(key(KeyCode::Char('b')));
+    assert_eq!(action, Action::SelectNextBackend);
+}
+
+#[test]
 fn r_triggers_refresh() {
     let mut screen = AutomationScreen::new();
     let action = screen.handle_key(key(KeyCode::Char('r')));

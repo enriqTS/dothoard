@@ -849,6 +849,7 @@ fn screen_state_preserved_across_focus_transitions() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![
             crate::config::SourceConfig {
@@ -899,6 +900,7 @@ fn sources_up_at_top_returns_to_tab_bar() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![crate::config::SourceConfig {
             path: ".bashrc".to_string(),
@@ -922,6 +924,7 @@ fn sources_down_stays_in_content() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![
             crate::config::SourceConfig {
@@ -1050,6 +1053,7 @@ fn ignore_nested_boundary_source_to_tab_bar() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![crate::config::SourceConfig {
             path: ".config/fish".to_string(),
@@ -1075,6 +1079,7 @@ fn ignore_nested_boundary_pattern_to_source() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![crate::config::SourceConfig {
             path: ".config/fish".to_string(),
@@ -1137,6 +1142,7 @@ fn add_source_marks_preview_stale() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: Vec::new(),
     });
@@ -1162,6 +1168,7 @@ fn remove_source_marks_preview_stale() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![
             crate::config::SourceConfig {
@@ -1195,6 +1202,7 @@ fn remove_source_clamps_sources_selection() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![
             crate::config::SourceConfig {
@@ -1224,6 +1232,7 @@ fn remove_source_clamps_ignore_source_idx() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![
             crate::config::SourceConfig {
@@ -1254,6 +1263,7 @@ fn remove_all_sources_resets_ignore_indices() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![crate::config::SourceConfig {
             path: ".bashrc".to_string(),
@@ -1327,6 +1337,7 @@ fn source_add_failure_keeps_error_message() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![crate::config::SourceConfig {
             path: ".config".to_string(),
@@ -1760,6 +1771,7 @@ fn apply_selection_no_changes_returns_to_list() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![crate::config::SourceConfig {
             path: ".bashrc".to_string(),
@@ -1793,6 +1805,7 @@ fn escaping_changed_source_browser_does_not_apply_additions() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![],
     });
@@ -1824,6 +1837,7 @@ fn pending_source_changes_can_continue_or_discard_without_mutating_config() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![crate::config::SourceConfig {
             path: ".config".to_string(),
@@ -1873,6 +1887,7 @@ fn apply_selection_additions_require_explicit_choice() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![crate::config::SourceConfig {
             path: ".bashrc".to_string(),
@@ -1920,6 +1935,7 @@ fn apply_selection_with_removals_requires_choice_then_confirmation() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![
             crate::config::SourceConfig {
@@ -1970,6 +1986,7 @@ fn confirm_apply_executes_diff() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![
             crate::config::SourceConfig {
@@ -2018,6 +2035,7 @@ fn confirm_apply_adds_ignore_rules() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![crate::config::SourceConfig {
             path: ".config/fish".to_string(),
@@ -2182,6 +2200,7 @@ fn e2e_inherited_deselection_produces_anchored_ignore_rules() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![crate::config::SourceConfig {
             path: ".config/fish".to_string(),
@@ -2226,6 +2245,7 @@ fn e2e_uncheck_existing_source_with_confirmation() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![
             crate::config::SourceConfig {
@@ -2282,6 +2302,7 @@ fn e2e_re_entering_browser_reflects_applied_config() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![crate::config::SourceConfig {
             path: ".bashrc".to_string(),
@@ -2332,6 +2353,7 @@ fn e2e_empty_selection_esc_is_noop() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![crate::config::SourceConfig {
             path: ".bashrc".to_string(),
@@ -2362,6 +2384,7 @@ fn e2e_selection_reset_prevents_stale_state() {
         repository: "~/repo".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![],
     });
@@ -2400,6 +2423,31 @@ fn dashboard_backup_requires_configured_source() {
         app.status_message
             .as_ref()
             .is_some_and(|message| message.text.contains("repository and at least one source"))
+    );
+}
+
+#[test]
+fn automation_backend_selection_is_explicit_and_persisted() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let (mut app, _temp) = configured_test_app();
+    app.active_screen = Screen::Automation;
+    app.focus = Focus::Content;
+    app.handle_key_content(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE));
+
+    assert_eq!(
+        app.config.as_ref().unwrap().automation_backend,
+        crate::config::AutomationBackend::Cron
+    );
+    let saved = crate::config::Config::load(app.paths.as_ref().unwrap().config_file()).unwrap();
+    assert_eq!(
+        saved.automation_backend,
+        crate::config::AutomationBackend::Cron
+    );
+    assert!(
+        app.status_message
+            .as_ref()
+            .is_some_and(|message| { message.text.contains("Selected cron automation") })
     );
 }
 

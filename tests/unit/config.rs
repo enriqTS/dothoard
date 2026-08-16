@@ -32,6 +32,7 @@ fn deserializes_complete_config() {
     assert_eq!(config.remote, "origin");
     assert_eq!(config.namespace, "desktop");
     assert_eq!(config.interval_minutes, 5);
+    assert_eq!(config.automation_backend, AutomationBackend::Systemd);
     assert_eq!(config.network_timeout_seconds, 120);
     assert_eq!(config.sources.len(), 2);
     assert_eq!(config.sources[0].path, ".config/fish");
@@ -52,8 +53,23 @@ namespace = "notebook"
     assert_eq!(config.remote, "origin");
     assert_eq!(config.namespace, "notebook");
     assert_eq!(config.interval_minutes, 5);
+    assert_eq!(config.automation_backend, AutomationBackend::Systemd);
     assert_eq!(config.network_timeout_seconds, 120);
     assert!(config.sources.is_empty());
+}
+
+#[test]
+fn parses_explicit_cron_backend_and_rejects_unknown_backend() {
+    let cron = Config::from_toml(
+        "version = 2\nrepository = \"~/repo\"\nnamespace = \"machine\"\nautomation_backend = \"cron\"\n",
+    )
+    .unwrap();
+    assert_eq!(cron.automation_backend, AutomationBackend::Cron);
+
+    assert!(Config::from_toml(
+        "version = 2\nrepository = \"~/repo\"\nnamespace = \"machine\"\nautomation_backend = \"launchd\"\n"
+    )
+    .is_err());
 }
 
 #[test]
@@ -64,6 +80,7 @@ fn round_trips_through_toml() {
         repository: "~/pessoal/dotfiles".to_string(),
         remote: "upstream".to_string(),
         interval_minutes: 10,
+        automation_backend: AutomationBackend::Cron,
         network_timeout_seconds: 60,
         sources: vec![
             SourceConfig {
@@ -185,6 +202,7 @@ fn save_and_load_round_trip() {
         repository: "~/dotfiles".to_string(),
         remote: "upstream".to_string(),
         interval_minutes: 10,
+        automation_backend: AutomationBackend::Cron,
         network_timeout_seconds: 60,
         sources: vec![SourceConfig {
             path: ".config/fish".to_string(),
@@ -246,6 +264,7 @@ fn valid_config_produces_no_errors() {
         repository: "~/dotfiles".to_string(),
         remote: "origin".to_string(),
         interval_minutes: 5,
+        automation_backend: AutomationBackend::Systemd,
         network_timeout_seconds: 120,
         sources: vec![SourceConfig {
             path: ".config/fish".to_string(),
@@ -542,6 +561,7 @@ fn collects_multiple_errors() {
         repository: "".to_string(),
         remote: "".to_string(),
         interval_minutes: 0,
+        automation_backend: AutomationBackend::Systemd,
         network_timeout_seconds: 0,
         sources: vec![
             SourceConfig {

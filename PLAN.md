@@ -13,8 +13,8 @@ timer; dothoard is not a persistent daemon.
 The current product objective is extending scheduled backups to non-systemd
 environments without weakening backend safety or turning dothoard into a
 persistent daemon. `dothoard backup` remains the scheduler-independent execution
-boundary; systemd remains the currently managed backend while portable
-automation is delivered incrementally.
+boundary; systemd and cron are explicit managed backends while portable
+automation acceptance is completed.
 
 ## Current Scope
 
@@ -28,7 +28,7 @@ automation is delivered incrementally.
 - Run backups manually, after systemd user-manager startup, and at a
   configurable interval that defaults to five minutes.
 - Permit external schedulers to invoke the same short-lived `dothoard backup`
-  command; in-application management of non-systemd schedulers is active work.
+  command, with managed systemd and cron lifecycle support.
 - Persist status and history for the TUI.
 - Report failures and recovery through desktop notifications when available.
 - Create, select, rename, and delete namespaces through the TUI under strict
@@ -44,6 +44,7 @@ automation is delivered incrementally.
 dothoard                 Open the TUI
 dothoard backup          Run one backup immediately
 dothoard check           Validate configuration and repository
+dothoard service select  Select systemd or cron automation
 dothoard service install Install and enable managed automation
 dothoard service remove  Disable and remove managed automation
 dothoard service status  Show automation status
@@ -68,6 +69,7 @@ repository = "~/pessoal/example-repo"
 remote = "origin"
 namespace = "desktop"
 interval_minutes = 5
+automation_backend = "systemd"
 network_timeout_seconds = 120
 
 [[sources]]
@@ -246,14 +248,24 @@ exclusive application lock safely rejects overlap, but scheduler-specific timing
 missed-run, output, and environment behavior remains the scheduler's
 responsibility.
 
-The currently implemented service installer manages systemd user units:
+The configured automation backend is explicit and defaults to `systemd` for
+existing configuration compatibility. Switching is refused while the selected
+backend remains installed. The systemd provider manages:
 
 ```text
 ~/.config/systemd/user/dothoard-backup.service
 ~/.config/systemd/user/dothoard-backup.timer
 ```
 
-The timer starts shortly after the user manager starts and runs again after
+The cron provider owns only a deterministic, clearly delimited block in the
+user's existing crontab. Installation, refresh, and removal preserve unrelated
+content and refuse malformed, duplicate, or unowned marker blocks. Cron command
+paths are restricted to safely representable absolute tokens; `crontab` is
+invoked directly and receives replacement content through standard input. Cron
+supports configured intervals from 1 through 59 minutes and cannot prove that
+the cron daemon itself is active.
+
+The systemd timer starts shortly after the user manager starts and runs again after
 each configured interval. Unit content is deterministic, written atomically,
 and regenerated idempotently. The service timeout exceeds the configured Git
 network timeout. Tests never install or enable real user units.

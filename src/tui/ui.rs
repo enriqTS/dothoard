@@ -585,6 +585,11 @@ fn draw_modal_overlay(frame: &mut Frame, area: Rect, app: &App) {
         }
         Screen::Automation if app.automation_screen.confirm != automation::ConfirmAction::None => {
             let removing = app.automation_screen.confirm == automation::ConfirmAction::Remove;
+            let backend = app
+                .config
+                .as_ref()
+                .map(crate::automation::selected_backend)
+                .unwrap_or_default();
             modal::draw(
                 frame,
                 area,
@@ -594,7 +599,7 @@ fn draw_modal_overlay(frame: &mut Frame, area: Rect, app: &App) {
                     } else {
                         "Install automation"
                     },
-                    affected: Some(crate::automation::selected_backend().description()),
+                    affected: Some(backend.description()),
                     consequence: if removing {
                         "This disables and removes only dothoard's managed automation."
                     } else {
@@ -900,6 +905,8 @@ fn help_bar_content_focus(app: &App) -> Line<'static> {
                 if app.config.is_some() && app.paths.is_some() {
                     spans.extend([
                         Span::raw("  "),
+                        Span::styled("b", theme::current().key()),
+                        Span::raw(" backend  "),
                         Span::styled("i", theme::current().key()),
                         Span::raw(" install  "),
                         Span::styled("x", theme::current().key()),
@@ -1935,6 +1942,11 @@ fn draw_automation(frame: &mut Frame, area: Rect, app: &App) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
+    let backend = app
+        .config
+        .as_ref()
+        .map(crate::automation::selected_backend)
+        .unwrap_or_default();
     let mut lines: Vec<Line> = vec![
         Line::from(""),
         Line::from(Span::styled(
@@ -1942,10 +1954,7 @@ fn draw_automation(frame: &mut Frame, area: Rect, app: &App) {
             theme::current().heading(),
         )),
         Line::from(""),
-        field_line(
-            "  Backend",
-            crate::automation::selected_backend().description(),
-        ),
+        field_line("  Backend", backend.description()),
     ];
 
     // Status.

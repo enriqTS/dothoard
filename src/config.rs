@@ -142,6 +142,17 @@ impl std::fmt::Display for ValidationError {
     }
 }
 
+/// Scheduler backend selected for managed backup automation.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AutomationBackend {
+    /// A `systemd --user` service and timer.
+    #[default]
+    Systemd,
+    /// A managed block in the user's crontab.
+    Cron,
+}
+
 /// Top-level application configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Config {
@@ -168,6 +179,10 @@ pub struct Config {
     /// Backup automation interval in minutes. Defaults to 5.
     #[serde(default = "default_interval_minutes")]
     pub interval_minutes: u32,
+
+    /// Scheduler used by managed backup automation. Defaults to systemd.
+    #[serde(default)]
+    pub automation_backend: AutomationBackend,
 
     /// Network timeout in seconds for Git transport commands. Defaults to 120.
     #[serde(default = "default_network_timeout_seconds")]
@@ -227,6 +242,7 @@ impl Config {
             remote: default_remote(),
             namespace: namespace.into(),
             interval_minutes: default_interval_minutes(),
+            automation_backend: AutomationBackend::default(),
             network_timeout_seconds: default_network_timeout_seconds(),
             sources: Vec::new(),
         }
