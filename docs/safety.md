@@ -175,7 +175,7 @@ After manual resolution, the next `dothoard backup` run will operate normally.
 | Sign commits | Avoids GPG pinentry blocking unattended runs |
 | Run through a login shell | Avoids shell interpolation and injection |
 | Log credentials or full remote URLs | Redacted before logging/persisting |
-| Install real systemd units from tests | Test isolation is preserved |
+| Install real systemd units or modify a real crontab from tests | Test isolation is preserved |
 
 ## Failure recovery
 
@@ -186,7 +186,7 @@ dothoard is designed to be self-healing across runs:
   idempotent).
 - **Network failure:** Local commits are preserved and pushed on the next
   successful run.
-- **Lock contention:** A second instance exits cleanly; the timer retries
+- **Lock contention:** A second instance exits cleanly; the scheduler retries
   on its next cycle.
 - **Rebase conflict:** Aborted safely; local commit preserved; manual
   resolution needed once, then normal operation resumes.

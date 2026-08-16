@@ -27,8 +27,9 @@ repository manager.
 **Experimental.** The backend is extensively tested, but the TUI usability and
 visual-design work is still in progress. Review previews and use a dedicated
 repository before relying on it for important data. Supported and manually
-smoke-tested platforms are CachyOS and Arch Linux; other systemd-based Linux
-distributions may work but are not yet supported.
+smoke-tested platforms are CachyOS and Arch Linux. Other Linux distributions,
+including non-systemd systems with a compatible user `crontab`, may work but are
+not yet supported or manually smoke-tested.
 
 ## Why dothoard?
 
@@ -51,8 +52,9 @@ must be rotated.
 
 ## Five-minute quick start
 
-1. **Install prerequisites:** Git and a systemd user session (plus Rust 1.97+
-   if building from source).
+1. **Install prerequisites:** Git and either a systemd user session or a
+   compatible cron implementation for managed automation (plus Rust 1.97+ if
+   building from source).
 2. **Create or clone a dedicated Git repository**—do not share it with another
    project.
 3. **Install dothoard.** Download a prebuilt binary (pre-release; see the
@@ -186,8 +188,8 @@ cargo test --all-targets --all-features -- --test-threads=1
 ```
 
 The test suite uses temporary directories and must not touch real dotfiles,
-repositories, systemd user units, or desktop notifications. See the
-[development guide](docs/development.md).
+repositories, systemd user units, user crontabs, or desktop notifications. See
+the [development guide](docs/development.md).
 
 ## Repository metadata
 
@@ -198,7 +200,7 @@ in the GitHub repository settings. Recommended description:
 > keyboard-driven TUI.
 
 Recommended topics: `dotfiles`, `backup`, `git`, `rust`, `linux`, `ratatui`,
-`systemd`, `dotfile-manager`.
+`automation`, `systemd`, `cron`, `dotfile-manager`.
 
 ## Releases and security
 

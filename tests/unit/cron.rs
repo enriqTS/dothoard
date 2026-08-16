@@ -134,6 +134,53 @@ fn malformed_duplicate_or_unowned_markers_are_refused_without_writing() {
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn command_runner_uses_literal_crontab_arguments_and_stdin() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let program = temp.path().join("controlled-crontab");
+    std::fs::write(
+        &program,
+        "#!/bin/sh\n\
+base=$(dirname \"$0\")\n\
+printf '%s\\n' \"$1\" >> \"$base/calls\"\n\
+case \"$1\" in\n\
+  -l)\n\
+    if test -f \"$base/current\"; then cat \"$base/current\"; else echo 'no crontab for test' >&2; exit 1; fi\n\
+    ;;\n\
+  -) cat > \"$base/replacement\" ;;\n\
+  *) exit 9 ;;\n\
+esac\n",
+    )
+    .unwrap();
+    let mut permissions = std::fs::metadata(&program).unwrap().permissions();
+    permissions.set_mode(0o700);
+    std::fs::set_permissions(&program, permissions).unwrap();
+
+    let runner = CommandCrontab {
+        program: program.clone(),
+    };
+    assert_eq!(runner.list().unwrap(), None);
+
+    runner.replace("MAILTO=alice@example.test\n").unwrap();
+    assert_eq!(
+        std::fs::read_to_string(temp.path().join("replacement")).unwrap(),
+        "MAILTO=alice@example.test\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(temp.path().join("calls")).unwrap(),
+        "-l\n-\n"
+    );
+
+    std::fs::copy(temp.path().join("replacement"), temp.path().join("current")).unwrap();
+    assert_eq!(
+        runner.list().unwrap().as_deref(),
+        Some("MAILTO=alice@example.test\n")
+    );
+}
+
 #[test]
 fn status_reports_absent_current_and_stale_without_writing() {
     let absent = FakeCrontab::new(None);

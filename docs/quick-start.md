@@ -7,7 +7,7 @@ you review the repository, namespace, sources, and preview before a backup.
 
 - CachyOS or Arch Linux (the currently supported platforms)
 - Git in `PATH`
-- A working `systemd --user` session
+- A working `systemd --user` session, or a compatible user `crontab` for cron automation
 - Rust 1.97 or newer, only if building from source
 
 ## Install

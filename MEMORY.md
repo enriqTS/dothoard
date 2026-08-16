@@ -47,7 +47,7 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   source paths and ignore rules; selecting a new namespace clears sources.
   First run now opens Repository setup and requires an explicit namespace after
   repository validation, with no implicit `desktop` default.
-- **Milestone 17 is in progress**: AP01–AP04 extend short-lived backup automation
+- **Milestone 17 complete**: AP01–AP04 extend short-lived backup automation
   beyond systemd without adding a daemon. **AP01 is complete**: external cron
   and comparable scheduler usage, environment, timing, overlap, missed-run,
   logging, credential, and notification constraints are documented. **AP02 is
@@ -55,7 +55,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   and CLI, health checks, and TUI callers use that facade. **AP03 is complete**:
   configuration-selected cron automation, safe managed-block lifecycle, CLI/TUI
   backend selection, provider-aware status, and user documentation are present.
-  AP04 is active.
+  **AP04 is complete**: controlled crontab-command verification, final
+  lifecycle/health/TUI acceptance, platform/test-isolation claims, CLI help,
+  documentation links, site build, and the complete quality baseline pass.
 - **Milestone 15 is partially complete**: PV01–PV03 provide the GitHub landing
   page, sanitized SVG visual demonstrations, and reorganized user
   documentation. **PV04 is complete**: a simple Astro Starlight website uses
@@ -445,8 +447,16 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Active Resume Point
 
-- Implement AP04: complete provider lifecycle/health/TUI acceptance, controlled
-  command verification, final documentation/support review, and milestone gate.
+- No portable-automation implementation task remains. Milestone 17 is accepted.
+  The only previously recorded open milestone item is PV06's manual GitHub Pages
+  activation and visual review, which requires repository settings/browser
+  access.
+- AP04 verification with Rust 1.97.1: formatting, full Clippy with warnings
+  denied, and the complete serialized all-target/all-feature suite pass (993
+  library tests plus all integration suites). A controlled executable verifies
+  literal `crontab -l`/`crontab -` arguments and exact stdin without touching a
+  real crontab. CLI command help, all local documentation links, and the
+  16-page website build pass.
 - AP03 verification with Rust 1.97.1: formatting, full Clippy with warnings
   denied, and the complete serialized all-target/all-feature suite pass (992
   library tests plus all integration suites). Cron regressions cover generation,

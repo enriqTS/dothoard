@@ -8,7 +8,7 @@ license = "GPL-3.0-or-later"
 repository = "https://github.com/enriqTS/dothoard"
 homepage = "https://github.com/enriqTS/dothoard"
 readme = "README.md"
-keywords = ["dotfiles", "backup", "git", "ratatui", "systemd"]
+keywords = ["dotfiles", "backup", "git", "ratatui", "automation"]
 categories = ["command-line-utilities", "filesystem"]
 rust-version = "1.97"
 

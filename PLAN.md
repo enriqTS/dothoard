@@ -10,11 +10,9 @@ The TUI configures and monitors the application. Background work is performed
 by a short-lived headless command started manually or by a `systemd --user`
 timer; dothoard is not a persistent daemon.
 
-The current product objective is extending scheduled backups to non-systemd
-environments without weakening backend safety or turning dothoard into a
+Scheduled backups support systemd and cron without turning dothoard into a
 persistent daemon. `dothoard backup` remains the scheduler-independent execution
-boundary; systemd and cron are explicit managed backends while portable
-automation acceptance is completed.
+boundary, and external schedulers may invoke it directly.
 
 ## Current Scope
 
@@ -268,7 +266,8 @@ the cron daemon itself is active.
 The systemd timer starts shortly after the user manager starts and runs again after
 each configured interval. Unit content is deterministic, written atomically,
 and regenerated idempotently. The service timeout exceeds the configured Git
-network timeout. Tests never install or enable real user units.
+network timeout. Tests never install or enable real user units or modify a real
+user crontab.
 
 Machine-readable state is stored beneath:
 
@@ -296,7 +295,8 @@ The keyboard-first, pointer-capable TUI has seven screens:
 - **Ignore Rules:** Per-source pattern editing and match/secret preview.
 - **Backup Preview:** Additions, modifications, deletions, exclusions,
   warnings, exact managed paths, and manual backup or push actions.
-- **Automation:** Installation, removal, refresh, and status for the user timer.
+- **Automation:** Backend selection plus installation, removal, refresh, and
+  status for systemd and cron.
 - **History:** Recent namespace-aware runs, details, errors, and filtered logs.
 
 Repository and source selection use a shared no-follow filesystem browser.
@@ -495,7 +495,8 @@ repository manager.
 Improve the GitHub landing page with:
 
 - A concise repository description and relevant topics such as `dotfiles`,
-  `backup`, `git`, `rust`, `linux`, `ratatui`, and `systemd`.
+  `backup`, `git`, `rust`, `linux`, `ratatui`, `automation`, `systemd`, and
+  `cron`.
 - A prominent tagline, project status label (`experimental`, `alpha`, or
   equivalent), and a social preview image.
 - A short first-run workflow that explains installation, repository setup,

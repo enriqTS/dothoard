@@ -29,13 +29,13 @@ active or next task recorded in `MEMORY.md` and do not skip ordered work.
 The application is a Rust binary with two operating modes:
 
 - A short-lived headless command performs validation, backup, Git
-  synchronization, status persistence, notifications, and systemd management.
+  synchronization, status persistence, notifications, and scheduler management.
 - A Ratatui interface configures and monitors the same backend capabilities.
 
-The backup, Git, state, notification, and systemd layers must not depend on the
-TUI. CLI and TUI code call shared backend services. Business rules must remain
-testable without a terminal, a real home directory, or a real user systemd
-manager.
+The backup, Git, state, notification, and automation layers must not depend on
+the TUI. CLI and TUI code call shared backend services. Business rules must
+remain testable without a terminal, a real home directory, a real user systemd
+manager, or a real user crontab.
 
 The expected source layout is:
 
@@ -44,8 +44,10 @@ src/
 |-- main.rs
 |-- lib.rs
 |-- app.rs
+|-- automation.rs
 |-- cli.rs
 |-- config.rs
+|-- cron.rs
 |-- diagnostics.rs
 |-- paths.rs
 |-- git.rs
@@ -125,7 +127,8 @@ Systemd-specific requirements include:
 
 - Generate deterministic unit content.
 - Write units atomically and make installation idempotent.
-- Never install or enable real user units from automated tests.
+- Never install or enable real user units or modify a real user crontab from
+  automated tests.
 - Prefer snapshot validation and `systemd-analyze verify` when available.
 
 ## Testing Rules

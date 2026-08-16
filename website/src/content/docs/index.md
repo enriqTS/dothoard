@@ -26,7 +26,7 @@ manager.
 
 ## Start in five minutes
 
-1. Install Rust 1.97+, Git, and use a systemd user session.
+1. Install Rust 1.97+, Git, and use either a systemd user session or a compatible user `crontab`.
 2. Create or clone a dedicated Git repository.
 3. Install and open dothoard:
 

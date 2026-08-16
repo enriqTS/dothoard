@@ -824,13 +824,13 @@ state persistence, and notifications for every scheduler.
   content, reject malformed or ambiguous managed blocks, invoke `crontab`
   directly without shell interpolation, and document that cron does not replay
   missed runs or provide systemd's completion-relative timing.
-- [ ] **AP04 - Complete portable-automation acceptance.** Cover provider
+- [x] **AP04 - Complete portable-automation acceptance.** Cover provider
   selection, generation, lifecycle operations, health checks, TUI status, and
   controlled command execution without touching a real crontab or user service
   manager. Update user documentation and supported-platform claims, then run
   the complete serialized quality baseline.
 
-**Milestone gate:** A user can explicitly choose systemd or cron automation,
+**Milestone gate: Complete.** A user can explicitly choose systemd or cron automation,
 install and inspect it through the CLI and TUI, and receive the same safe
 short-lived backup behavior. Existing systemd installations remain compatible,
 unrelated scheduler configuration is untouched, tests mutate no real scheduler

@@ -92,17 +92,17 @@ pub fn generate_managed_block(params: &CronParams) -> Result<String, CronError> 
 
 /// Install or refresh the managed cron block while preserving unrelated text.
 pub fn install(params: &CronParams) -> Result<(), CronError> {
-    install_with(params, &CommandCrontab)
+    install_with(params, &CommandCrontab::default())
 }
 
 /// Remove the managed cron block while preserving unrelated text.
 pub fn remove() -> Result<(), CronError> {
-    remove_with(&CommandCrontab)
+    remove_with(&CommandCrontab::default())
 }
 
 /// Inspect whether the managed cron block exists and matches configuration.
 pub fn status(params: &CronParams) -> Result<CronStatus, CronError> {
-    status_with(params, &CommandCrontab)
+    status_with(params, &CommandCrontab::default())
 }
 
 fn safe_cron_token<'a>(path: &'a Path, name: &'static str) -> Result<&'a str, CronError> {
@@ -240,11 +240,21 @@ trait CrontabRunner {
     fn replace(&self, content: &str) -> Result<(), CronError>;
 }
 
-struct CommandCrontab;
+struct CommandCrontab {
+    program: PathBuf,
+}
+
+impl Default for CommandCrontab {
+    fn default() -> Self {
+        Self {
+            program: PathBuf::from("crontab"),
+        }
+    }
+}
 
 impl CrontabRunner for CommandCrontab {
     fn list(&self) -> Result<Option<String>, CronError> {
-        let output = Command::new("crontab")
+        let output = Command::new(&self.program)
             .arg("-l")
             .stdin(Stdio::null())
             .output()
@@ -275,7 +285,7 @@ impl CrontabRunner for CommandCrontab {
     }
 
     fn replace(&self, content: &str) -> Result<(), CronError> {
-        let mut child = Command::new("crontab")
+        let mut child = Command::new(&self.program)
             .arg("-")
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
