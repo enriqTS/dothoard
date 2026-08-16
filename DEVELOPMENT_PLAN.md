@@ -861,7 +861,7 @@ existing repository, scheduler, and theme safety behavior.
   destination for background cloning. Keep clone/validation errors visible and
   retryable, validate a successful clone through the normal repository path,
   then require explicit namespace selection or creation before continuing.
-- [ ] **IS03 - Add automation and live theme setup steps.** After namespace
+- [x] **IS03 - Add automation and live theme setup steps.** After namespace
   setup, present all systemd, cron, and external options plus an editable,
   backend-valid interval. Persist them atomically without installing a
   scheduler. Present the complete theme list and live-apply every highlighted

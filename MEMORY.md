@@ -226,6 +226,11 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- IS03 verified with Rust 1.97.1: formatting, full Clippy with warnings denied,
+  and the complete serialized all-target/all-feature suite pass (1013 library
+  tests plus all integration suites). Tests cover every backend/theme,
+  backend-specific interval validation, atomic config persistence, live theme
+  changes, finish behavior, and interrupted-setup marker recovery.
 - IS02 verified with Rust 1.97.1: formatting, full Clippy with warnings denied,
   and the complete serialized all-target/all-feature suite pass (1008 library
   tests plus all integration suites). Controlled TUI tests cover background
@@ -468,8 +473,12 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   dedicated four-step shell now owns first run; repository setup chooses an
   existing picker or editable clone URL/path, cloning and validation are keyed
   background tasks with retryable errors, and explicit namespace selection or
-  creation advances setup without exposing the main tabs. **IS03 is active:**
-  implement automation backend/interval and complete live-preview theme setup.
+  creation advances setup without exposing the main tabs. **IS03 is complete:**
+  setup lists systemd, cron, and external backends, validates/persists the
+  interval without installing automation, lists every theme, live-applies list
+  movement, and persists the highlighted theme before opening Dashboard. An
+  incomplete marker resumes interrupted setup at Automation. **IS04 is active:**
+  update user documentation and complete acceptance/site verification.
 - **AP05 complete:** `automation_backend = "external"` records user-owned
   scheduling without executing setup commands. `dothoard service print-command`
   emits a shell-quoted invocation containing the resolved executable and
