@@ -13,8 +13,9 @@
 
 `dothoard` copies selected files and directories from your home directory into a
 dedicated Git repository, then commits and pushes them on demand or through a
-`systemd --user` timer. Its keyboard-first terminal UI configures sources,
-ignore rules, namespaces, previews, and automation.
+scheduler. Its keyboard-first terminal UI configures sources, ignore rules,
+namespaces, previews, and managed `systemd --user` automation; external
+schedulers can invoke the same short-lived backup command.
 
 **It is for Linux users who want a focused backup and synchronization tool for
 their dotfiles without giving up control of the Git repository.** It is not a
@@ -109,6 +110,7 @@ repository guides below.
 | Exclude files safely | [Ignore rules](docs/ignore-rules.md) |
 | Use one repository from several machines | [Namespaces](docs/namespaces.md) |
 | Configure SSH or HTTPS for unattended Git | [Authentication](docs/authentication.md) |
+| Schedule backups with systemd or an external scheduler | [Automation](docs/automation.md) |
 | Understand limits, safety, and recovery | [Safety model](docs/safety.md) |
 | Solve a common problem | [Troubleshooting](docs/troubleshooting.md) and [FAQ](docs/faq.md) |
 | Build or contribute | [Development](docs/development.md) and [Contributing](docs/contributing.md) |
@@ -126,8 +128,13 @@ dothoard backup          Run one backup immediately
 dothoard check           Validate configuration and repository
 dothoard service install Install and enable the user timer
 dothoard service remove  Disable and remove the user timer
-dothoard service status  Show automation status
+dothoard service status  Show managed systemd automation status
 ```
+
+Any scheduler can run `/absolute/path/to/dothoard backup`; systemd is currently
+the only backend installed and inspected by dothoard. See
+[Backup automation](docs/automation.md) for cron environment and timing
+considerations.
 
 | Exit code | Meaning |
 |---:|---|

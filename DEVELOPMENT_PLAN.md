@@ -808,7 +808,7 @@ persistent daemon. Keep `dothoard backup` as the scheduler-independent execution
 boundary and preserve locking, noninteractive Git behavior, bounded timeouts,
 state persistence, and notifications for every scheduler.
 
-- [ ] **AP01 - Document external scheduler operation.** Document safe direct
+- [x] **AP01 - Document external scheduler operation.** Document safe direct
   invocation of the absolute `dothoard backup` path from cron and comparable
   schedulers, including minimal-environment, missed-run, fixed-wall-clock,
   credential-agent, notification, logging, and overlap considerations. Keep

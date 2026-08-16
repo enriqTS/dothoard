@@ -6,6 +6,7 @@
 - [Ignore rules](ignore-rules.md)
 - [Multiple-machine namespaces](namespaces.md)
 - [Git authentication](authentication.md)
+- [Backup automation](automation.md)
 - [Safety model and limitations](safety.md)
 - [Troubleshooting](troubleshooting.md)
 - [Frequently asked questions](faq.md)

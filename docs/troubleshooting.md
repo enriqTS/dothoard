@@ -35,7 +35,14 @@ A missing source root fails the run but does not delete its complete existing
 backup. Restore the source or remove it deliberately through the TUI or
 configuration, then preview the resulting deletion.
 
-## The timer differs from configuration
+## A cron backup fails but a terminal backup works
+
+Cron does not normally load the interactive shell environment. Verify the
+absolute executable path, `HOME`, `PATH`, `XDG_RUNTIME_DIR`, and credential
+agent variables. Use the minimal-environment test in [Backup
+automation](automation.md), and inspect `~/.local/state/dothoard/logs/`.
+
+## The systemd timer differs from configuration
 
 Reinstall the generated units after changing the interval:
 

@@ -86,7 +86,10 @@ dothoard service status
 ```
 
 The timer runs one minute after the user manager starts and again after each
-configured interval (five minutes by default).
+configured interval (five minutes by default). On a system without a systemd
+user manager, an external scheduler can invoke the absolute `dothoard backup`
+path; dothoard does not yet install or inspect that schedule. See [Backup
+automation](automation.md) before configuring cron or another scheduler.
 
 ## Configuration-file alternative
 

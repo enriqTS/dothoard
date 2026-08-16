@@ -215,10 +215,15 @@ git ls-remote origin
 3. **Host key:** If the remote host key changed, remove the old entry from
    `~/.ssh/known_hosts` and reconnect.
 
-### Timer runs fail but manual works
+### Scheduled runs fail but manual works
 
-The systemd user service inherits environment from the user manager, not from
-your shell session. Common issues:
+A scheduler generally does not inherit an interactive shell's environment. For
+cron and other external schedulers, explicitly review `HOME`, `PATH`,
+`XDG_RUNTIME_DIR`, credential-agent variables, and desktop-session variables as
+described in [Backup automation](automation.md).
+
+The managed systemd user service inherits environment from the user manager,
+not from your shell session. Common issues:
 
 - `SSH_AUTH_SOCK` not set in the systemd environment. Fix:
   ```bash
@@ -273,7 +278,7 @@ git config commit.gpgsign false
 
 ## Summary of requirements
 
-| Method | What must be ready at timer runtime |
+| Method | What must be ready at scheduled-run time |
 |--------|-------------------------------------|
 | SSH + agent | Agent running, key loaded, host key known |
 | HTTPS + GCM | Token stored in keyring, keyring unlocked |

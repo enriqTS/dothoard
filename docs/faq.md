@@ -24,6 +24,13 @@ No. Encryption before committing is deferred. Treat the repository as readable
 by anyone with access to its Git history and use ignore rules for sensitive
 files.
 
+## Can I schedule backups without systemd?
+
+Yes. An external scheduler can run the absolute `dothoard backup` path today,
+although dothoard currently installs and inspects only its systemd user timer.
+See [Backup automation](automation.md) for a cron example and environment
+requirements.
+
 ## What happens offline?
 
 A completed local commit is retained. A later backup retries synchronization,

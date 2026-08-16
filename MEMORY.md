@@ -48,8 +48,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   First run now opens Repository setup and requires an explicit namespace after
   repository validation, with no implicit `desktop` default.
 - **Milestone 17 is in progress**: AP01–AP04 extend short-lived backup automation
-  beyond systemd without adding a daemon. AP01 is active: document safe direct
-  use of `dothoard backup` from external schedulers. AP02 is next.
+  beyond systemd without adding a daemon. **AP01 is complete**: external cron
+  and comparable scheduler usage, environment, timing, overlap, missed-run,
+  logging, credential, and notification constraints are documented. AP02 is
+  active; AP03 is next.
 - **Milestone 15 is partially complete**: PV01–PV03 provide the GitHub landing
   page, sanitized SVG visual demonstrations, and reorganized user
   documentation. **PV04 is complete**: a simple Astro Starlight website uses
@@ -439,11 +441,14 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Active Resume Point
 
-- Implement AP01 in README and user documentation, verify links/site content,
-  mark AP01 complete, and update this memory before starting AP02.
+- Implement AP02: introduce a scheduler-neutral automation layer and route the
+  CLI, health check, and TUI through it while preserving systemd behavior.
 - Preserve systemd as the only application-managed automation backend until
   AP03; external schedulers can already invoke the scheduler-independent backup
   command.
+- AP01 verification: local links across README and 15 authored documentation
+  files resolve; `cd website && npm run build` passes with zero Astro
+  diagnostics and builds 16 pages plus the search index.
 
 ## Deferred Work
 

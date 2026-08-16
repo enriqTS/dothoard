@@ -37,11 +37,14 @@ manager.
 
 4. In the TUI, select the repository, create or select a namespace, choose
    sources, inspect the preview, and run the first backup.
-5. Once that works, enable scheduled backups with:
+5. Once that works, enable the managed systemd schedule with:
 
    ```bash
    dothoard service install
    ```
+
+   An external scheduler can instead invoke the absolute `dothoard backup`
+   path; review [Backup automation](./automation/) first.
 
 Continue to the [Quick start](./quick-start/) for the full walkthrough.
 
