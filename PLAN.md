@@ -17,7 +17,7 @@ remains the scheduler-independent execution boundary.
 ## Current Scope
 
 - CachyOS and Arch Linux support.
-- Validate and use an existing dedicated Git clone.
+- Select an existing dedicated Git clone or clone one from a user-provided Git URL into a new local path.
 - Back up regular files, directories, and source-root symlinks beneath `$HOME`.
 - Preserve independent backups in explicit machine namespaces.
 - Apply per-source ignore rules using Git semantics.
@@ -32,7 +32,7 @@ remains the scheduler-independent execution boundary.
 - Report failures and recovery through desktop notifications when available.
 - Create, select, rename, and delete namespaces through the TUI under strict
   ownership rules.
-- Require explicit repository and namespace selection during first-run setup.
+- Guide first-run users through repository setup, explicit namespace selection, automation backend and interval selection, and a live-preview theme choice before opening the main interface.
 - Restore a selected owned namespace's source paths and ignore rules from its
   validated manifest into local configuration.
 - Backup only; restoring file contents remains deferred.
@@ -317,10 +317,18 @@ a repository is configured, Repository browsing is rooted at the selected
 repository: its contents remain visible, but its parent cannot be viewed or
 entered. The explicit `c` change action restarts selection at `$HOME`.
 Non-UTF-8 entries may be displayed lossily for navigation but
-cannot be stored in configuration. On a fresh installation, the TUI opens
-repository setup directly; after repository validation it lists existing
-namespaces and requires the user to select one or explicitly create one. No
-`desktop` or hostname-derived namespace is chosen implicitly.
+cannot be stored in configuration. On a fresh installation, the TUI opens a dedicated setup flow rather than the
+main tabbed interface. Repository setup offers either selection of an existing
+clone or cloning a user-provided Git URL into a new local path. Cloning runs
+noninteractively and outside the render thread; transport, authentication,
+timeout, destination, and validation failures remain visible in the setup flow
+without creating configuration or reporting false success. After repository
+validation, setup lists existing namespaces and requires the user to select one
+or explicitly create one. No `desktop` or hostname-derived namespace is chosen
+implicitly. Setup then selects systemd, cron, or external automation and a
+validated interval, followed by the complete theme list. Moving through theme
+options applies each palette immediately for preview; completing setup persists
+the highlighted theme and opens the main interface.
 
 ## Current Objective: TUI Usability and Visual Design
 
@@ -562,7 +570,7 @@ CI covers the documented quality baseline.
 ## Deferred Work
 
 - Restore support.
-- Repository creation and cloning.
+- Repository creation (cloning an existing remote is supported).
 - Paths outside `$HOME` and privileged files.
 - Advanced conflict management beyond Git's normal rebase recovery.
 - Git history rewriting for leaked secrets.

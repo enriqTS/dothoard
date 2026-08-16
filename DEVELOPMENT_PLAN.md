@@ -843,6 +843,43 @@ never executes or claims ownership of scheduler setup. Existing systemd
 installations remain compatible, unrelated scheduler configuration is untouched,
 tests mutate no real scheduler state, and dothoard remains non-daemonized.
 
+## 18. Initial Configuration Flow
+
+Replace first-run entry into the already-open tabbed application with a guided,
+nonblocking configuration flow. Preserve explicit namespace ownership and all
+existing repository, scheduler, and theme safety behavior.
+
+- [ ] **IS01 - Add safe repository cloning.** Implement a reusable backend that
+  clones a user-provided Git URL into a new user-provided local path through the
+  bounded, noninteractive Git runner. Refuse empty URLs, existing destinations,
+  invalid parents, and destination symlink hazards; redact credential-bearing
+  URLs from errors and logs. Add local-remote integration tests for success and
+  regressions for failures and destination preservation.
+- [ ] **IS02 - Build first-run repository and namespace setup.** Add a dedicated
+  setup state and presentation shown only while no configuration exists. Let the
+  user choose an existing clone through the safe picker or enter a Git URL and
+  destination for background cloning. Keep clone/validation errors visible and
+  retryable, validate a successful clone through the normal repository path,
+  then require explicit namespace selection or creation before continuing.
+- [ ] **IS03 - Add automation and live theme setup steps.** After namespace
+  setup, present all systemd, cron, and external options plus an editable,
+  backend-valid interval. Persist them atomically without installing a
+  scheduler. Present the complete theme list and live-apply every highlighted
+  option; finishing persists the highlighted theme and opens the main tabs.
+  Add key-handling, rendering, failure, retry, and persistence tests.
+- [ ] **IS04 - Document and accept first-run setup.** Update the README and user
+  documentation for existing/clone repository choices, clone failures,
+  namespace selection, automation interval, and live theme preview. Run the
+  complete formatting, Clippy, serialized test, and website-build baseline and
+  manually smoke-test setup in a real terminal.
+
+**Milestone gate:** A fresh user completes repository, namespace, automation,
+and theme configuration before entering the main application. Cloning never
+blocks rendering, never prompts interactively, never exposes credentials, and
+never overwrites an existing destination. Every failure remains actionable and
+retryable, theme changes preview immediately, and the complete quality suite
+passes without weakening managed-path or scheduler ownership boundaries.
+
 ## Maintenance
 
 - [x] **UI01 - Simplify configured repository selection.** Hide `.git`

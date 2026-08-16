@@ -449,6 +449,11 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Active Resume Point
 
+- **Milestone 18 started from the requested first-run configuration flow.**
+  PLAN.md now includes existing-or-clone repository setup, explicit namespace,
+  automation backend/interval, and live theme preview before the main tabs.
+  **IS01 is active:** add the bounded noninteractive repository-clone backend
+  and its success/failure/destination-safety tests.
 - **AP05 complete:** `automation_backend = "external"` records user-owned
   scheduling without executing setup commands. `dothoard service print-command`
   emits a shell-quoted invocation containing the resolved executable and
@@ -493,7 +498,7 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 See PLAN.md "Deferred Work" section. Key items:
 - Restore support
-- Repository creation and cloning
+- Repository creation (cloning an existing remote is now Milestone 18 scope)
 - Advanced multiple-machine conflict management beyond Git's normal rebase recovery
 - AUR packaging
 - Encryption before committing
