@@ -16,6 +16,7 @@
 //!   operations from blocking indefinitely.
 
 mod auth;
+mod clone;
 mod commit;
 mod init;
 mod ownership;
@@ -27,6 +28,7 @@ mod tracked;
 mod worktree;
 
 pub use auth::{AuthCheckError, AuthStatus, check_auth};
+pub use clone::{CloneError, clone_repository};
 pub use commit::{CommitError, CommitResult, create_commit};
 pub use init::{InitAction, InitError, initialize_or_attach, require_usable_state};
 pub use ownership::{
