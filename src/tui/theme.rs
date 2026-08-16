@@ -1,16 +1,13 @@
 //! Shared visual language for the terminal interface.
 //!
-//! The active look is one of a fixed set of built-in palettes (`ThemeId`),
-//! selectable at runtime through the theme picker (Ctrl+T) and persisted to
-//! `theme.toml` in the configuration directory. Every render call reads the
-//! active palette through [`Theme::current`], so switching themes recolors
-//! the whole interface immediately, not just borders and labels.
-//!
-//! Colors are explicit `Color::Rgb` values rather than the terminal's
-//! inherited ANSI palette. This is a deliberate choice: it is what gives the
-//! interface a consistent, designed look (as with Ghostty, Kitty, or
-//! opencode's bundled themes) instead of one that shifts with whatever
-//! colorscheme the host terminal happens to be configured with.
+//! The active look is one of a set of palettes (`ThemeId`), selectable at
+//! runtime through the theme picker (Ctrl+T) and persisted to `theme.toml` in
+//! the configuration directory. The default System palette uses the terminal's
+//! default and ANSI colors, so it follows terminal colorscheme changes without
+//! requiring desktop-environment-specific integration. Optional built-in
+//! palettes use fixed RGB colors. Every render call reads the active palette
+//! through [`Theme::current`], so switching themes recolors the whole interface
+//! immediately, not just borders and labels.
 
 use std::io::Write;
 use std::path::Path;
@@ -55,7 +52,9 @@ pub struct Palette {
 /// Built-in themes, selectable through the theme picker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ThemeId {
+    /// Inherit the terminal's default foreground/background and ANSI palette.
     #[default]
+    System,
     CatppuccinMocha,
     CatppuccinLatte,
     Dracula,
@@ -71,6 +70,7 @@ pub enum ThemeId {
 impl ThemeId {
     /// All themes, in the order the picker lists them.
     pub const ALL: &'static [ThemeId] = &[
+        ThemeId::System,
         ThemeId::CatppuccinMocha,
         ThemeId::CatppuccinLatte,
         ThemeId::Dracula,
@@ -86,6 +86,7 @@ impl ThemeId {
     /// Display name shown in the theme picker.
     pub fn label(self) -> &'static str {
         match self {
+            ThemeId::System => "System (Terminal)",
             ThemeId::CatppuccinMocha => "Catppuccin Mocha",
             ThemeId::CatppuccinLatte => "Catppuccin Latte",
             ThemeId::Dracula => "Dracula",
@@ -102,6 +103,7 @@ impl ThemeId {
     /// Stable identifier used for persistence (`theme.toml`).
     pub fn slug(self) -> &'static str {
         match self {
+            ThemeId::System => "system",
             ThemeId::CatppuccinMocha => "catppuccin-mocha",
             ThemeId::CatppuccinLatte => "catppuccin-latte",
             ThemeId::Dracula => "dracula",
@@ -150,6 +152,24 @@ impl ThemeId {
         }
 
         match self {
+            ThemeId::System => Palette {
+                // Named ANSI colors are resolved by the terminal, while Reset
+                // preserves its configured foreground and background. This
+                // makes live terminal palette updates visible on the next draw.
+                background: Color::Reset,
+                chrome: Color::Reset,
+                surface: Color::Reset,
+                selection_bg: Color::DarkGray,
+                foreground: Color::Reset,
+                muted: Color::DarkGray,
+                border: Color::DarkGray,
+                accent: Color::Cyan,
+                secondary: Color::Blue,
+                success: Color::Green,
+                warning: Color::Yellow,
+                error: Color::Red,
+                special: Color::Magenta,
+            },
             ThemeId::CatppuccinMocha => Palette {
                 background: rgb(0x1e1e2e),
                 chrome: rgb(0x181825),

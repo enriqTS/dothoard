@@ -1,9 +1,17 @@
 use super::*;
 
 #[test]
-fn default_theme_is_catppuccin_mocha() {
-    assert_eq!(ThemeId::default(), ThemeId::CatppuccinMocha);
-    assert_eq!(ThemeId::ALL[0], ThemeId::CatppuccinMocha);
+fn default_theme_inherits_the_terminal_palette() {
+    assert_eq!(ThemeId::default(), ThemeId::System);
+    assert_eq!(ThemeId::ALL[0], ThemeId::System);
+
+    let palette = ThemeId::System.palette();
+    assert_eq!(palette.background, Color::Reset);
+    assert_eq!(palette.foreground, Color::Reset);
+    assert_eq!(palette.accent, Color::Cyan);
+    assert_eq!(palette.success, Color::Green);
+    assert_eq!(palette.warning, Color::Yellow);
+    assert_eq!(palette.error, Color::Red);
 }
 
 #[test]
@@ -30,8 +38,8 @@ fn from_slug_rejects_unknown_values() {
 
 #[test]
 fn next_and_prev_wrap_around_and_are_inverses() {
-    assert_eq!(ThemeId::CatppuccinMocha.prev(), ThemeId::Kanagawa);
-    assert_eq!(ThemeId::Kanagawa.next(), ThemeId::CatppuccinMocha);
+    assert_eq!(ThemeId::System.prev(), ThemeId::Kanagawa);
+    assert_eq!(ThemeId::Kanagawa.next(), ThemeId::System);
     for &id in ThemeId::ALL {
         assert_eq!(id.next().prev(), id);
     }
@@ -45,14 +53,14 @@ fn every_palette_role_is_distinguishable_from_the_background() {
     // background.
     for &id in ThemeId::ALL {
         let p = id.palette();
-        for role in [
-            p.foreground,
-            p.accent,
-            p.secondary,
-            p.success,
-            p.warning,
-            p.error,
-        ] {
+        // System intentionally uses Reset for both roles so the terminal
+        // supplies its configured, contrasting foreground and background.
+        let foreground = (id != ThemeId::System).then_some(p.foreground);
+        for role in
+            foreground
+                .into_iter()
+                .chain([p.accent, p.secondary, p.success, p.warning, p.error])
+        {
             assert_ne!(
                 role,
                 p.background,
@@ -119,7 +127,7 @@ fn semantic_states_have_non_color_emphasis() {
 }
 
 #[test]
-fn canvas_chrome_and_surface_paint_explicit_backgrounds() {
+fn canvas_chrome_and_surface_always_set_a_background_role() {
     let theme = Theme::current();
     assert!(theme.canvas().bg.is_some());
     assert!(theme.chrome().bg.is_some());

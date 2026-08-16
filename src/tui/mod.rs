@@ -172,12 +172,11 @@ impl App {
         }
         let first_run = config.is_none();
 
-        if let Some(id) = paths
+        let theme_id = paths
             .as_ref()
             .and_then(|p| theme::load_preference(p.config_dir()))
-        {
-            theme::set_active(id);
-        }
+            .unwrap_or_default();
+        theme::set_active(theme_id);
 
         Self {
             focus: if first_run {

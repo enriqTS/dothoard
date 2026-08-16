@@ -2587,13 +2587,13 @@ fn theme_picker_renders_every_theme_name_and_paints_the_active_palette() {
     }
     assert!(content.contains("Select Theme"));
 
-    // The default theme's canvas background is painted behind the dialog.
-    let mocha_background = theme::ThemeId::CatppuccinMocha.palette().background;
+    // The default theme leaves the canvas on the terminal-configured background.
+    let system_background = theme::ThemeId::System.palette().background;
     assert!(
         buffer
             .content()
             .iter()
-            .any(|cell| cell.bg == mocha_background)
+            .any(|cell| cell.bg == system_background)
     );
 
     theme::set_active(theme::ThemeId::default());
