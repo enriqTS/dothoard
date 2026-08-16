@@ -46,6 +46,7 @@ fn app_on(screen: Screen) -> App {
     // from the machine running the tests.
     app.active_screen = screen;
     app.focus = crate::tui::Focus::TabBar;
+    app.setup = None;
     app
 }
 
@@ -1748,6 +1749,35 @@ fn ignore_nested_focus_uses_markers_and_distinct_styles() {
             .iter()
             .any(|cell| cell.modifier.contains(Modifier::BOLD))
     );
+}
+
+#[test]
+fn first_run_setup_renders_repository_choices_and_clone_errors() {
+    let backend = TestBackend::new(90, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = app_on(Screen::Repository);
+    app.setup = Some(crate::tui::setup::SetupState::new());
+
+    terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+    let rendered = buffer_text(terminal.backend());
+    assert!(rendered.contains("dothoard setup"));
+    assert!(rendered.contains("Use an existing clone"));
+    assert!(rendered.contains("Clone from a Git URL"));
+    assert!(!rendered.contains("Dashboard"));
+
+    let setup = app.setup.as_mut().unwrap();
+    setup.repository_mode = crate::tui::setup::RepositorySetupMode::Clone;
+    setup.clone_url = "https://example.invalid/repo.git".to_string();
+    setup.clone_destination = "/home/user/backups/repo".to_string();
+    setup.clone_state.fail(
+        "repository clone failed: authentication required".to_string(),
+        false,
+    );
+    terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+    let rendered = buffer_text(terminal.backend());
+    assert!(rendered.contains("Git URL"));
+    assert!(rendered.contains("Local path"));
+    assert!(rendered.contains("authentication required"));
 }
 
 /// Verify sources browse renders at various sizes without panic.

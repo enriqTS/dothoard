@@ -10,6 +10,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs, Wrap};
 
 use super::pointer::{ClickAction, ScrollAction};
+use super::task::LoadState;
 use super::{App, Screen, modal, text, theme};
 
 /// Supported responsive layout classes. Width determines pane arrangement;
@@ -37,6 +38,10 @@ fn layout_class(area: Rect) -> LayoutClass {
 /// Draw the complete UI for one frame.
 pub fn draw(frame: &mut Frame, app: &mut App) {
     app.clear_pointer_map();
+    if app.setup.is_some() {
+        draw_setup(frame, app);
+        return;
+    }
     let area = frame.area();
     frame.render_widget(Block::default().style(theme::current().canvas()), area);
     let compact_shell = !matches!(layout_class(area), LayoutClass::Wide);
@@ -66,6 +71,235 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_modal_overlay(frame, area, app);
     if app.theme_picker.is_some() {
         draw_theme_picker(frame, area, app);
+    }
+}
+
+fn draw_setup(frame: &mut Frame, app: &mut App) {
+    use super::setup::{CloneField, RepositoryMethod, RepositorySetupMode, SetupStep};
+
+    let area = frame.area();
+    frame.render_widget(Block::default().style(theme::current().canvas()), area);
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(0),
+            Constraint::Length(2),
+        ])
+        .split(area);
+    let step = app
+        .setup
+        .as_ref()
+        .map(|setup| setup.step)
+        .unwrap_or(SetupStep::Repository);
+    let step_number = match step {
+        SetupStep::Repository => 1,
+        SetupStep::Namespace => 2,
+        SetupStep::Automation => 3,
+        SetupStep::Theme => 4,
+    };
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(" dothoard setup ", theme::current().heading()),
+            Span::styled(
+                format!("Step {step_number} of 4 · "),
+                theme::current().muted(),
+            ),
+            Span::styled(
+                match step {
+                    SetupStep::Repository => "Repository",
+                    SetupStep::Namespace => "Namespace",
+                    SetupStep::Automation => "Automation",
+                    SetupStep::Theme => "Theme",
+                },
+                theme::current().label(),
+            ),
+        ]))
+        .block(
+            Block::default()
+                .borders(Borders::BOTTOM)
+                .border_style(theme::current().border(true)),
+        )
+        .style(theme::current().chrome()),
+        chunks[0],
+    );
+
+    match step {
+        SetupStep::Repository => {
+            let mode = app
+                .setup
+                .as_ref()
+                .map(|setup| setup.repository_mode)
+                .unwrap_or(RepositorySetupMode::Choose);
+            match mode {
+                RepositorySetupMode::Choose => {
+                    let selected = app
+                        .setup
+                        .as_ref()
+                        .map(|setup| setup.repository_method)
+                        .unwrap_or(RepositoryMethod::Existing);
+                    let option = |method, label: &'static str, detail: &'static str| {
+                        Line::from(vec![
+                            Span::styled(
+                                if selected == method { "▶ " } else { "  " },
+                                theme::current().focused(),
+                            ),
+                            Span::styled(
+                                label,
+                                if selected == method {
+                                    theme::current().selected()
+                                } else {
+                                    Style::default()
+                                },
+                            ),
+                            Span::styled(format!(" — {detail}"), theme::current().muted()),
+                        ])
+                    };
+                    frame.render_widget(
+                        Paragraph::new(vec![
+                            Line::from(Span::styled(
+                                "How should dothoard obtain the backup repository?",
+                                theme::current().heading(),
+                            )),
+                            Line::from(""),
+                            option(
+                                RepositoryMethod::Existing,
+                                "Use an existing clone",
+                                "browse to a dedicated Git worktree",
+                            ),
+                            option(
+                                RepositoryMethod::Clone,
+                                "Clone from a Git URL",
+                                "create a new local clone at a path you choose",
+                            ),
+                        ])
+                        .block(
+                            Block::default()
+                                .borders(Borders::ALL)
+                                .border_style(theme::current().border(true))
+                                .title(" Repository setup "),
+                        )
+                        .wrap(Wrap { trim: false }),
+                        chunks[1],
+                    );
+                }
+                RepositorySetupMode::Existing => draw_repository(frame, chunks[1], app),
+                RepositorySetupMode::Clone => {
+                    let setup = app.setup.as_ref().expect("setup is active");
+                    let focused = |field| {
+                        if setup.clone_field == field {
+                            theme::current().selected()
+                        } else {
+                            Style::default()
+                        }
+                    };
+                    let state = if setup.cloning() {
+                        ("Cloning repository…", theme::current().progress())
+                    } else if let Some(error) = setup.clone_error() {
+                        (error, theme::current().error())
+                    } else if setup.clone_state.data().is_some() {
+                        match &app.repo_screen.validation {
+                            LoadState::Loading { .. } => (
+                                "Clone complete. Validating repository…",
+                                theme::current().progress(),
+                            ),
+                            LoadState::Failed { error, .. } => {
+                                (error.as_str(), theme::current().error())
+                            }
+                            _ => (
+                                "Clone complete. Press Enter to validate again.",
+                                theme::current().success(),
+                            ),
+                        }
+                    } else {
+                        (
+                            "The destination must be a new path whose parent already exists.",
+                            theme::current().muted(),
+                        )
+                    };
+                    frame.render_widget(
+                        Paragraph::new(vec![
+                            Line::from(Span::styled(
+                                "Clone an existing remote repository",
+                                theme::current().heading(),
+                            )),
+                            Line::from(""),
+                            Line::from(vec![
+                                Span::styled(
+                                    if setup.clone_field == CloneField::Url {
+                                        "▶ Git URL: "
+                                    } else {
+                                        "  Git URL: "
+                                    },
+                                    theme::current().label(),
+                                ),
+                                Span::styled(&setup.clone_url, focused(CloneField::Url)),
+                            ]),
+                            Line::from(vec![
+                                Span::styled(
+                                    if setup.clone_field == CloneField::Destination {
+                                        "▶ Local path: "
+                                    } else {
+                                        "  Local path: "
+                                    },
+                                    theme::current().label(),
+                                ),
+                                Span::styled(
+                                    &setup.clone_destination,
+                                    focused(CloneField::Destination),
+                                ),
+                            ]),
+                            Line::from(""),
+                            Line::from(Span::styled(state.0, state.1)),
+                        ])
+                        .block(
+                            Block::default()
+                                .borders(Borders::ALL)
+                                .border_style(theme::current().border(true))
+                                .title(" Clone repository "),
+                        )
+                        .wrap(Wrap { trim: false }),
+                        chunks[1],
+                    );
+                }
+            }
+        }
+        SetupStep::Namespace => draw_repository(frame, chunks[1], app),
+        SetupStep::Automation => {
+            frame.render_widget(
+                Paragraph::new("Repository and namespace are ready. Configure automation next.")
+                    .block(Block::default().borders(Borders::ALL).title(" Automation ")),
+                chunks[1],
+            );
+        }
+        SetupStep::Theme => {}
+    }
+
+    let help = match step {
+        SetupStep::Repository => match app
+            .setup
+            .as_ref()
+            .map(|setup| setup.repository_mode)
+            .unwrap_or(RepositorySetupMode::Choose)
+        {
+            RepositorySetupMode::Choose => "←→/↑↓ choose  Enter continue  Esc quit",
+            RepositorySetupMode::Existing => {
+                "Space select repository  ↑↓←→ navigate  : type path  Esc back"
+            }
+            RepositorySetupMode::Clone => "Tab/↑↓ switch field  Enter clone  Esc back  Ctrl+C quit",
+        },
+        SetupStep::Namespace => "↑↓ choose  Enter use  n new  Esc back",
+        SetupStep::Automation | SetupStep::Theme => "Esc back",
+    };
+    frame.render_widget(
+        Paragraph::new(help)
+            .style(theme::current().chrome())
+            .block(Block::default().borders(Borders::TOP)),
+        chunks[2],
+    );
+
+    if step == SetupStep::Namespace {
+        draw_modal_overlay(frame, area, app);
     }
 }
 

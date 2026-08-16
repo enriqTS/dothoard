@@ -11,6 +11,7 @@ pub mod picker;
 mod pointer;
 pub mod screens;
 pub mod selection;
+pub mod setup;
 mod status;
 pub mod task;
 mod terminal;
@@ -122,6 +123,8 @@ pub struct App {
     pub automation_screen: screens::automation::AutomationScreen,
     /// History screen state.
     pub history_screen: screens::history::HistoryScreen,
+    /// First-run setup, present until required configuration is complete.
+    pub setup: Option<setup::SetupState>,
     /// Theme picker overlay state, present only while it owns input.
     pub theme_picker: Option<ThemePickerState>,
     /// Interactive rectangles recorded during the most recent frame.
@@ -204,6 +207,7 @@ impl App {
             preview_screen: screens::preview::PreviewScreen::new(),
             automation_screen: screens::automation::AutomationScreen::new(),
             history_screen: screens::history::HistoryScreen::new(),
+            setup: first_run.then(setup::SetupState::new),
             theme_picker: None,
             pointer_map: std::cell::RefCell::new(pointer::PointerMap::default()),
         }
@@ -370,6 +374,21 @@ impl App {
                     }
                     self.reload_state();
                 }
+                task::TaskResult::RepositoryClone { request_id, result } => {
+                    let cloned = self.setup.as_mut().and_then(|setup| {
+                        if setup.clone_state.finish(request_id, result) {
+                            setup.clone_state.data().cloned()
+                        } else {
+                            None
+                        }
+                    });
+                    if let Some(path) = cloned {
+                        self.repo_screen.input = path.display().to_string();
+                        self.repo_screen.cursor = self.repo_screen.input.len();
+                        self.repo_screen.selection_error = None;
+                        self.start_repository_validation();
+                    }
+                }
                 task::TaskResult::RepositoryValidation { request_id, result } => {
                     if self.repo_screen.validation.finish(request_id, result) {
                         let validated = self.repo_screen.validation.data().cloned();
@@ -388,6 +407,9 @@ impl App {
                                 self.repo_screen.confirm_state =
                                     screens::repository::ConfirmState::None;
                                 self.repo_screen.mode = screens::repository::RepoMode::Namespaces;
+                                if let Some(setup) = self.setup.as_mut() {
+                                    setup.step = setup::SetupStep::Namespace;
+                                }
                             } else if info.ownership.needs_confirmation() {
                                 self.repo_screen.confirm_state = match info.ownership {
                                     screens::repository::OwnershipInfo::New => {
@@ -1008,9 +1030,241 @@ impl App {
         self.promote_screen_messages();
     }
 
+    fn handle_setup_key(&mut self, key: crossterm::event::KeyEvent) {
+        use crossterm::event::{KeyCode, KeyModifiers};
+        use setup::{RepositoryMethod, RepositorySetupMode, SetupStep};
+
+        if key.modifiers == KeyModifiers::CONTROL && key.code == KeyCode::Char('c') {
+            self.should_quit = true;
+            return;
+        }
+
+        let Some(step) = self.setup.as_ref().map(|setup| setup.step) else {
+            return;
+        };
+        match step {
+            SetupStep::Repository => {
+                let mode = self
+                    .setup
+                    .as_ref()
+                    .map(|setup| setup.repository_mode)
+                    .unwrap_or(RepositorySetupMode::Choose);
+                match mode {
+                    RepositorySetupMode::Choose => match key.code {
+                        KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down => {
+                            if let Some(setup) = self.setup.as_mut() {
+                                setup.repository_method = setup.repository_method.toggle();
+                            }
+                        }
+                        KeyCode::Enter => {
+                            let method = self
+                                .setup
+                                .as_ref()
+                                .map(|setup| setup.repository_method)
+                                .unwrap_or(RepositoryMethod::Existing);
+                            if let Some(setup) = self.setup.as_mut() {
+                                setup.repository_mode = match method {
+                                    RepositoryMethod::Existing => RepositorySetupMode::Existing,
+                                    RepositoryMethod::Clone => RepositorySetupMode::Clone,
+                                };
+                            }
+                            if method == RepositoryMethod::Existing
+                                && let Some(paths) = self.paths.as_ref()
+                            {
+                                self.repo_screen.ensure_browser(paths.home());
+                            }
+                        }
+                        KeyCode::Esc | KeyCode::Char('q') => self.should_quit = true,
+                        _ => {}
+                    },
+                    RepositorySetupMode::Existing => {
+                        if key.code == KeyCode::Esc
+                            && self.repo_screen.mode == screens::repository::RepoMode::Browser
+                        {
+                            if let Some(setup) = self.setup.as_mut() {
+                                setup.repository_mode = RepositorySetupMode::Choose;
+                            }
+                        } else {
+                            self.handle_repository_key(key);
+                        }
+                    }
+                    RepositorySetupMode::Clone => self.handle_setup_clone_key(key),
+                }
+            }
+            SetupStep::Namespace => {
+                if key.code == KeyCode::Esc
+                    && self.repo_screen.mode == screens::repository::RepoMode::Namespaces
+                {
+                    if let Some(setup) = self.setup.as_mut() {
+                        setup.step = SetupStep::Repository;
+                        setup.repository_mode = RepositorySetupMode::Choose;
+                    }
+                    self.repo_screen.mode = screens::repository::RepoMode::Browser;
+                } else {
+                    self.handle_repository_key(key);
+                }
+            }
+            SetupStep::Automation | SetupStep::Theme => {
+                // These steps are completed by IS03. Keep first-run setup active
+                // rather than exposing partially configured main tabs.
+                if key.code == KeyCode::Esc {
+                    if let Some(setup) = self.setup.as_mut() {
+                        setup.step = SetupStep::Namespace;
+                    }
+                    self.repo_screen.mode = screens::repository::RepoMode::Namespaces;
+                }
+            }
+        }
+    }
+
+    fn handle_setup_clone_key(&mut self, key: crossterm::event::KeyEvent) {
+        use crossterm::event::KeyCode;
+        use setup::{CloneField, RepositorySetupMode};
+
+        if self.setup.as_ref().is_some_and(setup::SetupState::cloning) {
+            return;
+        }
+        match key.code {
+            KeyCode::Esc => {
+                if let Some(setup) = self.setup.as_mut() {
+                    setup.repository_mode = RepositorySetupMode::Choose;
+                }
+            }
+            KeyCode::Tab | KeyCode::BackTab | KeyCode::Up | KeyCode::Down => {
+                if let Some(setup) = self.setup.as_mut() {
+                    setup.clone_field = match setup.clone_field {
+                        CloneField::Url => CloneField::Destination,
+                        CloneField::Destination => CloneField::Url,
+                    };
+                }
+            }
+            KeyCode::Enter => {
+                if self
+                    .setup
+                    .as_ref()
+                    .and_then(|setup| setup.clone_state.data())
+                    .is_some()
+                {
+                    self.start_repository_validation();
+                } else {
+                    self.start_repository_clone();
+                }
+            }
+            KeyCode::Backspace => {
+                if let Some(setup) = self.setup.as_mut() {
+                    match setup.clone_field {
+                        CloneField::Url => {
+                            text::backspace(&mut setup.clone_url, &mut setup.clone_url_cursor);
+                        }
+                        CloneField::Destination => {
+                            text::backspace(
+                                &mut setup.clone_destination,
+                                &mut setup.clone_destination_cursor,
+                            );
+                        }
+                    }
+                    setup.clone_state.reset();
+                }
+            }
+            KeyCode::Delete => {
+                if let Some(setup) = self.setup.as_mut() {
+                    match setup.clone_field {
+                        CloneField::Url => {
+                            text::delete(&mut setup.clone_url, &mut setup.clone_url_cursor);
+                        }
+                        CloneField::Destination => {
+                            text::delete(
+                                &mut setup.clone_destination,
+                                &mut setup.clone_destination_cursor,
+                            );
+                        }
+                    }
+                    setup.clone_state.reset();
+                }
+            }
+            KeyCode::Left => {
+                if let Some(setup) = self.setup.as_mut() {
+                    match setup.clone_field {
+                        CloneField::Url => {
+                            text::move_left(&setup.clone_url, &mut setup.clone_url_cursor)
+                        }
+                        CloneField::Destination => text::move_left(
+                            &setup.clone_destination,
+                            &mut setup.clone_destination_cursor,
+                        ),
+                    }
+                }
+            }
+            KeyCode::Right => {
+                if let Some(setup) = self.setup.as_mut() {
+                    match setup.clone_field {
+                        CloneField::Url => {
+                            text::move_right(&setup.clone_url, &mut setup.clone_url_cursor)
+                        }
+                        CloneField::Destination => text::move_right(
+                            &setup.clone_destination,
+                            &mut setup.clone_destination_cursor,
+                        ),
+                    }
+                }
+            }
+            KeyCode::Char(character) => {
+                if let Some(setup) = self.setup.as_mut() {
+                    match setup.clone_field {
+                        CloneField::Url => text::insert_char(
+                            &mut setup.clone_url,
+                            &mut setup.clone_url_cursor,
+                            character,
+                        ),
+                        CloneField::Destination => text::insert_char(
+                            &mut setup.clone_destination,
+                            &mut setup.clone_destination_cursor,
+                            character,
+                        ),
+                    }
+                    setup.clone_state.reset();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn start_repository_clone(&mut self) {
+        let Some(setup) = self.setup.as_ref() else {
+            return;
+        };
+        let Some(paths) = self.paths.as_ref() else {
+            if let Some(setup) = self.setup.as_mut() {
+                setup
+                    .clone_state
+                    .fail("Application paths are unavailable.".to_string(), false);
+            }
+            return;
+        };
+        let destination = if setup.clone_destination == "~" {
+            paths.home().to_path_buf()
+        } else if let Some(relative) = setup.clone_destination.strip_prefix("~/") {
+            paths.home().join(relative)
+        } else {
+            std::path::PathBuf::from(&setup.clone_destination)
+        };
+        let url = setup.clone_url.clone();
+        if let Some(request_id) = self.tasks.spawn_repository_clone(url, destination, 120)
+            && let Some(setup) = self.setup.as_mut()
+        {
+            setup.clone_state.begin(request_id, false);
+        }
+    }
+
     /// Handle a key event and update application state.
     pub fn handle_key(&mut self, key: crossterm::event::KeyEvent) {
         use crossterm::event::{KeyCode, KeyModifiers};
+
+        if self.setup.is_some() {
+            self.handle_setup_key(key);
+            self.promote_screen_messages();
+            return;
+        }
 
         // The theme picker is a global overlay: while open, it owns every
         // key regardless of which screen or mode was active beneath it.
@@ -1341,6 +1595,9 @@ impl App {
                 self.success(format!(
                     "Active namespace: {requested} ({source_count} sources active)"
                 ));
+                if let Some(setup) = self.setup.as_mut() {
+                    setup.step = setup::SetupStep::Automation;
+                }
             }
             Err(e) => self.error(format!("Namespace operation failed: {e}")),
         }

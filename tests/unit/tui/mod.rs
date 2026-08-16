@@ -20,6 +20,7 @@ fn test_app() -> App {
         preview_screen: screens::preview::PreviewScreen::new(),
         automation_screen: screens::automation::AutomationScreen::new(),
         history_screen: screens::history::HistoryScreen::new(),
+        setup: None,
         theme_picker: None,
         pointer_map: std::cell::RefCell::new(pointer::PointerMap::default()),
     }
@@ -1363,6 +1364,7 @@ fn source_add_failure_keeps_error_message() {
 fn first_run_repository_validation_opens_namespace_selection() {
     let (mut app, temp) = configured_test_app();
     app.config = None;
+    app.setup = Some(setup::SetupState::new());
     app.repo_screen.namespace_input.clear();
     let request_id = app
         .tasks
@@ -1398,12 +1400,56 @@ fn first_run_repository_validation_opens_namespace_selection() {
         app.repo_screen.confirm_state,
         screens::repository::ConfirmState::None
     );
+    assert_eq!(
+        app.setup.as_ref().unwrap().step,
+        setup::SetupStep::Namespace
+    );
+}
+
+#[test]
+fn first_run_clone_starts_in_background_and_surfaces_failure() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let (mut app, temp) = configured_test_app();
+    app.config = None;
+    app.setup = Some(setup::SetupState::new());
+    let setup = app.setup.as_mut().unwrap();
+    setup.repository_mode = setup::RepositorySetupMode::Clone;
+    setup.clone_url = "https://example.invalid/repository.git".to_string();
+    setup.clone_url_cursor = setup.clone_url.len();
+    setup.clone_destination = temp.path().join("clone").display().to_string();
+    setup.clone_destination_cursor = setup.clone_destination.len();
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    let request_id = app
+        .setup
+        .as_ref()
+        .unwrap()
+        .clone_state
+        .loading_id()
+        .expect("background clone request");
+    app.tasks
+        .sender
+        .send(task::TaskResult::RepositoryClone {
+            request_id,
+            result: Err("authentication failed".to_string()),
+        })
+        .unwrap();
+    app.poll_tasks();
+
+    assert_eq!(
+        app.setup.as_ref().unwrap().clone_error(),
+        Some("authentication failed")
+    );
+    assert!(app.config.is_none());
 }
 
 #[test]
 fn first_run_namespace_selection_restores_sources_from_manifest() {
     let (mut app, temp) = configured_test_app();
     app.config = None;
+    app.setup = Some(setup::SetupState::new());
     let repository = temp.path().join("repo");
     let namespace = repository.join("notebook");
     std::fs::create_dir_all(namespace.join("home")).unwrap();
@@ -1426,11 +1472,15 @@ fn first_run_namespace_selection_restores_sources_from_manifest() {
 
     app.handle_namespace_action();
 
-    let config = app.config.expect("first-run configuration");
+    let config = app.config.as_ref().expect("first-run configuration");
     assert_eq!(config.namespace, "notebook");
     assert_eq!(config.sources.len(), 1);
     assert_eq!(config.sources[0].path, ".config/fish");
     assert_eq!(config.sources[0].ignore, vec!["fish_variables"]);
+    assert_eq!(
+        app.setup.as_ref().unwrap().step,
+        setup::SetupStep::Automation
+    );
 }
 
 #[test]

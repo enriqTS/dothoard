@@ -142,6 +142,10 @@ pub enum TaskResult {
     Check(CheckResult),
     /// A push operation completed.
     Push(PushResult),
+    RepositoryClone {
+        request_id: RequestId,
+        result: Result<PathBuf, String>,
+    },
     RepositoryValidation {
         request_id: RequestId,
         result: Result<crate::tui::screens::repository::RepoInfo, String>,
@@ -164,6 +168,9 @@ pub enum TaskResult {
 impl TaskResult {
     fn load_identity(&self) -> Option<(LoadTaskKind, RequestId)> {
         match self {
+            Self::RepositoryClone { request_id, .. } => {
+                Some((LoadTaskKind::RepositoryClone, *request_id))
+            }
             Self::RepositoryValidation { request_id, .. } => {
                 Some((LoadTaskKind::RepositoryValidation, *request_id))
             }
@@ -234,6 +241,7 @@ pub enum TaskKind {
 /// Identifies independently loadable screen data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LoadTaskKind {
+    RepositoryClone,
     RepositoryValidation,
     BackupPreview,
     IgnorePreview,
@@ -335,6 +343,26 @@ impl TaskManager {
                 None
             }
         }
+    }
+
+    pub fn spawn_repository_clone(
+        &mut self,
+        url: String,
+        destination: PathBuf,
+        timeout_seconds: u32,
+    ) -> Option<RequestId> {
+        let request_id = self.begin_load(LoadTaskKind::RepositoryClone)?;
+        if !self.spawn_workers {
+            return Some(request_id);
+        }
+        let sender = self.sender.clone();
+        thread::spawn(move || {
+            let timeout = std::time::Duration::from_secs(u64::from(timeout_seconds));
+            let result = crate::git::clone_repository(&url, &destination, timeout)
+                .map_err(|error| error.to_string());
+            let _ = sender.send(TaskResult::RepositoryClone { request_id, result });
+        });
+        Some(request_id)
     }
 
     pub fn spawn_repository_validation(
