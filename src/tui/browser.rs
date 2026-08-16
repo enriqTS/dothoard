@@ -42,6 +42,8 @@ pub struct Entry {
     pub kind: EntryKind,
     /// Whether this entry is hidden (name starts with `.`).
     pub hidden: bool,
+    /// Whether this directory contains no-follow `.git` metadata.
+    pub is_git_repository: bool,
     /// Size in bytes for files, None for directories/errors.
     pub size: Option<u64>,
     /// Whether the entry has the executable bit set.
@@ -531,6 +533,7 @@ pub fn read_directory(path: &Path) -> DirListing {
                     is_lossy: false,
                     kind: EntryKind::Error,
                     hidden: false,
+                    is_git_repository: false,
                     size: None,
                     executable: false,
                     link_target: None,
@@ -587,12 +590,19 @@ pub fn read_directory(path: &Path) -> DirListing {
                 Err(_) => (EntryKind::Error, None, false, None),
             };
 
+        let is_git_repository = kind == EntryKind::Directory
+            && std::fs::symlink_metadata(path.join(&name).join(".git")).is_ok_and(|metadata| {
+                let file_type = metadata.file_type();
+                file_type.is_dir() || file_type.is_file()
+            });
+
         entries.push(Entry {
             name,
             display_name,
             is_lossy,
             kind,
             hidden,
+            is_git_repository,
             size,
             executable,
             link_target,

@@ -91,6 +91,29 @@ fn read_directory_includes_hidden_entries_except_git_metadata() {
 }
 
 #[test]
+fn read_directory_marks_git_repository_without_showing_its_metadata() {
+    let tmp = setup_test_dir();
+    let repository = tmp.path().join("repository");
+    std::fs::create_dir_all(repository.join(".git")).unwrap();
+
+    let listing = read_directory(tmp.path());
+    let DirListing::Entries(entries) = listing else {
+        panic!("expected directory entries");
+    };
+    let entry = entries
+        .iter()
+        .find(|entry| entry.display_name == "repository")
+        .unwrap();
+    assert!(entry.is_git_repository);
+
+    let repository_listing = read_directory(&repository);
+    let DirListing::Entries(entries) = repository_listing else {
+        panic!("expected repository entries");
+    };
+    assert!(!entries.iter().any(|entry| entry.display_name == ".git"));
+}
+
+#[test]
 fn read_directory_detects_symlinks() {
     let tmp = setup_test_dir();
     let listing = read_directory(tmp.path());
@@ -163,6 +186,7 @@ fn sort_order_is_deterministic() {
             is_lossy: false,
             kind: EntryKind::File,
             hidden: false,
+            is_git_repository: false,
             size: Some(10),
             executable: false,
             link_target: None,
@@ -173,6 +197,7 @@ fn sort_order_is_deterministic() {
             is_lossy: false,
             kind: EntryKind::Directory,
             hidden: false,
+            is_git_repository: false,
             size: None,
             executable: false,
             link_target: None,
@@ -183,6 +208,7 @@ fn sort_order_is_deterministic() {
             is_lossy: false,
             kind: EntryKind::Symlink,
             hidden: false,
+            is_git_repository: false,
             size: None,
             executable: false,
             link_target: Some("target".to_string()),
@@ -193,6 +219,7 @@ fn sort_order_is_deterministic() {
             is_lossy: false,
             kind: EntryKind::Directory,
             hidden: false,
+            is_git_repository: false,
             size: None,
             executable: false,
             link_target: None,
@@ -203,6 +230,7 @@ fn sort_order_is_deterministic() {
             is_lossy: false,
             kind: EntryKind::File,
             hidden: false,
+            is_git_repository: false,
             size: Some(5),
             executable: false,
             link_target: None,
@@ -230,6 +258,7 @@ fn sort_order_case_insensitive() {
             is_lossy: false,
             kind: EntryKind::File,
             hidden: false,
+            is_git_repository: false,
             size: None,
             executable: false,
             link_target: None,
@@ -240,6 +269,7 @@ fn sort_order_case_insensitive() {
             is_lossy: false,
             kind: EntryKind::File,
             hidden: false,
+            is_git_repository: false,
             size: None,
             executable: false,
             link_target: None,
@@ -250,6 +280,7 @@ fn sort_order_case_insensitive() {
             is_lossy: false,
             kind: EntryKind::File,
             hidden: false,
+            is_git_repository: false,
             size: None,
             executable: false,
             link_target: None,

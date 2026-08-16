@@ -624,6 +624,32 @@ fn ascii_presentation_uses_one_cell_icons_and_caller_context() {
 }
 
 #[test]
+fn renders_git_repository_icon_beside_directory_name() {
+    let tmp = setup_test_dir();
+    std::fs::create_dir(tmp.path().join("alpha/.git")).unwrap();
+    let mut browser = Browser::new(BrowserConfig {
+        root: tmp.path().to_path_buf(),
+        start: tmp.path().to_path_buf(),
+    });
+    let backend = TestBackend::new(80, 20);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    terminal
+        .draw(|frame| draw(frame, frame.area(), &mut browser, None))
+        .unwrap();
+
+    let content: String = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|cell| cell.symbol())
+        .collect();
+    assert!(content.contains("⎇ alpha"));
+    assert!(!content.contains(".git"));
+}
+
+#[test]
 fn renders_without_checkboxes_when_none() {
     let tmp = setup_test_dir();
     let mut browser = Browser::new(BrowserConfig {

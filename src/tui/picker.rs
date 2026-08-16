@@ -516,6 +516,9 @@ fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser, ascii
 
 /// Get a short icon character for an entry.
 fn entry_icon(entry: &super::browser::Entry, ascii: bool) -> &'static str {
+    if entry.is_git_repository {
+        return if ascii { "G" } else { "⎇" };
+    }
     if ascii {
         match entry.kind {
             EntryKind::Directory => "D",
