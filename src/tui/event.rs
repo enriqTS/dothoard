@@ -5,7 +5,7 @@
 
 use std::time::Duration;
 
-use crossterm::event::{self, Event, KeyEvent, KeyEventKind};
+use crossterm::event::{self, Event, KeyEvent, KeyEventKind, MouseEvent};
 
 /// The tick rate for the event loop (how often to redraw even without input).
 const TICK_RATE: Duration = Duration::from_millis(250);
@@ -15,6 +15,8 @@ const TICK_RATE: Duration = Duration::from_millis(250);
 pub enum AppEvent {
     /// A key was pressed.
     Key(KeyEvent),
+    /// A mouse or touchpad event was received.
+    Mouse(MouseEvent),
     /// The terminal was resized.
     Resize,
     /// A tick elapsed without user input (for periodic refresh).
@@ -28,6 +30,7 @@ pub fn next_event() -> std::io::Result<AppEvent> {
     if event::poll(TICK_RATE)? {
         match event::read()? {
             Event::Key(key) if key.kind == KeyEventKind::Press => Ok(AppEvent::Key(key)),
+            Event::Mouse(mouse) => Ok(AppEvent::Mouse(mouse)),
             Event::Resize(_, _) => Ok(AppEvent::Resize),
             // Ignore release/repeat key events and other event types.
             _ => Ok(AppEvent::Tick),

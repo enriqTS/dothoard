@@ -6,6 +6,7 @@
 use std::io::{self, Stdout, stdout};
 use std::panic;
 
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -62,6 +63,7 @@ fn run_loop(terminal: &mut Term) -> io::Result<()> {
 
         match next_event()? {
             AppEvent::Key(key) => app.handle_key(key),
+            AppEvent::Mouse(mouse) => app.handle_mouse(mouse),
             AppEvent::Resize => {
                 // Ratatui handles resize automatically on the next draw.
             }
@@ -79,11 +81,18 @@ fn run_loop(terminal: &mut Term) -> io::Result<()> {
 /// Enter raw mode and switch to the alternate screen.
 fn setup_terminal() -> io::Result<Term> {
     enable_raw_mode()?;
-    let mut stdout = stdout();
-    execute!(stdout, EnterAlternateScreen)?;
-    let backend = CrosstermBackend::new(stdout);
-    let terminal = Terminal::new(backend)?;
-    Ok(terminal)
+    let result = (|| {
+        let mut stdout = stdout();
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+        let backend = CrosstermBackend::new(stdout);
+        Terminal::new(backend)
+    })();
+    if result.is_err() {
+        // Best effort: setup may have failed after mouse capture or the
+        // alternate screen was enabled.
+        let _ = restore_terminal();
+    }
+    result
 }
 
 /// Leave the alternate screen and disable raw mode.
@@ -91,7 +100,7 @@ fn setup_terminal() -> io::Result<Term> {
 /// Called on normal exit and from the panic hook.
 fn restore_terminal() -> io::Result<()> {
     disable_raw_mode()?;
-    execute!(stdout(), LeaveAlternateScreen)?;
+    execute!(stdout(), DisableMouseCapture, LeaveAlternateScreen)?;
     Ok(())
 }
 

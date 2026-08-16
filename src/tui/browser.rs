@@ -147,6 +147,20 @@ impl Browser {
         self.selected
     }
 
+    /// Select an entry by index, clamping to the current listing.
+    pub fn select_index(&mut self, index: usize) {
+        let len = match self.current_listing() {
+            DirListing::Entries(entries) => entries.len(),
+            DirListing::Error(_) => 0,
+        };
+        let selected = if len == 0 { 0 } else { index.min(len - 1) };
+        if selected != self.selected {
+            self.selected = selected;
+            self.reset_preview_scroll();
+        }
+        self.adjust_scroll();
+    }
+
     /// Current scroll offset.
     pub fn scroll_offset(&self) -> usize {
         self.scroll_offset

@@ -208,37 +208,7 @@ fn draw_panes(
     ascii: bool,
     label: &'static str,
 ) {
-    // Adaptive layout: at the browser root there is no parent context to show.
-    let constraints = if browser.at_root() && area.width >= 40 {
-        vec![
-            Constraint::Percentage(0),  // No parent above the root boundary
-            Constraint::Percentage(65), // Current
-            Constraint::Percentage(35), // Preview
-        ]
-    } else if area.width >= 80 {
-        vec![
-            Constraint::Percentage(20), // Parent
-            Constraint::Percentage(50), // Current
-            Constraint::Percentage(30), // Preview
-        ]
-    } else if area.width >= 40 {
-        vec![
-            Constraint::Percentage(0),  // No parent
-            Constraint::Percentage(60), // Current
-            Constraint::Percentage(40), // Preview
-        ]
-    } else {
-        vec![
-            Constraint::Percentage(0),   // No parent
-            Constraint::Percentage(100), // Current only
-            Constraint::Percentage(0),   // No preview
-        ]
-    };
-
-    let panes = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints(constraints)
-        .split(area);
+    let panes = pane_rects(area, browser.at_root());
 
     // Parent pane (left).
     if panes[0].width > 0 {
@@ -254,6 +224,73 @@ fn draw_panes(
     if panes[2].width > 0 {
         draw_preview_pane(frame, panes[2], browser, ascii);
     }
+}
+
+fn pane_rects(area: Rect, at_root: bool) -> std::rc::Rc<[Rect]> {
+    let constraints = if at_root && area.width >= 40 {
+        vec![
+            Constraint::Percentage(0),
+            Constraint::Percentage(65),
+            Constraint::Percentage(35),
+        ]
+    } else if area.width >= 80 {
+        vec![
+            Constraint::Percentage(20),
+            Constraint::Percentage(50),
+            Constraint::Percentage(30),
+        ]
+    } else if area.width >= 40 {
+        vec![
+            Constraint::Percentage(0),
+            Constraint::Percentage(60),
+            Constraint::Percentage(40),
+        ]
+    } else {
+        vec![
+            Constraint::Percentage(0),
+            Constraint::Percentage(100),
+            Constraint::Percentage(0),
+        ]
+    };
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(constraints)
+        .split(area)
+}
+
+/// Exact pointer targets for the picker panes and currently visible rows.
+pub(crate) fn pointer_areas(
+    area: Rect,
+    browser: &mut Browser,
+) -> (Rect, Option<Rect>, Vec<(usize, Rect)>) {
+    let outer = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Min(3)])
+        .split(area);
+    let panes = pane_rects(outer[1], browser.at_root());
+    let current = panes[1];
+    let preview = (panes[2].width > 0).then_some(panes[2]);
+    let visible = current.height.saturating_sub(2) as usize;
+    let offset = browser.scroll_offset();
+    let len = match browser.current_listing() {
+        DirListing::Entries(entries) => entries.len(),
+        DirListing::Error(_) => 0,
+    };
+    let rows = (offset..len.min(offset.saturating_add(visible)))
+        .enumerate()
+        .map(|(row, index)| {
+            (
+                index,
+                Rect::new(
+                    current.x.saturating_add(1),
+                    current.y.saturating_add(1 + row as u16),
+                    current.width.saturating_sub(2),
+                    1,
+                ),
+            )
+        })
+        .collect();
+    (current, preview, rows)
 }
 
 /// Draw the parent directory pane.

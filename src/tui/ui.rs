@@ -9,6 +9,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Tabs, Wrap};
 
+use super::pointer::{ClickAction, ScrollAction};
 use super::{App, Screen, modal, text, theme};
 
 /// Supported responsive layout classes. Width determines pane arrangement;
@@ -35,6 +36,7 @@ fn layout_class(area: Rect) -> LayoutClass {
 
 /// Draw the complete UI for one frame.
 pub fn draw(frame: &mut Frame, app: &mut App) {
+    app.clear_pointer_map();
     let area = frame.area();
     frame.render_widget(Block::default().style(theme::current().canvas()), area);
     let compact_shell = !matches!(layout_class(area), LayoutClass::Wide);
@@ -49,12 +51,21 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         .split(frame.area());
 
     draw_tabs(frame, chunks[0], app);
+    app.register_click(chunks[1], ClickAction::FocusContent);
+    if screen_scrolls(app) {
+        app.register_scroll(chunks[1], ScrollAction::Vertical);
+    }
     draw_screen(frame, chunks[1], app);
     draw_status_bar(frame, chunks[2], app);
     draw_help_bar(frame, chunks[3], app);
+    if modal_owns_pointer(app) {
+        app.clear_pointer_map();
+        let line = help_bar_content_focus(app);
+        register_help_clicks(chunks[3], app, &line);
+    }
     draw_modal_overlay(frame, area, app);
-    if let Some(picker) = &app.theme_picker {
-        draw_theme_picker(frame, area, picker);
+    if app.theme_picker.is_some() {
+        draw_theme_picker(frame, area, app);
     }
 }
 
@@ -63,7 +74,47 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 /// currently active, so every option can be compared at a glance; moving
 /// the selection also live-applies that theme to the rest of the interface
 /// behind the dialog.
-fn draw_theme_picker(frame: &mut Frame, area: Rect, picker: &super::ThemePickerState) {
+fn modal_owns_pointer(app: &App) -> bool {
+    use crate::tui::screens::{automation, ignore, repository, sources};
+    if app.theme_picker.is_some() {
+        return true;
+    }
+    match app.active_screen {
+        Screen::Dashboard => app.dashboard_screen.detail.is_some(),
+        Screen::Repository => {
+            app.repo_screen.namespace_confirmation.is_some()
+                || matches!(
+                    app.repo_screen.confirm_state,
+                    repository::ConfirmState::AskInitialize | repository::ConfirmState::AskAttach
+                )
+                || matches!(
+                    app.repo_screen.mode,
+                    repository::RepoMode::TextInput | repository::RepoMode::NamespaceInput
+                )
+        }
+        Screen::Sources => matches!(
+            app.sources_screen.mode,
+            sources::Mode::AddInput
+                | sources::Mode::ConfirmDelete
+                | sources::Mode::PendingChanges
+                | sources::Mode::ConfirmApply
+        ),
+        Screen::Ignore => app.ignore_screen.mode == ignore::Mode::AddInput,
+        Screen::Automation => app.automation_screen.confirm != automation::ConfirmAction::None,
+        Screen::Preview | Screen::History => false,
+    }
+}
+
+fn screen_scrolls(app: &App) -> bool {
+    matches!(
+        app.active_screen,
+        Screen::Repository | Screen::Sources | Screen::Ignore | Screen::Preview | Screen::History
+    )
+}
+
+fn draw_theme_picker(frame: &mut Frame, area: Rect, app: &mut App) {
+    app.clear_pointer_map();
+    let picker = app.theme_picker.as_ref().expect("theme picker is open");
     use super::theme::ThemeId;
 
     let width = area.width.saturating_sub(6).clamp(30, 56);
@@ -116,6 +167,17 @@ fn draw_theme_picker(frame: &mut Frame, area: Rect, picker: &super::ThemePickerS
 
     let mut lines = vec![Line::from("")];
     lines.extend(rows);
+    for (index, _) in ThemeId::ALL.iter().enumerate() {
+        app.register_click(
+            Rect::new(
+                inner.x,
+                inner.y.saturating_add(1 + index as u16),
+                inner.width,
+                1,
+            ),
+            ClickAction::Theme(index),
+        );
+    }
     lines.push(Line::from(""));
     lines.push(Line::from(vec![
         Span::styled("↑↓/jk", theme::current().key()),
@@ -125,16 +187,32 @@ fn draw_theme_picker(frame: &mut Frame, area: Rect, picker: &super::ThemePickerS
         Span::styled("Esc", theme::current().key()),
         Span::raw(" cancel"),
     ]));
+    let action_y = inner.y.saturating_add(lines.len().saturating_sub(1) as u16);
+    app.register_click(
+        Rect::new(inner.x.saturating_add(15), action_y, 5, 1),
+        ClickAction::Key(
+            crossterm::event::KeyCode::Enter,
+            crossterm::event::KeyModifiers::NONE,
+        ),
+    );
+    app.register_click(
+        Rect::new(inner.x.saturating_add(27), action_y, 3, 1),
+        ClickAction::Key(
+            crossterm::event::KeyCode::Esc,
+            crossterm::event::KeyModifiers::NONE,
+        ),
+    );
 
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
 /// Draw the tab bar at the top.
-fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
+fn draw_tabs(frame: &mut Frame, area: Rect, app: &mut App) {
     use super::Focus;
 
     frame.render_widget(Block::default().style(theme::current().chrome()), area);
 
+    register_tab_regions(area, app);
     let compact = area.height <= 1;
     if compact {
         let selected = Screen::ALL
@@ -229,6 +307,30 @@ fn draw_tabs(frame: &mut Frame, area: Rect, app: &App) {
         });
 
     frame.render_widget(tabs, area);
+}
+
+fn register_tab_regions(area: Rect, app: &mut App) {
+    if area.width < 21 {
+        app.register_click(area, ClickAction::Tab(app.active_screen));
+        return;
+    }
+    let mut x = area.x;
+    for (index, screen) in Screen::ALL.iter().copied().enumerate() {
+        let width = if area.height <= 1 {
+            4
+        } else {
+            u16::try_from(screen.label().len() + 5).unwrap_or(u16::MAX)
+        };
+        let width = width.min(area.right().saturating_sub(x));
+        app.register_click(
+            Rect::new(x, area.y, width, area.height),
+            ClickAction::Tab(screen),
+        );
+        x = x.saturating_add(width);
+        if index + 1 == Screen::ALL.len() || x >= area.right() {
+            break;
+        }
+    }
 }
 
 /// Dispatch to the active screen's renderer.
@@ -645,7 +747,53 @@ fn draw_help_bar(frame: &mut Frame, area: Rect, app: &App) {
         Focus::TabBar => help_bar_tab_focus(),
         Focus::Content => help_bar_content_focus(app),
     };
+    register_help_clicks(area, app, &line);
     frame.render_widget(Paragraph::new(line), area);
+}
+
+fn register_help_clicks(area: Rect, app: &App, line: &Line<'_>) {
+    use crossterm::event::{KeyCode, KeyModifiers};
+
+    let mut x = area.x;
+    for span in &line.spans {
+        let width = u16::try_from(unicode_width::UnicodeWidthStr::width(span.content.as_ref()))
+            .unwrap_or(u16::MAX)
+            .min(area.right().saturating_sub(x));
+        if span.content.as_ref() == "n/r/d" {
+            for (offset, key) in [(0, 'n'), (2, 'r'), (4, 'd')] {
+                app.register_click(
+                    Rect::new(x.saturating_add(offset), area.y, 1, area.height),
+                    ClickAction::Key(KeyCode::Char(key), KeyModifiers::NONE),
+                );
+            }
+            x = x.saturating_add(width);
+            continue;
+        }
+        let key = match span.content.as_ref() {
+            "Tab" => Some((KeyCode::Tab, KeyModifiers::NONE)),
+            "Enter" => Some((KeyCode::Enter, KeyModifiers::NONE)),
+            "Space" => Some((KeyCode::Char(' '), KeyModifiers::NONE)),
+            "Esc" | "n/Esc" | "c/Esc" => Some((KeyCode::Esc, KeyModifiers::NONE)),
+            "Ctrl+T" => Some((KeyCode::Char('t'), KeyModifiers::CONTROL)),
+            "Ctrl+U" => Some((KeyCode::Char('u'), KeyModifiers::CONTROL)),
+            ":/" => Some((KeyCode::Char(':'), KeyModifiers::NONE)),
+            key if key.len() == 1 => key
+                .chars()
+                .next()
+                .map(|key| (KeyCode::Char(key), KeyModifiers::NONE)),
+            _ => None,
+        };
+        if let Some((code, modifiers)) = key {
+            app.register_click(
+                Rect::new(x, area.y, width, area.height),
+                ClickAction::Key(code, modifiers),
+            );
+        }
+        x = x.saturating_add(width);
+        if x >= area.right() {
+            break;
+        }
+    }
 }
 
 /// Help bar when the tab bar has focus.
@@ -1584,7 +1732,16 @@ fn draw_history(frame: &mut Frame, area: Rect, app: &mut App) {
         .history_screen
         .list_viewport
         .visible_range(history.len());
-    for i in visible_range.clone() {
+    for (row, i) in visible_range.clone().enumerate() {
+        app.register_click(
+            Rect::new(
+                list_area.x,
+                list_area.y.saturating_add(2 + row as u16),
+                list_area.width,
+                1,
+            ),
+            ClickAction::History(i),
+        );
         let record = &history[i];
         let entry = HistoryScreen::format_entry(record);
         let marker = if i == app.history_screen.selected {
@@ -2017,7 +2174,22 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
             theme::current().label()
         },
     )];
+    let source_row = if app.ignore_screen.mode == Mode::Preview {
+        inner.y
+    } else {
+        inner.y.saturating_add(1)
+    };
+    let mut source_x = inner.x.saturating_add(if source_focused { 27 } else { 19 });
     for (i, source) in sources.iter().enumerate() {
+        let source_width =
+            u16::try_from(unicode_width::UnicodeWidthStr::width(source.path.as_str()) + 3)
+                .unwrap_or(u16::MAX)
+                .min(inner.right().saturating_sub(source_x));
+        app.register_click(
+            Rect::new(source_x, source_row, source_width, 1),
+            ClickAction::IgnoreSource(i),
+        );
+        source_x = source_x.saturating_add(source_width);
         let style = if i == app.ignore_screen.source_idx {
             theme::current().selected()
         } else {
@@ -2138,6 +2310,15 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
             },
         )));
         for (i, pattern) in current_source.ignore.iter().enumerate() {
+            app.register_click(
+                Rect::new(
+                    inner.x,
+                    inner.y.saturating_add(lines.len() as u16),
+                    inner.width,
+                    1,
+                ),
+                ClickAction::IgnorePattern(i),
+            );
             let marker = if i == app.ignore_screen.pattern_idx {
                 "▶ "
             } else {
@@ -2169,6 +2350,40 @@ fn draw_ignore(frame: &mut Frame, area: Rect, app: &mut App) {
 
     let paragraph = Paragraph::new(lines);
     frame.render_widget(paragraph, inner);
+}
+
+fn register_picker_pointer(app: &mut App, area: Rect, toggles: bool) {
+    let browser = if toggles {
+        app.sources_screen.browser.as_mut()
+    } else {
+        app.repo_screen.browser.as_mut()
+    };
+    let Some(browser) = browser else { return };
+    let (current, preview, rows) = crate::tui::picker::pointer_areas(area, browser);
+    app.register_scroll(current, ScrollAction::PickerEntries);
+    if let Some(preview) = preview {
+        app.register_scroll(preview, ScrollAction::PickerPreview);
+    }
+    for (index, row) in rows {
+        if toggles {
+            let toggle_width = row.width.min(4);
+            app.register_click(
+                Rect::new(row.x, row.y, toggle_width, 1),
+                ClickAction::PickerToggle(index),
+            );
+            app.register_click(
+                Rect::new(
+                    row.x.saturating_add(toggle_width),
+                    row.y,
+                    row.width.saturating_sub(toggle_width),
+                    1,
+                ),
+                ClickAction::PickerEntry(index),
+            );
+        } else {
+            app.register_click(row, ClickAction::PickerEntry(index));
+        }
+    }
 }
 
 /// Draw the sources management screen.
@@ -2206,6 +2421,7 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
                 check_fn,
                 crate::tui::picker::Presentation::SOURCES,
             );
+            register_picker_pointer(app, chunks[0], true);
         } else {
             let msg = Paragraph::new(Line::from(Span::styled(
                 " Browser is not ready. Press Esc, then a to try again.",
@@ -2261,6 +2477,15 @@ fn draw_sources(frame: &mut Frame, area: Rect, app: &mut App) {
         lines.push(Line::from(""));
 
         for (i, src) in sources.iter().enumerate() {
+            app.register_click(
+                Rect::new(
+                    inner.x,
+                    inner.y.saturating_add(lines.len() as u16),
+                    inner.width,
+                    1,
+                ),
+                ClickAction::Source(i),
+            );
             let marker = if i == app.sources_screen.selected {
                 "▶ "
             } else {
@@ -2449,6 +2674,7 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
                     None,
                     crate::tui::picker::Presentation::REPOSITORY,
                 );
+                register_picker_pointer(app, chunks[0], false);
             } else {
                 let msg = Paragraph::new(Line::from(Span::styled(
                     " Press Enter or ↓ to start browsing",
@@ -2530,6 +2756,15 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
                 ));
             }
             for (index, item) in app.repo_screen.namespaces.iter().enumerate() {
+                app.register_click(
+                    Rect::new(
+                        inner.x,
+                        inner.y.saturating_add(lines.len() as u16),
+                        inner.width,
+                        1,
+                    ),
+                    ClickAction::Namespace(index),
+                );
                 let selected = index == app.repo_screen.namespace_selected;
                 let marker = if selected { "▶" } else { " " };
                 let active = if item.active {

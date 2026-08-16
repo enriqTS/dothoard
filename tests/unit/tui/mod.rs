@@ -21,7 +21,115 @@ fn test_app() -> App {
         automation_screen: screens::automation::AutomationScreen::new(),
         history_screen: screens::history::HistoryScreen::new(),
         theme_picker: None,
+        pointer_map: std::cell::RefCell::new(pointer::PointerMap::default()),
     }
+}
+
+fn mouse(
+    kind: crossterm::event::MouseEventKind,
+    column: u16,
+    row: u16,
+) -> crossterm::event::MouseEvent {
+    crossterm::event::MouseEvent {
+        kind,
+        column,
+        row,
+        modifiers: crossterm::event::KeyModifiers::NONE,
+    }
+}
+
+#[test]
+fn pointer_click_selects_tabs_and_focuses_the_tab_bar() {
+    let mut app = test_app();
+    app.focus = Focus::Content;
+    app.register_click(
+        ratatui::layout::Rect::new(10, 0, 8, 1),
+        pointer::ClickAction::Tab(Screen::Sources),
+    );
+
+    app.handle_mouse(mouse(
+        crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+        12,
+        0,
+    ));
+
+    assert_eq!(app.active_screen, Screen::Sources);
+    assert_eq!(app.focus, Focus::TabBar);
+}
+
+#[test]
+fn pointer_click_enters_content_with_keyboard_equivalent_initialization() {
+    let (mut app, _temp) = configured_test_app();
+    app.active_screen = Screen::Repository;
+    app.focus = Focus::TabBar;
+    app.repo_screen.browser = None;
+    app.register_click(
+        ratatui::layout::Rect::new(0, 1, 80, 20),
+        pointer::ClickAction::FocusContent,
+    );
+
+    app.handle_mouse(mouse(
+        crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+        5,
+        5,
+    ));
+
+    assert_eq!(app.focus, Focus::Content);
+    assert!(app.repo_screen.browser.is_some());
+}
+
+#[test]
+fn pointer_click_invokes_clickable_shortcut_action() {
+    let mut app = test_app();
+    app.active_screen = Screen::Sources;
+    app.focus = Focus::Content;
+    app.config = Some(crate::config::Config::new(
+        "/repo".to_string(),
+        "desktop".to_string(),
+    ));
+    app.register_click(
+        ratatui::layout::Rect::new(0, 23, 3, 1),
+        pointer::ClickAction::Key(
+            crossterm::event::KeyCode::Char('a'),
+            crossterm::event::KeyModifiers::NONE,
+        ),
+    );
+
+    app.handle_mouse(mouse(
+        crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+        1,
+        23,
+    ));
+
+    assert_eq!(app.sources_screen.mode, screens::sources::Mode::Browse);
+}
+
+#[test]
+fn pointer_wheel_scrolls_the_control_under_the_pointer() {
+    let mut app = test_app();
+    app.active_screen = Screen::Sources;
+    app.focus = Focus::TabBar;
+    let mut config = crate::config::Config::new("/repo".to_string(), "desktop".to_string());
+    config.sources = vec![
+        crate::config::SourceConfig {
+            path: "one".to_string(),
+            ignore: Vec::new(),
+        },
+        crate::config::SourceConfig {
+            path: "two".to_string(),
+            ignore: Vec::new(),
+        },
+    ];
+    app.config = Some(config);
+    app.register_scroll(
+        ratatui::layout::Rect::new(0, 1, 80, 20),
+        pointer::ScrollAction::Vertical,
+    );
+
+    app.handle_mouse(mouse(crossterm::event::MouseEventKind::ScrollDown, 5, 5));
+
+    assert_eq!(app.focus, Focus::Content);
+    assert_eq!(app.sources_screen.selected, 1);
 }
 
 fn configured_test_app() -> (App, tempfile::TempDir) {

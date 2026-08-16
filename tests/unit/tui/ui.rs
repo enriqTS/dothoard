@@ -46,6 +46,65 @@ fn app_on(screen: Screen) -> App {
     app
 }
 
+fn left_click(column: u16, row: u16) -> crossterm::event::MouseEvent {
+    crossterm::event::MouseEvent {
+        kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+        column,
+        row,
+        modifiers: crossterm::event::KeyModifiers::NONE,
+    }
+}
+
+#[test]
+fn rendered_tabs_and_help_shortcuts_are_clickable() {
+    let backend = TestBackend::new(100, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = app_on(Screen::Dashboard);
+    app.focus = crate::tui::Focus::TabBar;
+
+    terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+    app.handle_mouse(left_click(16, 1));
+    assert_eq!(app.active_screen, Screen::Repository);
+
+    app.active_screen = Screen::Sources;
+    app.focus = crate::tui::Focus::Content;
+    app.config = Some(crate::config::Config::new(
+        "/repo".to_string(),
+        "desktop".to_string(),
+    ));
+    terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+    app.handle_mouse(left_click(10, 23));
+    assert_eq!(
+        app.sources_screen.mode,
+        crate::tui::screens::sources::Mode::Browse
+    );
+}
+
+#[test]
+fn rendered_source_rows_are_clickable() {
+    let backend = TestBackend::new(100, 24);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = app_on(Screen::Sources);
+    app.focus = crate::tui::Focus::Content;
+    let mut config = crate::config::Config::new("/repo".to_string(), "desktop".to_string());
+    config.sources = vec![
+        crate::config::SourceConfig {
+            path: "one".to_string(),
+            ignore: Vec::new(),
+        },
+        crate::config::SourceConfig {
+            path: "two".to_string(),
+            ignore: Vec::new(),
+        },
+    ];
+    app.config = Some(config);
+
+    terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+    app.handle_mouse(left_click(8, 8));
+
+    assert_eq!(app.sources_screen.selected, 1);
+}
+
 /// Create an App with mock state for dashboard rendering tests.
 fn app_with_state() -> App {
     use chrono::Utc;

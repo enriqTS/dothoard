@@ -8,6 +8,7 @@ pub mod browser;
 mod event;
 mod modal;
 pub mod picker;
+mod pointer;
 pub mod screens;
 pub mod selection;
 mod status;
@@ -123,6 +124,8 @@ pub struct App {
     pub history_screen: screens::history::HistoryScreen,
     /// Theme picker overlay state, present only while it owns input.
     pub theme_picker: Option<ThemePickerState>,
+    /// Interactive rectangles recorded during the most recent frame.
+    pointer_map: std::cell::RefCell<pointer::PointerMap>,
 }
 
 /// State for the global theme picker overlay (Ctrl+T).
@@ -203,6 +206,7 @@ impl App {
             automation_screen: screens::automation::AutomationScreen::new(),
             history_screen: screens::history::HistoryScreen::new(),
             theme_picker: None,
+            pointer_map: std::cell::RefCell::new(pointer::PointerMap::default()),
         }
     }
 
@@ -883,6 +887,129 @@ impl App {
             Screen::Dashboard => self.dashboard_screen.detail.is_some(),
             Screen::Preview | Screen::History => false,
         }
+    }
+
+    pub(crate) fn clear_pointer_map(&self) {
+        self.pointer_map.borrow_mut().clear();
+    }
+
+    pub(crate) fn register_click(&self, rect: ratatui::layout::Rect, action: pointer::ClickAction) {
+        self.pointer_map.borrow_mut().click(rect, action);
+    }
+
+    pub(crate) fn register_scroll(
+        &self,
+        rect: ratatui::layout::Rect,
+        action: pointer::ScrollAction,
+    ) {
+        self.pointer_map.borrow_mut().scroll(rect, action);
+    }
+
+    /// Handle a mouse or touchpad event using hit regions from the last frame.
+    pub fn handle_mouse(&mut self, mouse: crossterm::event::MouseEvent) {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEventKind};
+        use pointer::{ClickAction, ScrollAction};
+
+        let key = |code, modifiers| KeyEvent::new(code, modifiers);
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                let Some(action) = self.pointer_map.borrow().click_at(mouse.column, mouse.row)
+                else {
+                    return;
+                };
+                match action {
+                    ClickAction::Tab(screen) => {
+                        self.active_screen = screen;
+                        self.focus = Focus::TabBar;
+                    }
+                    ClickAction::FocusContent => {
+                        if self.focus == Focus::TabBar {
+                            self.handle_key(key(KeyCode::Down, KeyModifiers::NONE));
+                        }
+                    }
+                    ClickAction::Key(code, modifiers) => self.handle_key(key(code, modifiers)),
+                    ClickAction::PickerEntry(index) => {
+                        self.focus = Focus::Content;
+                        let browser = match self.active_screen {
+                            Screen::Repository => self.repo_screen.browser.as_mut(),
+                            Screen::Sources => self.sources_screen.browser.as_mut(),
+                            _ => None,
+                        };
+                        if let Some(browser) = browser {
+                            browser.select_index(index);
+                        }
+                    }
+                    ClickAction::PickerToggle(index) => {
+                        self.focus = Focus::Content;
+                        if let Some(browser) = self.sources_screen.browser.as_mut() {
+                            browser.select_index(index);
+                        }
+                        self.handle_key(key(KeyCode::Char(' '), KeyModifiers::NONE));
+                    }
+                    ClickAction::Source(index) => {
+                        self.focus = Focus::Content;
+                        self.sources_screen.selected = index;
+                    }
+                    ClickAction::IgnoreSource(index) => {
+                        self.focus = Focus::Content;
+                        self.ignore_screen.source_idx = index;
+                        self.ignore_screen.pattern_idx = 0;
+                        self.ignore_screen.list_focus = screens::ignore::ListFocus::SourceSelector;
+                        self.invalidate_ignore_preview();
+                    }
+                    ClickAction::IgnorePattern(index) => {
+                        self.focus = Focus::Content;
+                        self.ignore_screen.pattern_idx = index;
+                        self.ignore_screen.list_focus = screens::ignore::ListFocus::PatternList;
+                    }
+                    ClickAction::Namespace(index) => {
+                        self.focus = Focus::Content;
+                        self.repo_screen.namespace_selected = index;
+                    }
+                    ClickAction::History(index) => {
+                        self.focus = Focus::Content;
+                        self.history_screen.selected = index;
+                        let len = self.state.as_ref().map_or(0, |state| state.history.len());
+                        self.history_screen.clamp_history(len);
+                    }
+                    ClickAction::Theme(index) => {
+                        if let Some(id) = theme::ThemeId::ALL.get(index).copied()
+                            && let Some(picker) = self.theme_picker.as_mut()
+                        {
+                            picker.selected = id;
+                            theme::set_active(id);
+                        }
+                    }
+                }
+            }
+            MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
+                if self.theme_picker.is_some() || self.content_owns_quit_shortcuts() {
+                    return;
+                }
+                let Some(target) = self.pointer_map.borrow().scroll_at(mouse.column, mouse.row)
+                else {
+                    return;
+                };
+                self.focus = Focus::Content;
+                let down = mouse.kind == MouseEventKind::ScrollDown;
+                let (code, modifiers) = match target {
+                    ScrollAction::Vertical | ScrollAction::PickerEntries => (
+                        if down { KeyCode::Down } else { KeyCode::Up },
+                        KeyModifiers::NONE,
+                    ),
+                    ScrollAction::PickerPreview => (
+                        if down { KeyCode::Down } else { KeyCode::Up },
+                        KeyModifiers::CONTROL,
+                    ),
+                };
+                self.handle_key(key(code, modifiers));
+                // Reaching the top of a pointer-scrolled list must not move
+                // keyboard focus back to the tab bar.
+                self.focus = Focus::Content;
+            }
+            _ => {}
+        }
+        self.promote_screen_messages();
     }
 
     /// Handle a key event and update application state.
