@@ -4,6 +4,8 @@
 //! providers only arrange for the short-lived `dothoard backup` command to run
 //! and expose install, removal, status, refresh, and staleness operations.
 
+use std::path::{Path, PathBuf};
+
 use thiserror::Error;
 
 pub use crate::config::AutomationBackend as Backend;
@@ -16,6 +18,7 @@ impl Backend {
         match self {
             Self::Systemd => "systemd",
             Self::Cron => "cron",
+            Self::External => "external",
         }
     }
 
@@ -23,13 +26,15 @@ impl Backend {
         match self {
             Self::Systemd => "systemd user timer",
             Self::Cron => "user crontab",
+            Self::External => "externally managed scheduler",
         }
     }
 
     pub const fn next(self) -> Self {
         match self {
             Self::Systemd => Self::Cron,
-            Self::Cron => Self::Systemd,
+            Self::Cron => Self::External,
+            Self::External => Self::Systemd,
         }
     }
 }
@@ -55,6 +60,9 @@ pub enum Status {
     },
     Failed {
         reason: String,
+    },
+    External {
+        command: String,
     },
     NotInstalled,
 }
@@ -90,6 +98,9 @@ impl std::fmt::Display for Status {
                 "installed (stale configuration; scheduler activity not inspected)"
             ),
             Self::Failed { reason } => write!(f, "failed: {reason}"),
+            Self::External { command } => {
+                write!(f, "externally managed; schedule `{command}`")
+            }
             Self::NotInstalled => write!(f, "not installed"),
         }
     }
@@ -101,6 +112,32 @@ pub enum AutomationError {
     Systemd(#[from] systemd::SystemdError),
     #[error("cron backend failed: {0}")]
     Cron(#[from] cron::CronError),
+    #[error("failed to resolve the dothoard executable: {0}")]
+    Executable(#[source] std::io::Error),
+    #[error("{name} path is not valid UTF-8: {path}")]
+    NonUtf8Path { name: &'static str, path: PathBuf },
+    #[error(
+        "{operation} is unavailable for externally managed automation; configure the scheduler outside dothoard and use `dothoard service print-command`"
+    )]
+    ExternallyManaged { operation: &'static str },
+}
+
+fn shell_quote(path: &Path, name: &'static str) -> Result<String, AutomationError> {
+    let text = path.to_str().ok_or_else(|| AutomationError::NonUtf8Path {
+        name,
+        path: path.to_path_buf(),
+    })?;
+    Ok(format!("'{}'", text.replace('\'', "'\\''")))
+}
+
+/// Render a copyable command for a scheduler managed outside dothoard.
+pub fn external_command(paths: &AppPaths) -> Result<String, AutomationError> {
+    let executable = std::env::current_exe().map_err(AutomationError::Executable)?;
+    Ok(format!(
+        "XDG_RUNTIME_DIR={} {} backup",
+        shell_quote(paths.runtime_dir(), "runtime directory")?,
+        shell_quote(&executable, "executable")?
+    ))
 }
 
 fn systemd_unit_dir(paths: &AppPaths) -> std::path::PathBuf {
@@ -117,6 +154,9 @@ pub fn validate(config: &Config, paths: &AppPaths) -> Result<(), AutomationError
             let params = cron::params_from_config(config, paths.runtime_dir())?;
             cron::generate_managed_block(&params)?;
         }
+        Backend::External => {
+            external_command(paths)?;
+        }
     }
     Ok(())
 }
@@ -128,6 +168,11 @@ pub fn install(config: &Config, paths: &AppPaths) -> Result<(), AutomationError>
             systemd::install(&params, &systemd_unit_dir(paths))?;
         }
         Backend::Cron => cron::install(&cron::params_from_config(config, paths.runtime_dir())?)?,
+        Backend::External => {
+            return Err(AutomationError::ExternallyManaged {
+                operation: "installation",
+            });
+        }
     }
     Ok(())
 }
@@ -136,6 +181,11 @@ pub fn remove(config: &Config, paths: &AppPaths) -> Result<(), AutomationError> 
     match selected_backend(config) {
         Backend::Systemd => systemd::remove(&systemd_unit_dir(paths))?,
         Backend::Cron => cron::remove()?,
+        Backend::External => {
+            return Err(AutomationError::ExternallyManaged {
+                operation: "removal",
+            });
+        }
     }
     Ok(())
 }
@@ -150,6 +200,9 @@ pub fn status(config: &Config, paths: &AppPaths) -> Result<Status, AutomationErr
             config,
             paths.runtime_dir(),
         )?)?),
+        Backend::External => Status::External {
+            command: external_command(paths)?,
+        },
     };
     Ok(status)
 }
@@ -161,6 +214,11 @@ pub fn refresh(config: &Config, paths: &AppPaths) -> Result<(), AutomationError>
             systemd::update_interval(&params, &systemd_unit_dir(paths))?;
         }
         Backend::Cron => cron::install(&cron::params_from_config(config, paths.runtime_dir())?)?,
+        Backend::External => {
+            return Err(AutomationError::ExternallyManaged {
+                operation: "refresh",
+            });
+        }
     }
     Ok(())
 }
@@ -176,6 +234,7 @@ pub fn is_installed(config: &Config, paths: &AppPaths) -> Result<bool, Automatio
             cron::status(&cron::params_from_config(config, paths.runtime_dir())?)?,
             cron::CronStatus::NotInstalled
         ),
+        Backend::External => false,
     };
     Ok(installed)
 }
@@ -192,6 +251,7 @@ pub fn is_stale(config: &Config, paths: &AppPaths) -> Result<bool, AutomationErr
                 cron::CronStatus::NotInstalled => false,
             }
         }
+        Backend::External => false,
     };
     Ok(stale)
 }

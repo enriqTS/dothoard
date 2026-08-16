@@ -10,9 +10,9 @@ The TUI configures and monitors the application. Background work is performed
 by a short-lived headless command started manually or by a `systemd --user`
 timer; dothoard is not a persistent daemon.
 
-Scheduled backups support systemd and cron without turning dothoard into a
-persistent daemon. `dothoard backup` remains the scheduler-independent execution
-boundary, and external schedulers may invoke it directly.
+Scheduled backups support managed systemd and cron plus externally managed
+schedulers without turning dothoard into a persistent daemon. `dothoard backup`
+remains the scheduler-independent execution boundary.
 
 ## Current Scope
 
@@ -26,7 +26,8 @@ boundary, and external schedulers may invoke it directly.
 - Run backups manually, after systemd user-manager startup, and at a
   configurable interval that defaults to five minutes.
 - Permit external schedulers to invoke the same short-lived `dothoard backup`
-  command, with managed systemd and cron lifecycle support.
+  command, with managed systemd and cron lifecycle support plus an explicitly
+  externally managed backend that prints a copyable invocation.
 - Persist status and history for the TUI.
 - Report failures and recovery through desktop notifications when available.
 - Create, select, rename, and delete namespaces through the TUI under strict
@@ -42,10 +43,11 @@ boundary, and external schedulers may invoke it directly.
 dothoard                 Open the TUI
 dothoard backup          Run one backup immediately
 dothoard check           Validate configuration and repository
-dothoard service select  Select systemd or cron automation
+dothoard service select  Select systemd, cron, or external automation
 dothoard service install Install and enable managed automation
 dothoard service remove  Disable and remove managed automation
 dothoard service status  Show automation status
+dothoard service print-command  Print the external-scheduler invocation
 ```
 
 The binary, configuration directory, state directory, manifest identifier, and
@@ -248,7 +250,10 @@ responsibility.
 
 The configured automation backend is explicit and defaults to `systemd` for
 existing configuration compatibility. Switching is refused while the selected
-backend remains installed. The systemd provider manages:
+managed backend remains installed. The `external` backend never installs,
+removes, or executes scheduler setup commands; it prints the direct backup
+invocation and reports that scheduler health cannot be inspected. The systemd
+provider manages:
 
 ```text
 ~/.config/systemd/user/dothoard-backup.service
@@ -295,8 +300,9 @@ The keyboard-first, pointer-capable TUI has seven screens:
 - **Ignore Rules:** Per-source pattern editing and match/secret preview.
 - **Backup Preview:** Additions, modifications, deletions, exclusions,
   warnings, exact managed paths, and manual backup or push actions.
-- **Automation:** Backend selection plus installation, removal, refresh, and
-  status for systemd and cron.
+- **Automation:** Backend selection and status for systemd, cron, and external
+  schedulers, with managed installation, removal, and refresh only for systemd
+  and cron.
 - **History:** Recent namespace-aware runs, details, errors, and filtered logs.
 
 Repository and source selection use a shared no-follow filesystem browser.

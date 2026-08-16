@@ -47,7 +47,7 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   source paths and ignore rules; selecting a new namespace clears sources.
   First run now opens Repository setup and requires an explicit namespace after
   repository validation, with no implicit `desktop` default.
-- **Milestone 17 complete**: AP01–AP04 extend short-lived backup automation
+- **Milestone 17 complete**: AP01–AP05 extend short-lived backup automation
   beyond systemd without adding a daemon. **AP01 is complete**: external cron
   and comparable scheduler usage, environment, timing, overlap, missed-run,
   logging, credential, and notification constraints are documented. **AP02 is
@@ -58,6 +58,8 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   **AP04 is complete**: controlled crontab-command verification, final
   lifecycle/health/TUI acceptance, platform/test-isolation claims, CLI help,
   documentation links, site build, and the complete quality baseline pass.
+  **AP05 is complete**: externally managed automation prints a copyable direct
+  invocation while leaving all scheduler setup and ownership to the user.
 - **Milestone 15 is partially complete**: PV01–PV03 provide the GitHub landing
   page, sanitized SVG visual demonstrations, and reorganized user
   documentation. **PV04 is complete**: a simple Astro Starlight website uses
@@ -447,6 +449,14 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Active Resume Point
 
+- **AP05 complete:** `automation_backend = "external"` records user-owned
+  scheduling without executing setup commands. `dothoard service print-command`
+  emits a shell-quoted invocation containing the resolved executable and
+  `XDG_RUNTIME_DIR`; managed lifecycle actions are refused, checks report
+  inspection limits non-fatally, and the TUI omits install/remove actions.
+  Formatting, full Clippy, the serialized suite (999 library tests plus all
+  integration suites), CLI help/output smoke tests, and the 16-page website
+  build pass.
 - **CI fixture and automation path bugs fixed:** TUI rendering fixtures now set
   their intended screen and focus explicitly instead of inheriting first-run
   state from the host configuration. Scheduler operations now derive systemd

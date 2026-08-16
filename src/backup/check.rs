@@ -302,6 +302,18 @@ fn check_automation(results: &mut Vec<CheckResult>, paths: &AppPaths, config: &C
     let backend = automation::selected_backend(config);
     let label = backend.description().to_string();
 
+    if backend == automation::Backend::External {
+        results.push(CheckResult {
+            category: "automation",
+            label,
+            status: CheckStatus::Warning(
+                "scheduler is externally managed and cannot be inspected; verify it separately"
+                    .to_string(),
+            ),
+        });
+        return;
+    }
+
     match automation::is_installed(config, paths) {
         Ok(true) => {}
         Ok(false) => {

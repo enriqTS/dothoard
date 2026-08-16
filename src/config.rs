@@ -151,6 +151,8 @@ pub enum AutomationBackend {
     Systemd,
     /// A managed block in the user's crontab.
     Cron,
+    /// Scheduling configured and owned entirely by the user.
+    External,
 }
 
 /// Top-level application configuration.

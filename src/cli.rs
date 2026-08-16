@@ -51,7 +51,7 @@ pub enum Command {
 
 #[derive(Debug, Subcommand)]
 pub enum ServiceCommand {
-    /// Select the managed automation backend.
+    /// Select the automation backend.
     Select {
         #[arg(value_enum)]
         backend: BackendArg,
@@ -62,12 +62,15 @@ pub enum ServiceCommand {
     Remove,
     /// Show automation status.
     Status,
+    /// Print the command to schedule with an external automation provider.
+    PrintCommand,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum BackendArg {
     Systemd,
     Cron,
+    External,
 }
 
 impl From<BackendArg> for crate::config::AutomationBackend {
@@ -75,6 +78,7 @@ impl From<BackendArg> for crate::config::AutomationBackend {
         match value {
             BackendArg::Systemd => Self::Systemd,
             BackendArg::Cron => Self::Cron,
+            BackendArg::External => Self::External,
         }
     }
 }
@@ -140,6 +144,7 @@ pub fn execute(cli: Cli) -> Result<ExitCode, CliError> {
             ServiceCommand::Install => execute_service_install(),
             ServiceCommand::Remove => execute_service_remove(),
             ServiceCommand::Status => execute_service_status(),
+            ServiceCommand::PrintCommand => execute_service_print_command(),
         },
     }
 }
@@ -244,10 +249,20 @@ fn execute_service_status() -> Result<ExitCode, CliError> {
 
     match automation_status {
         automation::Status::Active { .. } => Ok(exit_code::SUCCESS),
-        automation::Status::Installed { .. } => Ok(exit_code::SUCCESS),
+        automation::Status::Installed { .. } | automation::Status::External { .. } => {
+            Ok(exit_code::SUCCESS)
+        }
         automation::Status::Failed { .. } => Ok(exit_code::FAILURE),
         automation::Status::NotInstalled => Ok(exit_code::FAILURE),
     }
+}
+
+/// Print the direct backup invocation for an externally managed scheduler.
+fn execute_service_print_command() -> Result<ExitCode, CliError> {
+    let paths = AppPaths::from_environment()?;
+    load_and_validate_config(&paths)?;
+    println!("{}", automation::external_command(&paths)?);
+    Ok(exit_code::SUCCESS)
 }
 
 /// Load and validate configuration, returning a CLI-friendly error.

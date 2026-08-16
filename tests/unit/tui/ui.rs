@@ -922,6 +922,28 @@ fn automation_screen_renders() {
     assert!(content.contains("scheduler activity not inspected"));
 }
 
+#[test]
+fn external_automation_shows_unmanaged_status_without_lifecycle_shortcuts() {
+    let backend = TestBackend::new(120, 30);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = app_on(Screen::Automation);
+    app.focus = crate::tui::Focus::Content;
+    let mut config = crate::config::Config::new("~/repo", "desktop");
+    config.automation_backend = crate::config::AutomationBackend::External;
+    app.config = Some(config);
+    app.automation_screen.status_state = crate::tui::task::LoadState::Loaded(
+        "externally managed; schedule `dothoard backup`".to_string(),
+    );
+
+    terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+    let content = buffer_text(terminal.backend());
+    assert!(content.contains("externally managed scheduler"));
+    assert!(content.contains("externally managed; schedule"));
+    assert!(content.contains("backend"));
+    assert!(!content.contains(" install "));
+    assert!(!content.contains(" remove"));
+}
+
 /// Verify automation screen shows confirmation dialog.
 #[test]
 fn automation_screen_shows_confirm() {

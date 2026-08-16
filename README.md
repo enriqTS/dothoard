@@ -128,15 +128,18 @@ palette.
 dothoard                 Open the TUI
 dothoard backup          Run one backup immediately
 dothoard check           Validate configuration and repository
-dothoard service select  Select systemd or cron automation
-dothoard service install Install and enable managed automation
-dothoard service remove  Disable and remove managed automation
-dothoard service status  Show managed automation status
+dothoard service select        Select systemd, cron, or external automation
+dothoard service install       Install and enable managed automation
+dothoard service remove        Disable and remove managed automation
+dothoard service status        Show automation status
+dothoard service print-command Print the external-scheduler invocation
 ```
 
 Any scheduler can run `/absolute/path/to/dothoard backup`. Dothoard can manage a
-systemd user timer or a clearly delimited user-crontab block; select the backend
-in the Automation screen or with `dothoard service select`. See
+systemd user timer or a clearly delimited user-crontab block. The `external`
+backend prints a copyable invocation for other schedulers without executing or
+owning their setup. Select the backend in the Automation screen or with
+`dothoard service select`. See
 [Backup automation](docs/automation.md) for cron environment and timing
 considerations.
 

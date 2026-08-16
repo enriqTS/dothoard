@@ -12,10 +12,10 @@ noninteractive Git operation, network timeouts, state history, run logs, and
 failure/recovery notification attempts whether it is started manually or by a
 scheduler.
 
-## Selecting a managed backend
+## Selecting an automation backend
 
 The explicit `automation_backend` setting defaults to `systemd` and can be
-changed to `cron`. Use the Automation screen's `b` key or the CLI:
+changed to `cron` or `external`. Use the Automation screen's `b` key or the CLI:
 
 ```bash
 dothoard service select cron
@@ -44,22 +44,36 @@ shell-safe tokens, `XDG_RUNTIME_DIR` is captured in the managed command, and
 `interval_minutes` must be from 1 through 59. Dothoard can verify block presence
 and staleness but cannot verify that the cron daemon itself is running.
 
+The external backend is for incompatible cron implementations and other
+schedulers. Dothoard does not execute custom setup commands and cannot install,
+remove, refresh, or inspect an external schedule. It only records the choice and
+provides the direct invocation that the user must configure independently.
+
 Cron uses fixed wall-clock boundaries, does not replay missed runs, and does not
 provide systemd's completion-relative interval or startup run. Test after reboot
 and login before relying on it.
 
-## Using a custom cron entry
+## Using an externally managed schedule
 
-You can keep cron outside dothoard's lifecycle management and invoke the backup
-command yourself. First find the absolute executable path:
+Select external automation and ask dothoard for a safely quoted invocation with
+the current executable and runtime lock directory:
 
 ```bash
-command -v dothoard
+dothoard service select external
+dothoard service print-command
+dothoard service status
 ```
 
-Run `crontab -e` and add an entry using that absolute path. Replace the example
-home, executable, numeric user ID, and agent socket with values from the target
-account:
+Example output:
+
+```bash
+XDG_RUNTIME_DIR='/run/user/1000' '/home/alice/.local/bin/dothoard' backup
+```
+
+Copy that invocation into the scheduler's native configuration. Do not run
+`service install` or `service remove`: external schedule ownership remains with
+the user. For a traditional manually edited crontab, add the command and any
+environment needed by the target account:
 
 ```text
 HOME=/home/alice
@@ -96,9 +110,9 @@ env -i \
   /home/alice/.local/bin/dothoard check
 ```
 
-When using a custom cron entry, leave the managed backend uninstalled and
-expect `dothoard check` to report a non-fatal automation warning. Dothoard can
-only inspect cron entries inside its own managed marker block.
+When using external automation, `dothoard check` reports a non-fatal warning
+that scheduler health cannot be inspected. `service status` repeats the command
+to schedule, but it does not claim that the external scheduler is active.
 
 ### Cron behavior differences
 

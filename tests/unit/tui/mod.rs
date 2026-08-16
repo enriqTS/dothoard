@@ -2454,6 +2454,28 @@ fn automation_backend_selection_is_explicit_and_persisted() {
 }
 
 #[test]
+fn external_automation_refuses_managed_lifecycle_actions() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let (mut app, _temp) = configured_test_app();
+    app.active_screen = Screen::Automation;
+    app.focus = Focus::Content;
+    app.config.as_mut().unwrap().automation_backend = crate::config::AutomationBackend::External;
+
+    app.handle_key_content(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE));
+
+    assert_eq!(
+        app.automation_screen.confirm,
+        screens::automation::ConfirmAction::None
+    );
+    assert!(
+        app.status_message
+            .as_ref()
+            .is_some_and(|message| message.text.contains("service print-command"))
+    );
+}
+
+#[test]
 fn automation_changes_require_configured_repository() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 

@@ -906,12 +906,20 @@ fn help_bar_content_focus(app: &App) -> Line<'static> {
                     spans.extend([
                         Span::raw("  "),
                         Span::styled("b", theme::current().key()),
-                        Span::raw(" backend  "),
-                        Span::styled("i", theme::current().key()),
-                        Span::raw(" install  "),
-                        Span::styled("x", theme::current().key()),
-                        Span::raw(" remove"),
+                        Span::raw(" backend"),
                     ]);
+                    if app.config.as_ref().is_some_and(|config| {
+                        crate::automation::selected_backend(config)
+                            != crate::automation::Backend::External
+                    }) {
+                        spans.extend([
+                            Span::raw("  "),
+                            Span::styled("i", theme::current().key()),
+                            Span::raw(" install  "),
+                            Span::styled("x", theme::current().key()),
+                            Span::raw(" remove"),
+                        ]);
+                    }
                 }
                 Line::from(spans)
             } else {

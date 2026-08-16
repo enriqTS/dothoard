@@ -96,8 +96,10 @@ until it is changed in the picker.
 3. **Ignore:** edit source-relative ignore rules and inspect matches.
 4. **Preview:** review planned additions, changes, deletions, exclusions, and
    warnings.
-5. **Automation:** press `b` to select systemd or cron while automation is
-   uninstalled, then install, remove, refresh, or inspect the selected backend.
+5. **Automation:** press `b` to select systemd, cron, or external automation.
+   Install, remove, refresh, or inspect managed backends; for external
+   automation, run `dothoard service print-command` and configure the scheduler
+   yourself.
 6. **History:** inspect namespace-aware run results and logs.
 
 ## Sources apply/discard flow

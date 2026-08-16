@@ -26,7 +26,11 @@ ignore = ["fish_variables", "*.log", "cache/"]
 | `remote` | No | Git remote name; defaults to `origin`. |
 | `namespace` | Yes | Explicit portable name for this machine. |
 | `interval_minutes` | No | Automation interval; defaults to 5 and must be at least 1. Cron supports at most 59. |
-| `automation_backend` | No | Managed scheduler: `systemd` (default) or `cron`. |
+| `automation_backend` | No | Scheduler: `systemd` (default), `cron`, or externally managed `external`. |
+
+Set `automation_backend = "external"` when another scheduler owns setup. Then
+run `dothoard service print-command` and place the resulting invocation in that
+scheduler; dothoard will not execute custom setup commands or inspect it.
 | `network_timeout_seconds` | No | Timeout for network Git work; defaults to 120. |
 | `sources` | No | Home-relative files or directories to back up. |
 

@@ -829,12 +829,19 @@ state persistence, and notifications for every scheduler.
   controlled command execution without touching a real crontab or user service
   manager. Update user documentation and supported-platform claims, then run
   the complete serialized quality baseline.
+- [x] **AP05 - Add externally managed automation.** Add an `external` backend
+  that never executes scheduler setup commands, reports its unverifiable status
+  explicitly, and exposes a copyable `service print-command` invocation with the
+  resolved executable and runtime lock directory. Keep managed install/remove
+  actions unavailable, integrate backend selection and TUI presentation, and
+  document setup for incompatible cron implementations and other schedulers.
 
-**Milestone gate: Complete.** A user can explicitly choose systemd or cron automation,
-install and inspect it through the CLI and TUI, and receive the same safe
-short-lived backup behavior. Existing systemd installations remain compatible,
-unrelated scheduler configuration is untouched, tests mutate no real scheduler
-state, and dothoard remains non-daemonized.
+**Milestone gate: Complete.** A user can explicitly choose systemd, cron, or
+external automation. Dothoard can install and inspect managed providers through
+the CLI and TUI, while the external provider prints a copyable invocation and
+never executes or claims ownership of scheduler setup. Existing systemd
+installations remain compatible, unrelated scheduler configuration is untouched,
+tests mutate no real scheduler state, and dothoard remains non-daemonized.
 
 ## Maintenance
 

@@ -59,12 +59,16 @@ namespace = "notebook"
 }
 
 #[test]
-fn parses_explicit_cron_backend_and_rejects_unknown_backend() {
-    let cron = Config::from_toml(
-        "version = 2\nrepository = \"~/repo\"\nnamespace = \"machine\"\nautomation_backend = \"cron\"\n",
-    )
-    .unwrap();
-    assert_eq!(cron.automation_backend, AutomationBackend::Cron);
+fn parses_explicit_automation_backends_and_rejects_unknown_backend() {
+    let parse = |backend| {
+        Config::from_toml(&format!(
+            "version = 2\nrepository = \"~/repo\"\nnamespace = \"machine\"\nautomation_backend = \"{backend}\"\n"
+        ))
+        .unwrap()
+        .automation_backend
+    };
+    assert_eq!(parse("cron"), AutomationBackend::Cron);
+    assert_eq!(parse("external"), AutomationBackend::External);
 
     assert!(Config::from_toml(
         "version = 2\nrepository = \"~/repo\"\nnamespace = \"machine\"\nautomation_backend = \"launchd\"\n"

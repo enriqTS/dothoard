@@ -1605,13 +1605,23 @@ impl App {
 
     /// Automation content key handling.
     fn handle_automation_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
-        if matches!(
+        let lifecycle_key = matches!(
             key.code,
             crossterm::event::KeyCode::Char('i') | crossterm::event::KeyCode::Char('x')
-        ) && self.automation_screen.confirm == screens::automation::ConfirmAction::None
-            && (self.config.is_none() || self.paths.is_none())
-        {
+        ) && self.automation_screen.confirm
+            == screens::automation::ConfirmAction::None;
+        if lifecycle_key && (self.config.is_none() || self.paths.is_none()) {
             self.warning("Select and validate a repository before changing automation.");
+            return true;
+        }
+        if lifecycle_key
+            && self.config.as_ref().is_some_and(|config| {
+                crate::automation::selected_backend(config) == crate::automation::Backend::External
+            })
+        {
+            self.warning(
+                "External automation is managed outside dothoard; use `dothoard service print-command`.",
+            );
             return true;
         }
         let action = self.automation_screen.handle_key(key);

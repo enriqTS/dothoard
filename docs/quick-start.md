@@ -7,7 +7,7 @@ you review the repository, namespace, sources, and preview before a backup.
 
 - CachyOS or Arch Linux (the currently supported platforms)
 - Git in `PATH`
-- A working `systemd --user` session, or a compatible user `crontab` for cron automation
+- A working `systemd --user` session, a compatible user `crontab`, or another externally configured scheduler
 - Rust 1.97 or newer, only if building from source
 
 ## Install
@@ -96,9 +96,18 @@ dothoard service install
 dothoard service status
 ```
 
-You can also press `b` in the TUI's Automation screen while no selected backend
-is installed. See [Backup automation](automation.md) for cron environment,
-timing, and status limitations.
+For another scheduler implementation, select the external backend and copy its
+invocation into that scheduler yourself:
+
+```bash
+dothoard service remove
+dothoard service select external
+dothoard service print-command
+```
+
+You can also press `b` in the TUI's Automation screen while no selected managed
+backend is installed. See [Backup automation](automation.md) for scheduler
+environment, timing, and status limitations.
 
 ## Configuration-file alternative
 

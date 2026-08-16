@@ -14,6 +14,8 @@ fn parses_every_planned_command() {
         vec![BINARY_NAME, "backup"],
         vec![BINARY_NAME, "check"],
         vec![BINARY_NAME, "service", "select", "cron"],
+        vec![BINARY_NAME, "service", "select", "external"],
+        vec![BINARY_NAME, "service", "print-command"],
         vec![BINARY_NAME, "service", "install"],
         vec![BINARY_NAME, "service", "remove"],
         vec![BINARY_NAME, "service", "status"],
@@ -40,7 +42,7 @@ fn exposes_the_planned_command_hierarchy() {
     assert_eq!(command_names, ["backup", "check", "service"]);
     assert_eq!(
         service_command_names,
-        ["select", "install", "remove", "status"]
+        ["select", "install", "remove", "status", "print-command"]
     );
 }
 

@@ -67,6 +67,34 @@ fn unhealthy_report_with_errors() {
 }
 
 #[test]
+fn external_automation_is_reported_as_unverifiable_but_nonfatal() {
+    let tmp = tempfile::tempdir().unwrap();
+    for directory in ["home", "config", "state", "runtime"] {
+        std::fs::create_dir_all(tmp.path().join(directory)).unwrap();
+    }
+    let paths = AppPaths::resolve(crate::paths::PathInputs {
+        home: Some(tmp.path().join("home")),
+        config_dir: Some(tmp.path().join("config")),
+        state_dir: Some(tmp.path().join("state")),
+        runtime_dir: Some(tmp.path().join("runtime")),
+        use_environment: false,
+    })
+    .unwrap();
+    let mut config = Config::new("~/repo", "machine");
+    config.automation_backend = automation::Backend::External;
+    let mut results = Vec::new();
+
+    check_automation(&mut results, &paths, &config);
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].category, "automation");
+    assert!(
+        matches!(results[0].status, CheckStatus::Warning(ref message) if message.contains("cannot be inspected"))
+    );
+    assert!(CheckReport { results }.is_healthy());
+}
+
+#[test]
 fn check_fails_with_missing_config() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(tmp.path().join("home")).unwrap();
