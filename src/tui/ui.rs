@@ -1561,6 +1561,8 @@ fn help_bar_history(app: &App) -> Line<'static> {
             let mut spans = vec![
                 Span::styled("Tab", theme::current().key()),
                 Span::raw(" tabs  "),
+                Span::styled("r", theme::current().key()),
+                Span::raw(" refresh  "),
             ];
             if has_history {
                 spans.extend([

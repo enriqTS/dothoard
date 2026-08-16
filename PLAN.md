@@ -313,6 +313,8 @@ The keyboard-first, pointer-capable TUI has seven screens:
   schedulers, with managed installation, removal, and refresh only for systemd
   and cron.
 - **History:** Recent namespace-aware runs, details, errors, and filtered logs.
+  The list automatically reloads persistent state while the TUI is open so
+  scheduler-created runs appear without restarting; manual refresh remains available.
 
 Repository and source selection use a shared no-follow filesystem browser.
 Its Preview pane shows directory contents, symlink metadata, and the actual

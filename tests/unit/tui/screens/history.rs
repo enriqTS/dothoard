@@ -128,6 +128,15 @@ fn list_viewport_survives_tab_focus_escape() {
 }
 
 #[test]
+fn r_requests_history_refresh() {
+    let mut screen = HistoryScreen::new();
+    assert_eq!(
+        screen.handle_key(key(KeyCode::Char('r')), 0),
+        Action::Refresh
+    );
+}
+
+#[test]
 fn enter_returns_view_logs_action_for_selected_run() {
     let mut screen = HistoryScreen::new();
     let result = screen.handle_key(key(KeyCode::Enter), 5);

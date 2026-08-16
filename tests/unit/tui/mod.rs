@@ -22,6 +22,7 @@ fn test_app() -> App {
         history_screen: screens::history::HistoryScreen::new(),
         setup: None,
         theme_picker: None,
+        last_state_refresh: std::time::Instant::now(),
         pointer_map: std::cell::RefCell::new(pointer::PointerMap::default()),
     }
 }
@@ -190,6 +191,98 @@ fn app_tick_expires_transient_status_but_not_running_progress() {
         app.tick();
     }
     assert!(app.status_message.is_some());
+}
+
+#[test]
+fn periodic_poll_refreshes_history_written_by_an_external_run() {
+    let (mut app, _temp) = configured_test_app();
+    app.state = Some(crate::state::AppState::new());
+    let started_at = chrono::Utc::now();
+    let mut external_state = crate::state::AppState::new();
+    external_state.record_run(crate::state::RunRecord {
+        namespace: "test-machine".to_string(),
+        started_at,
+        finished_at: started_at + chrono::Duration::seconds(1),
+        outcome: crate::state::RunOutcome::NoChanges,
+        commit: None,
+        message: None,
+        log_file: Some("external.log".to_string()),
+    });
+    external_state
+        .save(app.paths.as_ref().unwrap().state_dir())
+        .unwrap();
+
+    app.poll_external_state();
+    assert!(app.state.as_ref().unwrap().history.is_empty());
+
+    app.last_state_refresh = std::time::Instant::now() - std::time::Duration::from_secs(1);
+    app.poll_external_state();
+    assert_eq!(app.state.as_ref().unwrap().history.len(), 1);
+    assert_eq!(
+        app.state.as_ref().unwrap().history[0].started_at,
+        started_at
+    );
+}
+
+#[test]
+fn periodic_refresh_keeps_usable_state_after_a_transient_read_failure() {
+    let (mut app, _temp) = configured_test_app();
+    let started_at = chrono::Utc::now();
+    let mut current = crate::state::AppState::new();
+    current.record_run(crate::state::RunRecord {
+        namespace: "test-machine".to_string(),
+        started_at,
+        finished_at: started_at,
+        outcome: crate::state::RunOutcome::NoChanges,
+        commit: None,
+        message: None,
+        log_file: None,
+    });
+    app.state = Some(current.clone());
+    std::fs::write(
+        crate::state::AppState::path_in(app.paths.as_ref().unwrap().state_dir()),
+        "not valid JSON",
+    )
+    .unwrap();
+
+    app.last_state_refresh = std::time::Instant::now() - std::time::Duration::from_secs(1);
+    app.poll_external_state();
+
+    assert_eq!(app.state, Some(current));
+}
+
+#[test]
+fn automatic_history_refresh_preserves_an_older_selected_run() {
+    let (mut app, _temp) = configured_test_app();
+    let now = chrono::Utc::now();
+    let record = |offset| crate::state::RunRecord {
+        namespace: "test-machine".to_string(),
+        started_at: now + chrono::Duration::seconds(offset),
+        finished_at: now + chrono::Duration::seconds(offset + 1),
+        outcome: crate::state::RunOutcome::Success,
+        commit: Some(format!("commit-{offset}")),
+        message: None,
+        log_file: None,
+    };
+    let mut initial = crate::state::AppState::new();
+    initial.record_run(record(1));
+    initial.record_run(record(2));
+    app.state = Some(initial.clone());
+    app.history_screen.selected = 1;
+
+    let mut external = initial;
+    external.record_run(record(3));
+    external
+        .save(app.paths.as_ref().unwrap().state_dir())
+        .unwrap();
+    app.last_state_refresh = std::time::Instant::now() - std::time::Duration::from_secs(1);
+    app.poll_external_state();
+
+    assert_eq!(app.history_screen.selected, 2);
+    assert_eq!(
+        app.state.as_ref().unwrap().history[2].commit.as_deref(),
+        Some("commit-1")
+    );
 }
 
 #[test]

@@ -914,3 +914,7 @@ passes without weakening managed-path or scheduler ownership boundaries.
   independent retention limits with defaults of 20 no-change logs, 50 successful
   logs, and 50 error logs. Prune only recognized regular run-log files, retain
   the newest files in each category, and document and test custom limits.
+- [x] **HR01 - Refresh History for externally completed runs.** Periodically
+  reload persistent state while the TUI is open so scheduler-created runs appear
+  automatically, retain a manual refresh action, preserve deliberate older-run
+  selection, and keep usable state visible across transient read failures.

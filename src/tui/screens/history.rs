@@ -210,6 +210,7 @@ impl HistoryScreen {
         use crossterm::event::KeyCode;
 
         match key.code {
+            KeyCode::Char('r') => Action::Refresh,
             // A log can be opened only for an existing run.
             KeyCode::Enter if history_len > 0 => Action::ViewLogs,
             KeyCode::Enter => Action::Consumed,
@@ -326,6 +327,8 @@ pub enum Action {
     NotConsumed,
     /// Request to view logs for the selected entry.
     ViewLogs,
+    /// Request to reload history from persistent state.
+    Refresh,
 }
 
 #[cfg(test)]

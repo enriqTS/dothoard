@@ -127,6 +127,8 @@ pub struct App {
     pub setup: Option<setup::SetupState>,
     /// Theme picker overlay state, present only while it owns input.
     pub theme_picker: Option<ThemePickerState>,
+    /// Last time persistent state was checked for externally completed runs.
+    last_state_refresh: std::time::Instant,
     /// Interactive rectangles recorded during the most recent frame.
     pointer_map: std::cell::RefCell<pointer::PointerMap>,
 }
@@ -221,6 +223,7 @@ impl App {
             history_screen: screens::history::HistoryScreen::new(),
             setup: setup_state,
             theme_picker: None,
+            last_state_refresh: std::time::Instant::now(),
             pointer_map: std::cell::RefCell::new(pointer::PointerMap::default()),
         }
     }
@@ -308,6 +311,16 @@ impl App {
         {
             self.status_message = None;
         }
+
+        self.poll_external_state();
+    }
+
+    /// Reload persistent state at most once per second, including during input.
+    pub(crate) fn poll_external_state(&mut self) {
+        if self.last_state_refresh.elapsed() >= std::time::Duration::from_secs(1) {
+            self.last_state_refresh = std::time::Instant::now();
+            self.reload_state();
+        }
     }
 
     /// Move screen-local feedback into the authoritative status region.
@@ -341,13 +354,50 @@ impl App {
         }
     }
 
-    /// Reload persistent state from disk (called after backup completes).
+    /// Reload persistent state from disk after local or externally scheduled runs.
     pub fn reload_state(&mut self) {
-        if let Some(ref paths) = self.paths {
-            self.state = crate::state::AppState::load(paths.state_dir()).ok();
-            let history_len = self.state.as_ref().map_or(0, |state| state.history.len());
-            self.history_screen.clamp_history(history_len);
+        let Some(paths) = self.paths.as_ref() else {
+            return;
+        };
+
+        // Keep a deliberately selected older run stable when a new run is inserted
+        // at the front. Selection zero remains pinned to the newest run.
+        let preserve_selection = self.history_screen.selected > 0
+            || self.history_screen.mode == screens::history::Mode::LogView;
+        let selected_run = if preserve_selection {
+            self.state
+                .as_ref()
+                .and_then(|state| state.history.get(self.history_screen.selected))
+                .map(|record| {
+                    (
+                        record.started_at,
+                        record.finished_at,
+                        record.namespace.clone(),
+                    )
+                })
+        } else {
+            None
+        };
+
+        let Ok(state) = crate::state::AppState::load(paths.state_dir()) else {
+            // A transient read failure must not blank otherwise usable dashboard/history data.
+            return;
+        };
+        self.state = Some(state);
+
+        if let Some((started_at, finished_at, namespace)) = selected_run
+            && let Some(index) = self.state.as_ref().and_then(|state| {
+                state.history.iter().position(|record| {
+                    record.started_at == started_at
+                        && record.finished_at == finished_at
+                        && record.namespace == namespace
+                })
+            })
+        {
+            self.history_screen.selected = index;
         }
+        let history_len = self.state.as_ref().map_or(0, |state| state.history.len());
+        self.history_screen.clamp_history(history_len);
     }
 
     /// Poll for all completed background tasks and update state.
@@ -2188,6 +2238,10 @@ impl App {
         let action = self.history_screen.handle_key(key, history_len);
         match action {
             screens::history::Action::Consumed => true,
+            screens::history::Action::Refresh => {
+                self.reload_state();
+                true
+            }
             screens::history::Action::ViewLogs => {
                 // Enter log view mode for the selected entry.
                 if let Some(ref state) = self.state

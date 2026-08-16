@@ -37,7 +37,7 @@ Dashboard and History stack their primary panes before secondary details.
 | Filesystem browser | Enter: open directory; Space: select/toggle; `:` or `/`: text entry; `.git` is hidden and `⎇` (`G` in ASCII mode) marks Git repositories |
 | Configured repository | Browse within the selected clone; its parent is inaccessible. `c`: choose a replacement starting at `~/` |
 | Refreshable screens | `r`: refresh; Preview and Automation load automatically on first entry when configured |
-| History | Enter: view the selected run's logs; Esc: return from logs |
+| History | `r`: refresh now; Enter: view the selected run's logs; Esc: return from logs |
 | Pointer | Click tabs, rows, entries, checkboxes, themes, or visible footer actions; wheel over the scrollable pane to navigate |
 | Anywhere | `Ctrl+T`: open the theme picker |
 
@@ -115,7 +115,9 @@ After setup:
    Install, remove, refresh, or inspect managed backends; for external
    automation, run `dothoard service print-command` and configure the scheduler
    yourself.
-5. **History:** inspect namespace-aware run results and logs.
+5. **History:** inspect namespace-aware run results and logs. The list checks
+   persistent state automatically about once per second, so runs started by
+   automation appear while the TUI remains open; press `r` to refresh immediately.
 
 ## Sources apply/discard flow
 

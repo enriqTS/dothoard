@@ -56,8 +56,9 @@ fn run_loop(terminal: &mut Term) -> io::Result<()> {
     let mut app = App::new();
 
     loop {
-        // Poll for completed background tasks before drawing.
+        // Poll local tasks and scheduler-written state before drawing.
         app.poll_tasks();
+        app.poll_external_state();
 
         terminal.draw(|frame| ui::draw(frame, &mut app))?;
 

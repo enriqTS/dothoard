@@ -99,6 +99,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - **Maintenance LR01 complete:** per-run logs now have independent configurable
   retention limits. Defaults retain 20 no-change, 50 successful-change, and 50
   error/interrupted logs; pruning leaves unrelated entries untouched.
+- **Maintenance HR01 complete:** the TUI reloads persistent state about once per
+  second, including during user input, so automation-created History rows appear
+  automatically. `r` remains an immediate refresh; older selections stay stable.
 
 ## Durable Decisions
 
@@ -235,6 +238,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- HR01 verified with Rust 1.97.1: formatting, full Clippy with warnings denied,
+  and the complete serialized all-target/all-feature suite pass (1020 library
+  tests plus all integration suites). Regressions cover external state writes,
+  refresh throttling, older selection preservation, and manual refresh.
 - LR01 verified with Rust 1.97.1: formatting, full Clippy with warnings denied,
   and the complete serialized all-target/all-feature suite pass (1016 library
   tests plus all integration suites). Configuration/default, category pruning,
@@ -483,6 +490,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Active Resume Point
 
+- **HR01 is complete:** scheduler-created runs appear automatically in the open
+  TUI after the next approximately one-second state poll; History also supports
+  immediate `r` refresh without losing a deliberately selected older run.
 - **LR01 is complete:** `[log_retention]` independently limits no-change,
   successful-change, and error/interrupted per-run logs, with defaults 20/50/50.
   The only previously recorded open milestone item remains PV06's manual GitHub
