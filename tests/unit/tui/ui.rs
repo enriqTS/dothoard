@@ -1208,7 +1208,9 @@ fn help_bar_repository_browser_mode() {
 }
 
 #[test]
-fn configured_repository_shows_only_the_selected_path_and_change_action() {
+fn configured_repository_browses_inside_the_selected_root_without_parent_context() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir(tmp.path().join("desktop")).unwrap();
     let backend = TestBackend::new(120, 30);
     let mut terminal = Terminal::new(backend).unwrap();
     let mut app = App::new();
@@ -1216,13 +1218,19 @@ fn configured_repository_shows_only_the_selected_path_and_change_action() {
     app.active_screen = Screen::Repository;
     app.repo_screen.mode = crate::tui::screens::repository::RepoMode::Browser;
     app.repo_screen.repository_locked = true;
-    app.repo_screen.input = "/home/user/dotfiles".to_string();
+    app.repo_screen.input = tmp.path().display().to_string();
+    app.repo_screen.browser = Some(crate::tui::browser::Browser::new(
+        crate::tui::browser::BrowserConfig {
+            root: tmp.path().to_path_buf(),
+            start: tmp.path().to_path_buf(),
+        },
+    ));
 
     terminal.draw(|frame| draw(frame, &mut app)).unwrap();
 
     let content = buffer_text(terminal.backend());
-    assert!(content.contains("Selected repository"));
-    assert!(content.contains("/home/user/dotfiles"));
+    assert!(content.contains("Files [ACTIVE: Repository]"));
+    assert!(content.contains("desktop"));
     assert!(content.contains("change repository"));
     assert!(!content.contains("Parent"));
 }

@@ -139,6 +139,25 @@ fn with_path_prefills_input_and_locks_the_browser_to_the_repository() {
 }
 
 #[test]
+fn configured_repository_can_browse_children_but_not_its_parent() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repository = tmp.path().join("dotfiles");
+    std::fs::create_dir_all(repository.join("desktop")).unwrap();
+    let mut screen = RepoScreen::with_path(repository.to_str().unwrap());
+    screen.ensure_browser(tmp.path());
+
+    assert_eq!(screen.handle_key(key(KeyCode::Right)), KeyResult::Consumed);
+    assert_eq!(
+        screen.browser.as_ref().unwrap().current_dir(),
+        repository.join("desktop")
+    );
+    assert_eq!(screen.handle_key(key(KeyCode::Left)), KeyResult::Consumed);
+    assert_eq!(screen.browser.as_ref().unwrap().current_dir(), repository);
+    assert_eq!(screen.handle_key(key(KeyCode::Left)), KeyResult::Consumed);
+    assert_eq!(screen.browser.as_ref().unwrap().current_dir(), repository);
+}
+
+#[test]
 fn change_repository_restarts_browsing_at_home() {
     let tmp = tempfile::tempdir().unwrap();
     let repository = tmp.path().join("dotfiles");

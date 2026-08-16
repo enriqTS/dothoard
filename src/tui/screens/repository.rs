@@ -472,6 +472,12 @@ impl RepoScreen {
         use crossterm::event::{KeyCode, KeyModifiers};
 
         match (key.modifiers, key.code) {
+            // The configured repository may be browsed internally, but changing
+            // its selected root is owned by the explicit `c` action.
+            (KeyModifiers::NONE, KeyCode::Char(' ')) if self.repository_locked => {
+                KeyResult::Consumed
+            }
+            (_, KeyCode::Char(':' | '/')) if self.repository_locked => KeyResult::Consumed,
             // Tab/Shift+Tab escape to tab bar.
             (KeyModifiers::NONE, KeyCode::Tab) | (KeyModifiers::SHIFT, KeyCode::BackTab) => {
                 KeyResult::NotConsumed

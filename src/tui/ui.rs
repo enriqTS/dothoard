@@ -822,10 +822,12 @@ fn help_bar_repository(app: &App) -> Line<'static> {
                     Span::raw(" delete  "),
                 ]);
             }
+            spans.extend([
+                Span::styled("↑↓←→", theme::current().key()),
+                Span::raw(" navigate  "),
+            ]);
             if !app.repo_screen.repository_locked {
                 spans.extend([
-                    Span::styled("↑↓←→", theme::current().key()),
-                    Span::raw(" navigate  "),
                     Span::styled(":/", theme::current().key()),
                     Span::raw(" text input"),
                 ]);
@@ -2433,28 +2435,9 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
                 ])
                 .split(inner);
 
-            // Once configured, show only the selected repository. Browsing the
-            // surrounding filesystem is an explicit change action.
-            if app.repo_screen.repository_locked {
-                let selected = Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(theme::current().border(true))
-                    .title(Line::from(Span::styled(
-                        " ▶ Selected repository ",
-                        theme::current().focused(),
-                    )));
-                let selected_inner = selected.inner(chunks[0]);
-                frame.render_widget(selected, chunks[0]);
-                frame.render_widget(
-                    Paragraph::new(vec![
-                        Line::from(""),
-                        field_line(" Path", app.repo_screen.input.clone()),
-                        Line::from(""),
-                        dim_line(" Press c to choose a different repository from ~/"),
-                    ]),
-                    selected_inner,
-                );
-            } else if let Some(ref mut browser) = app.repo_screen.browser {
+            // A configured repository remains browsable, but its root boundary
+            // prevents exposing or navigating to the parent directory.
+            if let Some(ref mut browser) = app.repo_screen.browser {
                 crate::tui::picker::draw_with_presentation(
                     frame,
                     chunks[0],

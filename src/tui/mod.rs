@@ -1274,12 +1274,6 @@ impl App {
                 }
                 _ => {}
             }
-            if self.repo_screen.repository_locked {
-                return !matches!(
-                    key.code,
-                    KeyCode::Esc | KeyCode::Up | KeyCode::Char('k' | 'q')
-                );
-            }
         }
         // Ensure the browser is initialized when entering this screen.
         if let Some(ref paths) = self.paths {
