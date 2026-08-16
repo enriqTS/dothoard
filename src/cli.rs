@@ -6,10 +6,10 @@ use clap::{Parser, Subcommand};
 use thiserror::Error;
 
 use crate::app::BINARY_NAME;
+use crate::automation;
 use crate::backup::coordinator::{self, BackupOutcome, CoordinatorError};
 use crate::config::Config;
 use crate::paths::AppPaths;
-use crate::systemd;
 
 /// Exit codes for the backup command.
 pub mod exit_code {
@@ -51,9 +51,9 @@ pub enum Command {
 
 #[derive(Debug, Subcommand)]
 pub enum ServiceCommand {
-    /// Install and enable the user timer.
+    /// Install and enable managed backup automation.
     Install,
-    /// Disable and remove the user timer.
+    /// Disable and remove managed backup automation.
     Remove,
     /// Show automation status.
     Status,
@@ -70,8 +70,8 @@ pub enum CliError {
     #[error("path resolution failed: {0}")]
     Paths(#[from] crate::paths::PathError),
 
-    #[error("systemd operation failed: {0}")]
-    Systemd(#[from] systemd::SystemdError),
+    #[error("automation operation failed: {0}")]
+    Automation(#[from] automation::AutomationError),
 
     #[error("configuration error: {0}")]
     Config(#[from] Box<crate::config::ConfigError>),
@@ -95,7 +95,7 @@ impl CliError {
             | Self::Backup(CoordinatorError::Validation(_)) => exit_code::config_error(),
             Self::Backup(_) => exit_code::FAILURE,
             Self::Paths(_) => exit_code::config_error(),
-            Self::Systemd(_) => exit_code::FAILURE,
+            Self::Automation(_) => exit_code::FAILURE,
             Self::Config(_) | Self::Validation(_) => exit_code::config_error(),
             Self::Tui(_) => exit_code::FAILURE,
         }
@@ -164,15 +164,12 @@ fn execute_check() -> Result<ExitCode, CliError> {
 fn execute_service_install() -> Result<ExitCode, CliError> {
     let paths = AppPaths::from_environment()?;
     let config = load_and_validate_config(&paths)?;
-    let params = systemd::params_from_config(&config)?;
-    let unit_dir = systemd::user_unit_dir(paths.home());
-
-    systemd::install(&params, &unit_dir)?;
+    automation::install(&config, paths.home())?;
 
     tracing::info!(
-        timer = crate::app::SYSTEMD_TIMER_UNIT,
+        backend = %automation::selected_backend(),
         interval_minutes = config.interval_minutes,
-        "timer installed and started"
+        "automation installed and started"
     );
 
     Ok(exit_code::SUCCESS)
@@ -181,11 +178,9 @@ fn execute_service_install() -> Result<ExitCode, CliError> {
 /// Execute the `service remove` command.
 fn execute_service_remove() -> Result<ExitCode, CliError> {
     let paths = AppPaths::from_environment()?;
-    let unit_dir = systemd::user_unit_dir(paths.home());
+    automation::remove(paths.home())?;
 
-    systemd::remove(&unit_dir)?;
-
-    tracing::info!("timer removed");
+    tracing::info!(backend = %automation::selected_backend(), "automation removed");
 
     Ok(exit_code::SUCCESS)
 }
@@ -194,18 +189,15 @@ fn execute_service_remove() -> Result<ExitCode, CliError> {
 fn execute_service_status() -> Result<ExitCode, CliError> {
     let paths = AppPaths::from_environment()?;
     let config = load_and_validate_config(&paths)?;
-    let params = systemd::params_from_config(&config)?;
-    let unit_dir = systemd::user_unit_dir(paths.home());
-
-    let automation_status = systemd::status(&params, &unit_dir)?;
+    let automation_status = automation::status(&config, paths.home())?;
 
     tracing::info!(status = %automation_status, "automation status");
 
     match automation_status {
-        systemd::AutomationStatus::Active { .. } => Ok(exit_code::SUCCESS),
-        systemd::AutomationStatus::Installed { .. } => Ok(exit_code::SUCCESS),
-        systemd::AutomationStatus::Failed { .. } => Ok(exit_code::FAILURE),
-        systemd::AutomationStatus::NotInstalled => Ok(exit_code::FAILURE),
+        automation::Status::Active { .. } => Ok(exit_code::SUCCESS),
+        automation::Status::Installed { .. } => Ok(exit_code::SUCCESS),
+        automation::Status::Failed { .. } => Ok(exit_code::FAILURE),
+        automation::Status::NotInstalled => Ok(exit_code::FAILURE),
     }
 }
 

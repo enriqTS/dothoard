@@ -24,9 +24,9 @@ dothoard service remove
 ```
 
 The timer starts one minute after the user manager starts and schedules the
-next run after the previous backup becomes inactive. The TUI's Automation
-screen and the automation line in `dothoard check` currently report only this
-systemd timer.
+next run after the previous backup becomes inactive. The CLI, health check, and
+TUI use a scheduler-neutral automation layer, which currently selects the
+systemd backend.
 
 ## Using cron manually
 
@@ -76,9 +76,9 @@ env -i \
   /home/alice/.local/bin/dothoard check
 ```
 
-The current check will show a non-fatal `systemd timer: warning: timer not
-installed` when cron is used without systemd. Scheduler-neutral health status
-is part of the planned automation work.
+The current check will show the non-fatal warning `systemd user timer: warning:
+automation not installed` when cron is used without systemd. Explicit cron
+backend selection and cron-aware health status are planned next.
 
 ### Cron behavior differences
 

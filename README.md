@@ -126,8 +126,8 @@ palette.
 dothoard                 Open the TUI
 dothoard backup          Run one backup immediately
 dothoard check           Validate configuration and repository
-dothoard service install Install and enable the user timer
-dothoard service remove  Disable and remove the user timer
+dothoard service install Install and enable managed automation
+dothoard service remove  Disable and remove managed automation
 dothoard service status  Show managed systemd automation status
 ```
 

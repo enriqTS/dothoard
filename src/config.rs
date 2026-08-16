@@ -165,7 +165,7 @@ pub struct Config {
     #[serde(default)]
     pub namespace: String,
 
-    /// Backup interval in minutes for the systemd timer. Defaults to 5.
+    /// Backup automation interval in minutes. Defaults to 5.
     #[serde(default = "default_interval_minutes")]
     pub interval_minutes: u32,
 

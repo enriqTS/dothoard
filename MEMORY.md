@@ -50,8 +50,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - **Milestone 17 is in progress**: AP01–AP04 extend short-lived backup automation
   beyond systemd without adding a daemon. **AP01 is complete**: external cron
   and comparable scheduler usage, environment, timing, overlap, missed-run,
-  logging, credential, and notification constraints are documented. AP02 is
-  active; AP03 is next.
+  logging, credential, and notification constraints are documented. **AP02 is
+  complete**: generic automation lifecycle/status concepts now isolate systemd,
+  and CLI, health checks, and TUI callers use that facade. AP03 is active; AP04
+  is next.
 - **Milestone 15 is partially complete**: PV01–PV03 provide the GitHub landing
   page, sanitized SVG visual demonstrations, and reorganized user
   documentation. **PV04 is complete**: a simple Astro Starlight website uses
@@ -441,11 +443,14 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Active Resume Point
 
-- Implement AP02: introduce a scheduler-neutral automation layer and route the
-  CLI, health check, and TUI through it while preserving systemd behavior.
-- Preserve systemd as the only application-managed automation backend until
-  AP03; external schedulers can already invoke the scheduler-independent backup
-  command.
+- Implement AP03: add explicit configuration-selected cron automation with
+  safely delimited crontab lifecycle management and controlled-command tests.
+- Systemd remains the selected managed backend until AP03; external schedulers
+  can already invoke the scheduler-independent backup command.
+- AP02 verification with Rust 1.97.1: `cargo fmt --check`, full Clippy with
+  warnings denied, and the complete serialized all-target/all-feature test suite
+  pass (980 library tests plus all integration suites). Facade and TUI
+  regressions cover provider mapping and generic provider presentation.
 - AP01 verification: local links across README and 15 authored documentation
   files resolve; `cd website && npm run build` passes with zero Astro
   diagnostics and builds 16 pages plus the search index.

@@ -905,7 +905,9 @@ fn automation_screen_renders() {
         .expect("draw should not fail");
 
     let content = buffer_text(terminal.backend());
-    assert!(content.contains("Automation"));
+    assert!(content.contains("Backup Automation"));
+    assert!(content.contains("Backend"));
+    assert!(content.contains("systemd user timer"));
     assert!(content.contains("active"));
 }
 
@@ -924,7 +926,9 @@ fn automation_screen_shows_confirm() {
         .expect("draw should not fail");
 
     let content = buffer_text(terminal.backend());
-    assert!(content.contains("Install"));
+    assert!(content.contains("Install automation"));
+    assert!(content.contains("systemd user timer"));
+    assert!(content.contains("selected backend"));
     assert!(content.contains("confirm"));
     assert!(content.contains("cancel"));
 }

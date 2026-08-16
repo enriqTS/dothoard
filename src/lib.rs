@@ -1,6 +1,7 @@
 //! Shared backend and interface modules for the `dothoard` binary.
 
 pub mod app;
+pub mod automation;
 pub mod backup;
 pub mod cli;
 pub mod config;

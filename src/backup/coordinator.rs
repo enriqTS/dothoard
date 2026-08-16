@@ -121,7 +121,7 @@ impl RunLog {
 /// Execute a complete backup run.
 ///
 /// This is the main entry point for both the CLI `backup` command and the
-/// systemd timer service. It performs the entire workflow from lock acquisition
+/// external scheduler. It performs the entire workflow from lock acquisition
 /// through notification, recording the result in persistent state.
 ///
 /// # Arguments

@@ -1,6 +1,6 @@
 //! Automation controls screen state.
 //!
-//! Provides install, remove, and status inspection of the systemd user timer.
+//! Provides install, remove, and status inspection of backup automation.
 
 use crate::tui::task::LoadState;
 
@@ -26,9 +26,9 @@ pub struct Message {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfirmAction {
     None,
-    /// Asking to install the timer.
+    /// Asking to install the selected automation backend.
     Install,
-    /// Asking to remove the timer.
+    /// Asking to remove the selected automation backend.
     Remove,
 }
 
@@ -75,12 +75,12 @@ impl AutomationScreen {
         match key.code {
             // Refresh status.
             KeyCode::Char('r') => Action::RefreshStatus,
-            // Install timer.
+            // Install automation.
             KeyCode::Char('i') => {
                 self.confirm = ConfirmAction::Install;
                 Action::Consumed
             }
-            // Remove timer.
+            // Remove automation.
             KeyCode::Char('x') => {
                 self.confirm = ConfirmAction::Remove;
                 Action::Consumed
@@ -94,58 +94,38 @@ impl AutomationScreen {
         config: &crate::config::Config,
         home: &std::path::Path,
     ) -> Result<String, String> {
-        use crate::systemd;
-
-        let params = systemd::params_from_config(config).map_err(|e| e.to_string())?;
-        let unit_dir = systemd::user_unit_dir(home);
-        systemd::status(&params, &unit_dir)
+        crate::automation::status(config, home)
             .map(|status| status.to_string())
             .map_err(|e| e.to_string())
     }
 
-    /// Install the timer.
+    /// Install the selected automation backend.
     pub fn install(&mut self, config: &crate::config::Config, home: &std::path::Path) {
-        use crate::systemd;
-
-        match systemd::params_from_config(config) {
-            Ok(params) => {
-                let unit_dir = systemd::user_unit_dir(home);
-                match systemd::install(&params, &unit_dir) {
-                    Ok(()) => {
-                        self.message = Some(Message {
-                            text: format!(
-                                "Timer installed (every {} min).",
-                                config.interval_minutes
-                            ),
-                            success: true,
-                        });
-                    }
-                    Err(e) => {
-                        self.message = Some(Message {
-                            text: format!("Install failed: {e}"),
-                            success: false,
-                        });
-                    }
-                }
+        match crate::automation::install(config, home) {
+            Ok(()) => {
+                self.message = Some(Message {
+                    text: format!(
+                        "Automation installed (every {} min).",
+                        config.interval_minutes
+                    ),
+                    success: true,
+                });
             }
             Err(e) => {
                 self.message = Some(Message {
-                    text: format!("Cannot install: {e}"),
+                    text: format!("Install failed: {e}"),
                     success: false,
                 });
             }
         }
     }
 
-    /// Remove the timer.
+    /// Remove the selected automation backend.
     pub fn remove(&mut self, home: &std::path::Path) {
-        use crate::systemd;
-
-        let unit_dir = systemd::user_unit_dir(home);
-        match systemd::remove(&unit_dir) {
+        match crate::automation::remove(home) {
             Ok(()) => {
                 self.message = Some(Message {
-                    text: "Timer removed.".to_string(),
+                    text: "Automation removed.".to_string(),
                     success: true,
                 });
             }
@@ -166,9 +146,9 @@ pub enum Action {
     NotConsumed,
     /// Refresh the status display.
     RefreshStatus,
-    /// Install the timer (confirmed).
+    /// Install the selected automation backend (confirmed).
     Install,
-    /// Remove the timer (confirmed).
+    /// Remove the selected automation backend (confirmed).
     Remove,
 }
 

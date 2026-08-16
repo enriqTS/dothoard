@@ -814,7 +814,7 @@ state persistence, and notifications for every scheduler.
   credential-agent, notification, logging, and overlap considerations. Keep
   systemd as the only automation backend managed by the application at this
   stage.
-- [ ] **AP02 - Introduce a scheduler-neutral automation layer.** Move systemd
+- [x] **AP02 - Introduce a scheduler-neutral automation layer.** Move systemd
   generation and management behind generic install, remove, status, refresh,
   and staleness concepts. Update CLI checks and TUI language to depend on the
   generic layer while preserving systemd unit content and behavior exactly.

@@ -1,7 +1,7 @@
 //! Cross-invocation backup locking.
 //!
-//! An exclusive lock under `$XDG_RUNTIME_DIR` prevents startup, timer, manual,
-//! and TUI-triggered backups from overlapping. A second invocation reports that
+//! An exclusive lock under `$XDG_RUNTIME_DIR` prevents scheduled, startup,
+//! manual, and TUI-triggered backups from overlapping. A second invocation reports that
 //! a backup is already running and exits without changing files.
 //!
 //! The lock file is created at `$XDG_RUNTIME_DIR/dothoard.lock`. It uses

@@ -594,11 +594,11 @@ fn draw_modal_overlay(frame: &mut Frame, area: Rect, app: &App) {
                     } else {
                         "Install automation"
                     },
-                    affected: Some("dothoard-backup.service and dothoard-backup.timer"),
+                    affected: Some(crate::automation::selected_backend().description()),
                     consequence: if removing {
-                        "This disables and removes only dothoard's user timer units."
+                        "This disables and removes only dothoard's managed automation."
                     } else {
-                        "This installs and enables dothoard's user timer using the current schedule."
+                        "This installs and enables the selected backend using the current schedule."
                     },
                     validation: None,
                     confirm: if removing { "y: remove" } else { "y: install" },
@@ -1935,14 +1935,18 @@ fn draw_automation(frame: &mut Frame, area: Rect, app: &App) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let mut lines: Vec<Line> = Vec::new();
-
-    lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(
-        "  Systemd Timer",
-        theme::current().heading(),
-    )));
-    lines.push(Line::from(""));
+    let mut lines: Vec<Line> = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            "  Backup Automation",
+            theme::current().heading(),
+        )),
+        Line::from(""),
+        field_line(
+            "  Backend",
+            crate::automation::selected_backend().description(),
+        ),
+    ];
 
     // Status.
     use crate::tui::task::LoadState;
@@ -2001,13 +2005,13 @@ fn draw_automation(frame: &mut Frame, area: Rect, app: &App) {
         ConfirmAction::Install => {
             lines.push(Line::from(vec![
                 Span::raw("  "),
-                Span::styled("Install and enable the timer?", theme::current().warning()),
+                Span::styled("Install and enable automation?", theme::current().warning()),
             ]));
         }
         ConfirmAction::Remove => {
             lines.push(Line::from(vec![
                 Span::raw("  "),
-                Span::styled("Remove the timer?", theme::current().warning()),
+                Span::styled("Remove managed automation?", theme::current().warning()),
             ]));
         }
         ConfirmAction::None => {}
