@@ -623,6 +623,42 @@ fn browser_preview_listing_for_directory() {
 }
 
 #[test]
+fn browser_regular_file_preview_uses_cat_and_refreshes_cached_content() {
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().join("preview.conf");
+    std::fs::write(&path, "first value").unwrap();
+    let mut browser = Browser::new(BrowserConfig {
+        root: tmp.path().to_path_buf(),
+        start: tmp.path().to_path_buf(),
+    });
+
+    let first = browser.selected_file_preview().unwrap().as_ref().unwrap();
+    assert_eq!(first.content, "first value");
+
+    std::fs::write(&path, "second value").unwrap();
+    assert_eq!(
+        browser
+            .selected_file_preview()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .content,
+        "first value"
+    );
+
+    browser.refresh_current();
+    assert_eq!(
+        browser
+            .selected_file_preview()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .content,
+        "second value"
+    );
+}
+
+#[test]
 fn browser_preview_listing_for_file_is_none() {
     let tmp = setup_test_dir();
     let mut browser = Browser::new(BrowserConfig {

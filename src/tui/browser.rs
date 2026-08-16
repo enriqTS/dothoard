@@ -12,7 +12,12 @@
 
 use std::collections::HashMap;
 use std::ffi::OsString;
+use std::fs::OpenOptions;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+
+const MAX_FILE_PREVIEW_BYTES: u64 = 256 * 1024;
 
 /// Classification of a directory entry for display and sorting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -83,6 +88,17 @@ pub struct Browser {
     scroll_offset: usize,
     /// Cache of directory listings by path.
     cache: HashMap<PathBuf, DirListing>,
+    /// Cached `cat` output for regular-file previews.
+    file_previews: HashMap<PathBuf, Result<FilePreview, String>>,
+}
+
+/// Text returned by `cat` for a regular-file preview.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FilePreview {
+    /// Display-safe file content.
+    pub content: String,
+    /// Whether output exceeded the preview limit and was clipped.
+    pub truncated: bool,
 }
 
 impl Browser {
@@ -101,6 +117,7 @@ impl Browser {
             selected: 0,
             scroll_offset: 0,
             cache: HashMap::new(),
+            file_previews: HashMap::new(),
         }
     }
 
@@ -189,6 +206,27 @@ impl Browser {
             Some(DirListing::Entries(entries)) => entries.get(self.selected),
             _ => None,
         }
+    }
+
+    /// Return cached `cat` output for the selected regular file.
+    ///
+    /// The command reads an already-opened, no-follow regular file through
+    /// standard input, so a path race cannot make `cat` follow a symlink. Large
+    /// files are refused to keep picker redraw responsive.
+    pub fn selected_file_preview(&mut self) -> Option<&Result<FilePreview, String>> {
+        let is_file = self
+            .selected_entry()
+            .is_some_and(|entry| entry.kind == EntryKind::File);
+        if !is_file {
+            return None;
+        }
+        let path = self.selected_entry_path()?;
+
+        if !self.file_previews.contains_key(&path) {
+            let preview = load_file_preview(&path);
+            self.file_previews.insert(path.clone(), preview);
+        }
+        self.file_previews.get(&path)
     }
 
     /// Number of entries in the current listing.
@@ -325,16 +363,21 @@ impl Browser {
     /// Invalidate the cache for a specific directory.
     pub fn invalidate(&mut self, path: &Path) {
         self.cache.remove(path);
+        self.file_previews
+            .retain(|entry, _| !entry.starts_with(path));
     }
 
     /// Invalidate the entire cache.
     pub fn invalidate_all(&mut self) {
         self.cache.clear();
+        self.file_previews.clear();
     }
 
     /// Refresh the current directory listing from disk.
     pub fn refresh_current(&mut self) {
         self.cache.remove(&self.current_dir.clone());
+        self.file_previews
+            .retain(|entry, _| entry.parent() != Some(self.current_dir.as_path()));
         let dir = self.current_dir.clone();
         self.ensure_cached(&dir);
         // Clamp selection.
@@ -508,6 +551,62 @@ impl std::fmt::Display for SelectionError {
             Self::DirectoryError(e) => write!(f, "Directory error: {e}"),
         }
     }
+}
+
+/// Read a regular file through `cat` for display in the picker preview.
+fn load_file_preview(path: &Path) -> Result<FilePreview, String> {
+    // O_NOFOLLOW preserves picker traversal safety if the selected path is
+    // replaced by a symlink, while O_NONBLOCK prevents a raced special file
+    // from blocking during open. Validate the opened object before giving its
+    // descriptor to `cat`.
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|error| format!("Cannot open file: {error}"))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("Cannot inspect file: {error}"))?;
+    if !metadata.file_type().is_file() {
+        return Err("Entry is no longer a regular file".to_string());
+    }
+    if metadata.len() > MAX_FILE_PREVIEW_BYTES {
+        return Err(format!(
+            "Content preview unavailable: file exceeds {} KB",
+            MAX_FILE_PREVIEW_BYTES / 1024
+        ));
+    }
+
+    let output = Command::new("cat")
+        .arg("--")
+        .stdin(Stdio::from(file))
+        .output()
+        .map_err(|error| format!("Cannot run cat: {error}"))?;
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr);
+        let detail = detail.trim();
+        return Err(if detail.is_empty() {
+            format!("cat exited with {}", output.status)
+        } else {
+            format!("cat failed: {detail}")
+        });
+    }
+
+    let limit = MAX_FILE_PREVIEW_BYTES as usize;
+    let truncated = output.stdout.len() > limit;
+    let bytes = &output.stdout[..output.stdout.len().min(limit)];
+    let content = String::from_utf8_lossy(bytes)
+        .chars()
+        .map(|character| {
+            if character == '\n' || character == '\t' || !character.is_control() {
+                character
+            } else {
+                '�'
+            }
+        })
+        .collect();
+
+    Ok(FilePreview { content, truncated })
 }
 
 /// Read a directory and return a sorted listing.

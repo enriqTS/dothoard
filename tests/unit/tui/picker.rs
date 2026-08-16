@@ -362,6 +362,64 @@ fn renders_directory_with_many_entries() {
 }
 
 #[test]
+fn selected_regular_file_preview_renders_cat_content() {
+    let tmp = TempDir::new().unwrap();
+    std::fs::write(
+        tmp.path().join("--preview.conf"),
+        "set editor helix\nset greeting olá",
+    )
+    .unwrap();
+    let mut browser = Browser::new(BrowserConfig {
+        root: tmp.path().to_path_buf(),
+        start: tmp.path().to_path_buf(),
+    });
+    let backend = TestBackend::new(100, 20);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    terminal
+        .draw(|frame| draw(frame, frame.area(), &mut browser, None))
+        .unwrap();
+
+    let content: String = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|cell| cell.symbol())
+        .collect();
+    assert!(content.contains("Type: Regular file"));
+    assert!(content.contains("Content (cat):"));
+    assert!(content.contains("set editor helix"));
+    assert!(content.contains("set greeting olá"));
+}
+
+#[test]
+fn oversized_regular_file_preview_explains_limit() {
+    let tmp = TempDir::new().unwrap();
+    std::fs::write(tmp.path().join("large.conf"), vec![b'x'; 256 * 1024 + 1]).unwrap();
+    let mut browser = Browser::new(BrowserConfig {
+        root: tmp.path().to_path_buf(),
+        start: tmp.path().to_path_buf(),
+    });
+    let backend = TestBackend::new(100, 20);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    terminal
+        .draw(|frame| draw(frame, frame.area(), &mut browser, None))
+        .unwrap();
+
+    let content: String = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|cell| cell.symbol())
+        .collect();
+    assert!(content.contains("Content (cat):"));
+    assert!(content.contains("file exceeds 256 KB"));
+}
+
+#[test]
 fn renders_with_symlink_preview() {
     let tmp = setup_test_dir();
     let mut browser = Browser::new(BrowserConfig {

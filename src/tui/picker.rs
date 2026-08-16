@@ -12,7 +12,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
 };
 
 use super::browser::{Browser, DirListing, EntryKind, Selection, SelectionError};
@@ -452,13 +452,17 @@ fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser, ascii
             }
         }
         Some(entry) => {
-            // Show file/symlink metadata.
+            // Show metadata, followed by `cat` output for regular files.
+            let file_preview = if entry.kind == EntryKind::File {
+                browser.selected_file_preview().cloned()
+            } else {
+                None
+            };
             let mut lines: Vec<Line> = Vec::new();
             lines.push(Line::from(Span::styled(
                 format!(" {}", entry.display_name),
                 Style::default().add_modifier(Modifier::BOLD),
             )));
-            lines.push(Line::from(""));
 
             let kind_str = match entry.kind {
                 EntryKind::File => "Regular file",
@@ -494,14 +498,48 @@ fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser, ascii
             }
 
             if entry.is_lossy {
-                lines.push(Line::from(""));
                 lines.push(Line::from(Span::styled(
                     " ⚠ Non-UTF-8 name (cannot select)",
                     theme::current().warning(),
                 )));
             }
 
-            let paragraph = Paragraph::new(lines);
+            if let Some(preview) = file_preview {
+                lines.push(Line::from(""));
+                lines.push(Line::from(Span::styled(
+                    " Content (cat):",
+                    theme::current().label(),
+                )));
+                match preview {
+                    Ok(preview) => {
+                        if preview.content.is_empty() {
+                            lines.push(Line::from(Span::styled(
+                                " (empty file)",
+                                theme::current().muted(),
+                            )));
+                        } else {
+                            lines.extend(
+                                preview
+                                    .content
+                                    .split('\n')
+                                    .map(|line| Line::from(format!(" {line}"))),
+                            );
+                        }
+                        if preview.truncated {
+                            lines.push(Line::from(Span::styled(
+                                " … preview truncated",
+                                theme::current().warning(),
+                            )));
+                        }
+                    }
+                    Err(error) => lines.push(Line::from(Span::styled(
+                        format!(" {error}"),
+                        theme::current().warning(),
+                    ))),
+                }
+            }
+
+            let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
             frame.render_widget(paragraph, inner);
         }
         None => {
