@@ -852,6 +852,7 @@ fn screen_state_preserved_across_focus_transitions() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![
             crate::config::SourceConfig {
                 path: ".config/fish".to_string(),
@@ -903,6 +904,7 @@ fn sources_up_at_top_returns_to_tab_bar() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![crate::config::SourceConfig {
             path: ".bashrc".to_string(),
             ignore: vec![],
@@ -927,6 +929,7 @@ fn sources_down_stays_in_content() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![
             crate::config::SourceConfig {
                 path: ".bashrc".to_string(),
@@ -1056,6 +1059,7 @@ fn ignore_nested_boundary_source_to_tab_bar() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![crate::config::SourceConfig {
             path: ".config/fish".to_string(),
             ignore: vec!["*.log".to_string()],
@@ -1082,6 +1086,7 @@ fn ignore_nested_boundary_pattern_to_source() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![crate::config::SourceConfig {
             path: ".config/fish".to_string(),
             ignore: vec!["*.log".to_string(), "*.tmp".to_string()],
@@ -1145,6 +1150,7 @@ fn add_source_marks_preview_stale() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: Vec::new(),
     });
     // Add a source.
@@ -1171,6 +1177,7 @@ fn remove_source_marks_preview_stale() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![
             crate::config::SourceConfig {
                 path: ".bashrc".to_string(),
@@ -1205,6 +1212,7 @@ fn remove_source_clamps_sources_selection() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![
             crate::config::SourceConfig {
                 path: ".bashrc".to_string(),
@@ -1235,6 +1243,7 @@ fn remove_source_clamps_ignore_source_idx() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![
             crate::config::SourceConfig {
                 path: ".bashrc".to_string(),
@@ -1266,6 +1275,7 @@ fn remove_all_sources_resets_ignore_indices() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![crate::config::SourceConfig {
             path: ".bashrc".to_string(),
             ignore: vec!["*.tmp".to_string()],
@@ -1340,6 +1350,7 @@ fn source_add_failure_keeps_error_message() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![crate::config::SourceConfig {
             path: ".config".to_string(),
             ignore: vec![],
@@ -1897,6 +1908,7 @@ fn apply_selection_no_changes_returns_to_list() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![crate::config::SourceConfig {
             path: ".bashrc".to_string(),
             ignore: vec![],
@@ -1931,6 +1943,7 @@ fn escaping_changed_source_browser_does_not_apply_additions() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![],
     });
     app.sources_screen.mode = screens::sources::Mode::Browse;
@@ -1963,6 +1976,7 @@ fn pending_source_changes_can_continue_or_discard_without_mutating_config() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![crate::config::SourceConfig {
             path: ".config".to_string(),
             ignore: vec![],
@@ -2013,6 +2027,7 @@ fn apply_selection_additions_require_explicit_choice() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![crate::config::SourceConfig {
             path: ".bashrc".to_string(),
             ignore: vec![],
@@ -2061,6 +2076,7 @@ fn apply_selection_with_removals_requires_choice_then_confirmation() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![
             crate::config::SourceConfig {
                 path: ".bashrc".to_string(),
@@ -2112,6 +2128,7 @@ fn confirm_apply_executes_diff() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![
             crate::config::SourceConfig {
                 path: ".bashrc".to_string(),
@@ -2161,6 +2178,7 @@ fn confirm_apply_adds_ignore_rules() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![crate::config::SourceConfig {
             path: ".config/fish".to_string(),
             ignore: vec![],
@@ -2326,6 +2344,7 @@ fn e2e_inherited_deselection_produces_anchored_ignore_rules() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![crate::config::SourceConfig {
             path: ".config/fish".to_string(),
             ignore: vec![],
@@ -2371,6 +2390,7 @@ fn e2e_uncheck_existing_source_with_confirmation() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![
             crate::config::SourceConfig {
                 path: ".bashrc".to_string(),
@@ -2428,6 +2448,7 @@ fn e2e_re_entering_browser_reflects_applied_config() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![crate::config::SourceConfig {
             path: ".bashrc".to_string(),
             ignore: vec![],
@@ -2479,6 +2500,7 @@ fn e2e_empty_selection_esc_is_noop() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![crate::config::SourceConfig {
             path: ".bashrc".to_string(),
             ignore: vec![],
@@ -2510,6 +2532,7 @@ fn e2e_selection_reset_prevents_stale_state() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![],
     });
 

@@ -119,6 +119,7 @@ impl OrcEnv {
             interval_minutes: 5,
             automation_backend: dothoard::config::AutomationBackend::Systemd,
             network_timeout_seconds: 10,
+            log_retention: Default::default(),
             sources: sources.to_vec(),
         };
         config.save(self.paths.config_file()).unwrap();
@@ -254,6 +255,29 @@ fn noop_backup_creates_no_commit() {
 
     // No new commit.
     assert_eq!(env.commit_count(), count_after_first);
+}
+
+#[test]
+fn completed_backups_apply_configured_log_retention() {
+    let env = OrcEnv::new();
+    env.create_source(".config/fish", &[("config.fish", "content")]);
+    env.write_config(&[SourceConfig {
+        path: ".config/fish".to_string(),
+        ignore: vec![],
+    }]);
+    let mut config = Config::load(env.paths.config_file()).unwrap();
+    config.log_retention = dothoard::config::LogRetention {
+        nothing_changed: 0,
+        success: 0,
+        error: 0,
+    };
+    config.save(env.paths.config_file()).unwrap();
+
+    assert!(env.run_backup().success);
+    assert!(env.run_backup().success);
+
+    let logs = dothoard::diagnostics::log_dir(env.paths.state_dir());
+    assert_eq!(fs::read_dir(logs).unwrap().count(), 0);
 }
 
 // === Multiple namespace headless workflow ===
@@ -442,6 +466,7 @@ fn backup_fails_with_invalid_config() {
         interval_minutes: 0,
         automation_backend: dothoard::config::AutomationBackend::Systemd,
         network_timeout_seconds: 10,
+        log_retention: Default::default(),
         sources: vec![],
     };
     config.save(env.paths.config_file()).unwrap();

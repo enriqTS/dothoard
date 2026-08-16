@@ -12,6 +12,11 @@ interval_minutes = 5
 automation_backend = "systemd"
 network_timeout_seconds = 120
 
+[log_retention]
+nothing_changed = 20
+success = 50
+error = 50
+
 [[sources]]
 path = ".config/fish"
 ignore = ["fish_variables", "*.log", "cache/"]
@@ -27,12 +32,20 @@ ignore = ["fish_variables", "*.log", "cache/"]
 | `namespace` | Yes | Explicit portable name for this machine. |
 | `interval_minutes` | No | Automation interval; defaults to 5 and must be at least 1. Cron supports at most 59. |
 | `automation_backend` | No | Scheduler: `systemd` (default), `cron`, or externally managed `external`. |
+| `network_timeout_seconds` | No | Timeout for network Git work; defaults to 120. |
+| `log_retention.nothing_changed` | No | Maximum no-change run logs; defaults to 20. |
+| `log_retention.success` | No | Maximum successful-change run logs; defaults to 50. |
+| `log_retention.error` | No | Maximum failed or interrupted run logs; defaults to 50. |
+| `sources` | No | Home-relative files or directories to back up. |
 
 Set `automation_backend = "external"` when another scheduler owns setup. Then
 run `dothoard service print-command` and place the resulting invocation in that
 scheduler; dothoard will not execute custom setup commands or inspect it.
-| `network_timeout_seconds` | No | Timeout for network Git work; defaults to 120. |
-| `sources` | No | Home-relative files or directories to back up. |
+
+The three log limits are independent. Dothoard keeps the newest files in each
+category under `~/.local/state/dothoard/logs/` and removes older matching run
+logs after a completed backup. Set a limit to `0` to retain no logs in that
+category; unrelated files and directories are never removed.
 
 ## Source paths
 

@@ -190,9 +190,37 @@ pub struct Config {
     #[serde(default = "default_network_timeout_seconds")]
     pub network_timeout_seconds: u32,
 
+    /// Maximum retained per-run logs for each outcome category.
+    #[serde(default)]
+    pub log_retention: LogRetention,
+
     /// Configured source directories to back up.
     #[serde(default)]
     pub sources: Vec<SourceConfig>,
+}
+
+/// Maximum retained per-run logs, grouped by backup outcome.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LogRetention {
+    /// Runs that completed without creating a commit.
+    #[serde(default = "default_nothing_changed_log_limit")]
+    pub nothing_changed: usize,
+    /// Runs that created a commit, whether pushed immediately or pending push.
+    #[serde(default = "default_success_log_limit")]
+    pub success: usize,
+    /// Failed runs.
+    #[serde(default = "default_error_log_limit")]
+    pub error: usize,
+}
+
+impl Default for LogRetention {
+    fn default() -> Self {
+        Self {
+            nothing_changed: default_nothing_changed_log_limit(),
+            success: default_success_log_limit(),
+            error: default_error_log_limit(),
+        }
+    }
 }
 
 /// A single source directory beneath `$HOME` to be backed up.
@@ -222,6 +250,18 @@ fn default_network_timeout_seconds() -> u32 {
     120
 }
 
+fn default_nothing_changed_log_limit() -> usize {
+    20
+}
+
+fn default_success_log_limit() -> usize {
+    50
+}
+
+fn default_error_log_limit() -> usize {
+    50
+}
+
 impl Config {
     /// The current schema version that new configurations are created with.
     pub const CURRENT_VERSION: u32 = 2;
@@ -246,6 +286,7 @@ impl Config {
             interval_minutes: default_interval_minutes(),
             automation_backend: AutomationBackend::default(),
             network_timeout_seconds: default_network_timeout_seconds(),
+            log_retention: LogRetention::default(),
             sources: Vec::new(),
         }
     }

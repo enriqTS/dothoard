@@ -140,6 +140,78 @@ fn log_dir_appends_logs_to_state_dir() {
 }
 
 #[test]
+fn prune_run_logs_applies_each_outcome_limit_independently() {
+    let tmp = tempfile::tempdir().unwrap();
+    let logs = log_dir(tmp.path());
+    std::fs::create_dir_all(&logs).unwrap();
+
+    let fixtures = [
+        (
+            "run-2026-01-01T00-00-01-000.log",
+            "backup succeeded: no changes",
+        ),
+        (
+            "run-2026-01-01T00-00-02-000.log",
+            "backup succeeded: no changes",
+        ),
+        (
+            "run-2026-01-01T00-00-03-000.log",
+            "backup succeeded: commit=abc",
+        ),
+        (
+            "run-2026-01-01T00-00-04-000.log",
+            "backup succeeded: commit=def",
+        ),
+        ("run-2026-01-01T00-00-05-000.log", "backup failed: first"),
+        (
+            "run-2026-01-01T00-00-06-000.log",
+            "configuration invalid: error",
+        ),
+    ];
+    for (name, content) in fixtures {
+        std::fs::write(logs.join(name), content).unwrap();
+    }
+
+    let removed = prune_run_logs(
+        tmp.path(),
+        LogRetention {
+            nothing_changed: 1,
+            success: 1,
+            error: 1,
+        },
+    );
+
+    assert_eq!(removed, 3);
+    assert!(!logs.join("run-2026-01-01T00-00-01-000.log").exists());
+    assert!(logs.join("run-2026-01-01T00-00-02-000.log").exists());
+    assert!(!logs.join("run-2026-01-01T00-00-03-000.log").exists());
+    assert!(logs.join("run-2026-01-01T00-00-04-000.log").exists());
+    assert!(!logs.join("run-2026-01-01T00-00-05-000.log").exists());
+    assert!(logs.join("run-2026-01-01T00-00-06-000.log").exists());
+}
+
+#[test]
+fn prune_run_logs_leaves_unrelated_entries_untouched() {
+    let tmp = tempfile::tempdir().unwrap();
+    let logs = log_dir(tmp.path());
+    std::fs::create_dir_all(logs.join("run-directory.log")).unwrap();
+    std::fs::write(logs.join("notes.txt"), "unrelated").unwrap();
+
+    let removed = prune_run_logs(
+        tmp.path(),
+        LogRetention {
+            nothing_changed: 0,
+            success: 0,
+            error: 0,
+        },
+    );
+
+    assert_eq!(removed, 0);
+    assert!(logs.join("run-directory.log").is_dir());
+    assert!(logs.join("notes.txt").is_file());
+}
+
+#[test]
 fn extract_run_log_creates_per_run_file() {
     use chrono::TimeZone;
     use std::io::Write;

@@ -72,6 +72,11 @@ interval_minutes = 5
 automation_backend = "systemd"
 network_timeout_seconds = 120
 
+[log_retention]
+nothing_changed = 20
+success = 50
+error = 50
+
 [[sources]]
 path = ".config/fish"
 ignore = [
@@ -273,6 +278,10 @@ each configured interval. Unit content is deterministic, written atomically,
 and regenerated idempotently. The service timeout exceeds the configured Git
 network timeout. Tests never install or enable real user units or modify a real
 user crontab.
+
+Per-run diagnostic logs are retained by outcome with configurable limits. By
+default, dothoard keeps the newest 20 no-change logs, 50 successful-change logs,
+and 50 error logs; older logs in each category are removed after a completed run.
 
 Machine-readable state is stored beneath:
 

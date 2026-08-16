@@ -211,12 +211,14 @@ pub fn run_backup_at(
     for warning in &outcome.warnings {
         run_log.write(&format!("warning: {warning}"));
     }
+    drop(run_log);
 
     // Step 15: Persist the result.
     if let Err(e) = persist_outcome(paths, &outcome, started_at, Some(log_filename)) {
         tracing::error!(error = %e, "failed to persist run state");
         // Non-fatal: we still return the outcome to the caller.
     }
+    crate::diagnostics::prune_run_logs(paths.state_dir(), config.log_retention);
 
     // Step 16: Send notification on failure or recovery.
     crate::notification::notify_if_needed(

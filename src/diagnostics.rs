@@ -8,6 +8,7 @@ use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::EnvFilter;
 
 use crate::app;
+use crate::config::LogRetention;
 
 pub fn init() -> anyhow::Result<()> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
@@ -73,6 +74,76 @@ pub fn run_log_filename(timestamp: &DateTime<Utc>) -> String {
 /// Generate the full path for a per-run log file.
 pub fn run_log_path(state_dir: &Path, timestamp: &DateTime<Utc>) -> PathBuf {
     log_dir(state_dir).join(run_log_filename(timestamp))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RunLogCategory {
+    NothingChanged,
+    Success,
+    Error,
+}
+
+/// Delete the oldest per-run logs beyond each configured outcome limit.
+///
+/// Only regular files created with the `run-*.log` naming scheme are considered;
+/// directories, symlinks, and unrelated files in the log directory are untouched.
+pub fn prune_run_logs(state_dir: &Path, limits: LogRetention) -> usize {
+    let directory = log_dir(state_dir);
+    let Ok(entries) = std::fs::read_dir(&directory) else {
+        return 0;
+    };
+
+    let mut logs = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let name = entry.file_name().into_string().ok()?;
+            if !name.starts_with("run-") || !name.ends_with(".log") {
+                return None;
+            }
+            let path = entry.path();
+            if !std::fs::symlink_metadata(&path).ok()?.file_type().is_file() {
+                return None;
+            }
+            Some((name, path))
+        })
+        .collect::<Vec<_>>();
+
+    // Timestamp-based filenames sort chronologically, so newest logs come first.
+    logs.sort_unstable_by(|left, right| right.0.cmp(&left.0));
+
+    let mut retained = [0_usize; 3];
+    let mut removed = 0;
+    for (_, path) in logs {
+        let category = classify_run_log(&path);
+        let (index, limit) = match category {
+            RunLogCategory::NothingChanged => (0, limits.nothing_changed),
+            RunLogCategory::Success => (1, limits.success),
+            RunLogCategory::Error => (2, limits.error),
+        };
+        retained[index] += 1;
+        if retained[index] > limit {
+            match std::fs::remove_file(&path) {
+                Ok(()) => removed += 1,
+                Err(error) => {
+                    tracing::warn!(error = %error, path = %path.display(), "failed to prune run log");
+                }
+            }
+        }
+    }
+
+    removed
+}
+
+fn classify_run_log(path: &Path) -> RunLogCategory {
+    let contents = std::fs::read_to_string(path).unwrap_or_default();
+    if contents.contains("backup succeeded: no changes") {
+        RunLogCategory::NothingChanged
+    } else if contents.contains("backup succeeded:") {
+        RunLogCategory::Success
+    } else {
+        // Failed and interrupted logs are both retained as error diagnostics.
+        RunLogCategory::Error
+    }
 }
 
 /// Initialize tracing for a single backup run (used by CLI mode).

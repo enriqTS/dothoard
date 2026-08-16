@@ -96,6 +96,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   picker pane beneath the pointer without bypassing modal ownership. System
   (Terminal) is now the default theme and inherits terminal default/ANSI colors
   while fixed RGB themes remain selectable and persistent.
+- **Maintenance LR01 complete:** per-run logs now have independent configurable
+  retention limits. Defaults retain 20 no-change, 50 successful-change, and 50
+  error/interrupted logs; pruning leaves unrelated entries untouched.
 
 ## Durable Decisions
 
@@ -132,6 +135,8 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Configuration stored as TOML; state stored as JSON (machine-readable for TUI).
 - Manifest stored as TOML with format identifier `dothoard-manifest`.
 - State history is bounded to 50 entries, newest first.
+- Per-run log retention defaults to 20 no-change, 50 successful-change, and 50
+  error/interrupted logs; each limit is configurable under `[log_retention]`.
 - Content comparison uses byte-by-byte equality with 8KB buffers.
 - Single-file sources map directly to their destination path.
 - Atomic file writes use tempfile::NamedTempFile with permissions set before
@@ -230,6 +235,11 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- LR01 verified with Rust 1.97.1: formatting, full Clippy with warnings denied,
+  and the complete serialized all-target/all-feature suite pass (1016 library
+  tests plus all integration suites). Configuration/default, category pruning,
+  unrelated-entry safety, and coordinator integration regressions pass; the
+  16-page documentation site builds with zero diagnostics.
 - IS04 verified with Rust 1.97.1: the complete formatting, Clippy, and
   serialized all-target/all-feature suite pass (1013 library tests plus all
   integration suites); all local links across 16 Markdown files resolve; the
@@ -473,6 +483,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Active Resume Point
 
+- **LR01 is complete:** `[log_retention]` independently limits no-change,
+  successful-change, and error/interrupted per-run logs, with defaults 20/50/50.
+  The only previously recorded open milestone item remains PV06's manual GitHub
+  Pages activation and visual review, which requires repository settings access.
 - **Milestone 18 started from the requested first-run configuration flow.**
   PLAN.md now includes existing-or-clone repository setup, explicit namespace,
   automation backend/interval, and live theme preview before the main tabs.

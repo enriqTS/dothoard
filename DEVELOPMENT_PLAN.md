@@ -910,3 +910,7 @@ passes without weakening managed-path or scheduler ownership boundaries.
   ANSI colors so compatible live palette changes propagate automatically.
   Preserve fixed RGB themes and preference persistence, and document how to
   return to System from the theme picker.
+- [x] **LR01 - Bound per-run diagnostic logs by outcome.** Add configurable,
+  independent retention limits with defaults of 20 no-change logs, 50 successful
+  logs, and 50 error logs. Prune only recognized regular run-log files, retain
+  the newest files in each category, and document and test custom limits.

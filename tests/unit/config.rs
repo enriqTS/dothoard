@@ -55,7 +55,36 @@ namespace = "notebook"
     assert_eq!(config.interval_minutes, 5);
     assert_eq!(config.automation_backend, AutomationBackend::Systemd);
     assert_eq!(config.network_timeout_seconds, 120);
+    assert_eq!(
+        config.log_retention,
+        LogRetention {
+            nothing_changed: 20,
+            success: 50,
+            error: 50,
+        }
+    );
     assert!(config.sources.is_empty());
+}
+
+#[test]
+fn parses_custom_log_retention_limits() {
+    let config = Config::from_toml(
+        r#"
+version = 2
+repository = "~/repo"
+namespace = "notebook"
+
+[log_retention]
+nothing_changed = 4
+success = 8
+error = 12
+"#,
+    )
+    .unwrap();
+
+    assert_eq!(config.log_retention.nothing_changed, 4);
+    assert_eq!(config.log_retention.success, 8);
+    assert_eq!(config.log_retention.error, 12);
 }
 
 #[test]
@@ -86,6 +115,7 @@ fn round_trips_through_toml() {
         interval_minutes: 10,
         automation_backend: AutomationBackend::Cron,
         network_timeout_seconds: 60,
+        log_retention: Default::default(),
         sources: vec![
             SourceConfig {
                 path: ".bashrc".to_string(),
@@ -114,6 +144,7 @@ fn new_creates_minimal_config() {
     assert_eq!(config.namespace, "desktop");
     assert_eq!(config.interval_minutes, 5);
     assert_eq!(config.network_timeout_seconds, 120);
+    assert_eq!(config.log_retention, LogRetention::default());
     assert!(config.sources.is_empty());
 }
 
@@ -208,6 +239,7 @@ fn save_and_load_round_trip() {
         interval_minutes: 10,
         automation_backend: AutomationBackend::Cron,
         network_timeout_seconds: 60,
+        log_retention: Default::default(),
         sources: vec![SourceConfig {
             path: ".config/fish".to_string(),
             ignore: vec!["*.log".to_string()],
@@ -270,6 +302,7 @@ fn valid_config_produces_no_errors() {
         interval_minutes: 5,
         automation_backend: AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![SourceConfig {
             path: ".config/fish".to_string(),
             ignore: vec![],
@@ -567,6 +600,7 @@ fn collects_multiple_errors() {
         interval_minutes: 0,
         automation_backend: AutomationBackend::Systemd,
         network_timeout_seconds: 0,
+        log_retention: Default::default(),
         sources: vec![
             SourceConfig {
                 path: "".to_string(),

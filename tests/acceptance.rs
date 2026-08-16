@@ -123,6 +123,7 @@ impl AcceptanceEnv {
             interval_minutes: 5,
             automation_backend: dothoard::config::AutomationBackend::Systemd,
             network_timeout_seconds: 10,
+            log_retention: Default::default(),
             sources: sources.to_vec(),
         };
         config.save(self.paths.config_file()).unwrap();
@@ -563,6 +564,7 @@ fn ac08_timer_unit_has_correct_schedule() {
         interval_minutes: 7,
         automation_backend: dothoard::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![],
     };
 
@@ -590,6 +592,7 @@ fn ac08_service_unit_has_finite_timeout() {
         interval_minutes: 5,
         automation_backend: dothoard::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![],
     };
 
@@ -757,6 +760,7 @@ fn ac11_systemd_service_invokes_binary_directly() {
         interval_minutes: 5,
         automation_backend: dothoard::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![],
     };
 

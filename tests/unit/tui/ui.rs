@@ -557,6 +557,7 @@ fn sources_screen_renders_list() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![
             crate::config::SourceConfig {
                 path: ".config/fish".to_string(),
@@ -631,6 +632,7 @@ fn ignore_screen_renders_patterns() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![crate::config::SourceConfig {
             path: ".config/fish".to_string(),
             ignore: vec!["*.log".to_string(), "fish_variables".to_string()],
@@ -661,6 +663,7 @@ fn ignore_screen_renders_preview_mode() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![crate::config::SourceConfig {
             path: ".config/fish".to_string(),
             ignore: vec!["*.log".to_string()],
@@ -706,6 +709,7 @@ fn ignore_preview_renders_scrolled_range_from_actual_height() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![crate::config::SourceConfig {
             path: ".config/fish".to_string(),
             ignore: vec!["*.log".to_string()],
@@ -1495,6 +1499,7 @@ fn sources_screen_confirm_apply_shows_summary() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![crate::config::SourceConfig {
             path: ".bashrc".to_string(),
             ignore: vec![],
@@ -1554,6 +1559,7 @@ fn sources_screen_confirm_apply_narrow() {
         interval_minutes: 5,
         automation_backend: crate::config::AutomationBackend::Systemd,
         network_timeout_seconds: 120,
+        log_retention: Default::default(),
         sources: vec![],
     });
     app.sources_screen.pending_diff = Some(crate::tui::selection::SelectionDiff {
