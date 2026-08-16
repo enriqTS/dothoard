@@ -76,8 +76,9 @@ must be rotated.
 4. On first launch, dothoard opens **Repository** setup. Choose the clone, then
    select an existing namespace or explicitly create one—there is no default.
    Selecting an existing namespace restores its source selections and ignore
-   rules from the manifest. After setup, Repository shows only the selected
-   path; press `c` to choose another location starting from `~/`.
+   rules from the manifest. After setup, Repository can browse inside the
+   selected clone but cannot move to its parent; press `c` to choose another
+   location starting from `~/`.
 5. In **Sources**, review or change files and directories below `$HOME`; inspect **Preview**
    and run the first backup.
 6. When the manual flow is working, install automation:

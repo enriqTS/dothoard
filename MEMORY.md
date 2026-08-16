@@ -67,9 +67,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   quick-start, releases, and development docs describe both. PV06 remains the
   only open item in Milestone 15 (manual GitHub Pages activation and visual
   review).
-- **Maintenance UI01 complete**: filesystem pickers hide `.git`; a configured
-  Repository view shows only the selected path, and `c` explicitly restarts
-  replacement selection at `$HOME`.
+- **Maintenance UI01 complete**: filesystem pickers hide `.git`; configured
+  Repository browsing remains inside the selected clone without exposing its
+  parent, and `c` explicitly restarts replacement selection at `$HOME`.
 
 ## Durable Decisions
 
@@ -199,9 +199,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 - UI01 verified with Rust 1.97.1: `cargo +1.97.1 fmt --check`, `cargo +1.97.1
   clippy --all-targets --all-features -- -D warnings`, and `cargo +1.97.1 test
-  --all-targets --all-features -- --test-threads=1` pass (963 library tests plus
-  all integration suites). Regressions cover `.git` filtering, selected-path
-  locking, home-rooted replacement browsing, help, interaction, and rendering.
+  --all-targets --all-features -- --test-threads=1` pass (964 library tests plus
+  all integration suites). Regressions cover `.git` filtering, repository-root
+  locking with internal browsing, home-rooted replacement selection, help,
+  interaction, and rendering.
 - PN01–PN03 verified with Rust 1.97.1: `cargo +1.97.1 fmt --check`, `cargo
   +1.97.1 clippy --all-targets --all-features -- -D warnings`, and `cargo
   +1.97.1 test --all-targets --all-features -- --test-threads=1` pass (960

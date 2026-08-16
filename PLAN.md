@@ -279,9 +279,10 @@ The keyboard-first TUI has seven screens:
 Repository and source selection use a shared no-follow filesystem browser.
 Repository browsing may traverse the local filesystem; source browsing cannot
 move above `$HOME`. `.git` metadata directories are hidden from pickers. After
-a repository is configured, Repository shows only its selected path rather
-than its parent or contents; the explicit `c` change action restarts selection
-at `$HOME`. Non-UTF-8 entries may be displayed lossily for navigation but
+a repository is configured, Repository browsing is rooted at the selected
+repository: its contents remain visible, but its parent cannot be viewed or
+entered. The explicit `c` change action restarts selection at `$HOME`.
+Non-UTF-8 entries may be displayed lossily for navigation but
 cannot be stored in configuration. On a fresh installation, the TUI opens
 repository setup directly; after repository validation it lists existing
 namespaces and requires the user to select one or explicitly create one. No
