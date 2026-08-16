@@ -855,7 +855,7 @@ existing repository, scheduler, and theme safety behavior.
   invalid parents, and destination symlink hazards; redact credential-bearing
   URLs from errors and logs. Add local-remote integration tests for success and
   regressions for failures and destination preservation.
-- [ ] **IS02 - Build first-run repository and namespace setup.** Add a dedicated
+- [x] **IS02 - Build first-run repository and namespace setup.** Add a dedicated
   setup state and presentation shown only while no configuration exists. Let the
   user choose an existing clone through the safe picker or enter a Git URL and
   destination for background cloning. Keep clone/validation errors visible and

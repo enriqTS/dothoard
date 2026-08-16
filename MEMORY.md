@@ -226,6 +226,11 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- IS02 verified with Rust 1.97.1: formatting, full Clippy with warnings denied,
+  and the complete serialized all-target/all-feature suite pass (1008 library
+  tests plus all integration suites). Controlled TUI tests cover background
+  clone failure, repository validation, namespace restoration/advance, setup
+  rendering, and keeping the main tabs hidden.
 - IS01 verified with Rust 1.97.1: `cargo +1.97.1 fmt --check`, full Clippy with
   warnings denied, and the complete serialized all-target/all-feature suite pass
   (1004 library tests plus all integration suites). Clone tests use an isolated
@@ -459,9 +464,12 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   automation backend/interval, and live theme preview before the main tabs.
   **IS01 is complete:** the bounded noninteractive clone backend refuses empty
   URLs, relative/existing destinations, missing or symlinked parents, redacts
-  credentials on failure, and preserves existing paths. **IS02 is active:**
-  build the dedicated first-run repository/namespace setup with background
-  cloning and retryable errors.
+  credentials on failure, and preserves existing paths. **IS02 is complete:** a
+  dedicated four-step shell now owns first run; repository setup chooses an
+  existing picker or editable clone URL/path, cloning and validation are keyed
+  background tasks with retryable errors, and explicit namespace selection or
+  creation advances setup without exposing the main tabs. **IS03 is active:**
+  implement automation backend/interval and complete live-preview theme setup.
 - **AP05 complete:** `automation_backend = "external"` records user-owned
   scheduling without executing setup commands. `dothoard service print-command`
   emits a shell-quoted invocation containing the resolved executable and
