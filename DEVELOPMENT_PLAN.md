@@ -801,6 +801,41 @@ then explicitly selects or creates a namespace. Selecting an existing owned
 namespace restores its validated source and ignore configuration, while all
 managed-path and sibling-namespace safety boundaries remain unchanged.
 
+## 17. Portable Backup Automation
+
+Extend scheduled backups beyond systemd without turning dothoard into a
+persistent daemon. Keep `dothoard backup` as the scheduler-independent execution
+boundary and preserve locking, noninteractive Git behavior, bounded timeouts,
+state persistence, and notifications for every scheduler.
+
+- [ ] **AP01 - Document external scheduler operation.** Document safe direct
+  invocation of the absolute `dothoard backup` path from cron and comparable
+  schedulers, including minimal-environment, missed-run, fixed-wall-clock,
+  credential-agent, notification, logging, and overlap considerations. Keep
+  systemd as the only automation backend managed by the application at this
+  stage.
+- [ ] **AP02 - Introduce a scheduler-neutral automation layer.** Move systemd
+  generation and management behind generic install, remove, status, refresh,
+  and staleness concepts. Update CLI checks and TUI language to depend on the
+  generic layer while preserving systemd unit content and behavior exactly.
+- [ ] **AP03 - Add explicit cron automation.** Add a configuration-selected cron
+  backend with deterministic, clearly delimited managed content and safe
+  install, removal, status, and update behavior. Preserve unrelated crontab
+  content, reject malformed or ambiguous managed blocks, invoke `crontab`
+  directly without shell interpolation, and document that cron does not replay
+  missed runs or provide systemd's completion-relative timing.
+- [ ] **AP04 - Complete portable-automation acceptance.** Cover provider
+  selection, generation, lifecycle operations, health checks, TUI status, and
+  controlled command execution without touching a real crontab or user service
+  manager. Update user documentation and supported-platform claims, then run
+  the complete serialized quality baseline.
+
+**Milestone gate:** A user can explicitly choose systemd or cron automation,
+install and inspect it through the CLI and TUI, and receive the same safe
+short-lived backup behavior. Existing systemd installations remain compatible,
+unrelated scheduler configuration is untouched, tests mutate no real scheduler
+state, and dothoard remains non-daemonized.
+
 ## Maintenance
 
 - [x] **UI01 - Simplify configured repository selection.** Hide `.git`

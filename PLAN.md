@@ -10,9 +10,11 @@ The TUI configures and monitors the application. Background work is performed
 by a short-lived headless command started manually or by a `systemd --user`
 timer; dothoard is not a persistent daemon.
 
-The backend feature set is sufficient for the current release. The current
-product objective is improving TUI usability and visual design without
-weakening backend safety or adding unrelated functionality.
+The current product objective is extending scheduled backups to non-systemd
+environments without weakening backend safety or turning dothoard into a
+persistent daemon. `dothoard backup` remains the scheduler-independent execution
+boundary; systemd remains the currently managed backend while portable
+automation is delivered incrementally.
 
 ## Current Scope
 
@@ -23,8 +25,10 @@ weakening backend safety or adding unrelated functionality.
 - Apply per-source ignore rules using Git semantics.
 - Preview changes before manual backups.
 - Commit and push automatically without interactive prompts.
-- Run backups manually, after user-manager startup, and at a configurable
-  interval that defaults to five minutes.
+- Run backups manually, after systemd user-manager startup, and at a
+  configurable interval that defaults to five minutes.
+- Permit external schedulers to invoke the same short-lived `dothoard backup`
+  command; in-application management of non-systemd schedulers is active work.
 - Persist status and history for the TUI.
 - Report failures and recovery through desktop notifications when available.
 - Create, select, rename, and delete namespaces through the TUI under strict
@@ -235,7 +239,14 @@ timer, manual, and TUI backups.
 
 ## Automation, State, and Notifications
 
-The service installer manages:
+The backup command is scheduler-independent and may be invoked by an external
+scheduler using its absolute executable path. The scheduler must provide the
+required home, XDG, credential-agent, and desktop-session environment. The
+exclusive application lock safely rejects overlap, but scheduler-specific timing,
+missed-run, output, and environment behavior remains the scheduler's
+responsibility.
+
+The currently implemented service installer manages systemd user units:
 
 ```text
 ~/.config/systemd/user/dothoard-backup.service
@@ -538,7 +549,7 @@ CI covers the documented quality baseline.
 - Git history rewriting for leaked secrets.
 - Once-per-calendar-day startup tracking.
 - Per-login startup integration beyond user-manager startup.
-- A continuously running filesystem watcher.
+- A continuously running filesystem watcher or built-in scheduling daemon.
 - Multiple backup profiles.
 - Encryption before committing.
 - AUR packaging and support for distributions other than Arch-based systems.

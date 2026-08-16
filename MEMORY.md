@@ -47,6 +47,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   source paths and ignore rules; selecting a new namespace clears sources.
   First run now opens Repository setup and requires an explicit namespace after
   repository validation, with no implicit `desktop` default.
+- **Milestone 17 is in progress**: AP01–AP04 extend short-lived backup automation
+  beyond systemd without adding a daemon. AP01 is active: document safe direct
+  use of `dothoard backup` from external schedulers. AP02 is next.
 - **Milestone 15 is partially complete**: PV01–PV03 provide the GitHub landing
   page, sanitized SVG visual demonstrations, and reorganized user
   documentation. **PV04 is complete**: a simple Astro Starlight website uses
@@ -433,6 +436,14 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   verification
 - `.github/workflows/release.yml` — tag-triggered quality-gated release build
 - `tests/acceptance.rs` — 18 tests covering all V1 acceptance criteria
+
+## Active Resume Point
+
+- Implement AP01 in README and user documentation, verify links/site content,
+  mark AP01 complete, and update this memory before starting AP02.
+- Preserve systemd as the only application-managed automation backend until
+  AP03; external schedulers can already invoke the scheduler-independent backup
+  command.
 
 ## Deferred Work
 
