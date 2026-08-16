@@ -266,13 +266,122 @@ fn draw_setup(frame: &mut Frame, app: &mut App) {
         }
         SetupStep::Namespace => draw_repository(frame, chunks[1], app),
         SetupStep::Automation => {
+            use super::setup::AutomationField;
+            use crate::config::AutomationBackend;
+            let setup = app.setup.as_ref().expect("setup is active");
+            let backends = [
+                (
+                    AutomationBackend::Systemd,
+                    "systemd",
+                    "managed user timer; completion-relative scheduling",
+                ),
+                (
+                    AutomationBackend::Cron,
+                    "cron",
+                    "managed crontab block; intervals 1–59 minutes",
+                ),
+                (
+                    AutomationBackend::External,
+                    "external",
+                    "you own scheduling; dothoard prints the command",
+                ),
+            ];
+            let mut lines = vec![
+                Line::from(Span::styled(
+                    "Choose how backups will be scheduled",
+                    theme::current().heading(),
+                )),
+                Line::from(""),
+            ];
+            lines.extend(backends.into_iter().map(|(backend, label, detail)| {
+                let selected = setup.automation_backend == backend;
+                Line::from(vec![
+                    Span::styled(
+                        if selected { "▶ " } else { "  " },
+                        theme::current().focused(),
+                    ),
+                    Span::styled(
+                        format!("{label:<9}"),
+                        if selected {
+                            theme::current().selected()
+                        } else {
+                            Style::default()
+                        },
+                    ),
+                    Span::styled(format!(" {detail}"), theme::current().muted()),
+                ])
+            }));
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![
+                Span::styled(
+                    if setup.automation_field == AutomationField::Interval {
+                        "▶ Interval (minutes): "
+                    } else {
+                        "  Interval (minutes): "
+                    },
+                    theme::current().label(),
+                ),
+                Span::styled(
+                    &setup.interval_input,
+                    if setup.automation_field == AutomationField::Interval {
+                        theme::current().selected()
+                    } else {
+                        Style::default()
+                    },
+                ),
+            ]));
+            if let Some(error) = setup.automation_error.as_deref() {
+                lines.push(Line::from(""));
+                lines.push(Line::from(Span::styled(error, theme::current().error())));
+            }
             frame.render_widget(
-                Paragraph::new("Repository and namespace are ready. Configure automation next.")
-                    .block(Block::default().borders(Borders::ALL).title(" Automation ")),
+                Paragraph::new(lines)
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .border_style(theme::current().border(true))
+                            .title(" Automation "),
+                    )
+                    .wrap(Wrap { trim: false }),
                 chunks[1],
             );
         }
-        SetupStep::Theme => {}
+        SetupStep::Theme => {
+            let setup = app.setup.as_ref().expect("setup is active");
+            let mut lines = vec![Line::from(Span::styled(
+                "Move through every theme to preview it live",
+                theme::current().heading(),
+            ))];
+            lines.extend(theme::ThemeId::ALL.iter().map(|id| {
+                let selected = *id == setup.theme_selected;
+                Line::from(vec![
+                    Span::styled(
+                        if selected { "▶ " } else { "  " },
+                        theme::current().focused(),
+                    ),
+                    Span::styled(
+                        id.label(),
+                        if selected {
+                            theme::current().selected()
+                        } else {
+                            Style::default()
+                        },
+                    ),
+                ])
+            }));
+            if let Some(error) = setup.theme_error.as_deref() {
+                lines.push(Line::from(Span::styled(error, theme::current().error())));
+            }
+            frame.render_widget(
+                Paragraph::new(lines).block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(theme::current().border(true))
+                        .title(" Theme preview "),
+                ),
+                chunks[1],
+            );
+        }
     }
 
     let help = match step {
@@ -289,7 +398,10 @@ fn draw_setup(frame: &mut Frame, app: &mut App) {
             RepositorySetupMode::Clone => "Tab/↑↓ switch field  Enter clone  Esc back  Ctrl+C quit",
         },
         SetupStep::Namespace => "↑↓ choose  Enter use  n new  Esc back",
-        SetupStep::Automation | SetupStep::Theme => "Esc back",
+        SetupStep::Automation => {
+            "←→ change backend  Tab interval  ↑↓ adjust  Enter continue  Esc back"
+        }
+        SetupStep::Theme => "↑↓/jk live preview  Enter finish setup  Esc back",
     };
     frame.render_widget(
         Paragraph::new(help)

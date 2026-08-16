@@ -173,13 +173,25 @@ impl App {
             // follows repository validation so existing manifests can be listed.
             repo_screen.ensure_browser(app_paths.home());
         }
-        let first_run = config.is_none();
+        let setup_incomplete = paths
+            .as_ref()
+            .is_some_and(|paths| setup::is_incomplete(paths.config_dir()));
+        let first_run = config.is_none() || setup_incomplete;
 
         let theme_id = paths
             .as_ref()
             .and_then(|p| theme::load_preference(p.config_dir()))
             .unwrap_or_default();
         theme::set_active(theme_id);
+        let setup_state = if config.is_none() {
+            Some(setup::SetupState::new())
+        } else if setup_incomplete {
+            config
+                .as_ref()
+                .map(|config| setup::SetupState::resume(config, theme_id))
+        } else {
+            None
+        };
 
         Self {
             focus: if first_run {
@@ -207,7 +219,7 @@ impl App {
             preview_screen: screens::preview::PreviewScreen::new(),
             automation_screen: screens::automation::AutomationScreen::new(),
             history_screen: screens::history::HistoryScreen::new(),
-            setup: first_run.then(setup::SetupState::new),
+            setup: setup_state,
             theme_picker: None,
             pointer_map: std::cell::RefCell::new(pointer::PointerMap::default()),
         }
@@ -1104,17 +1116,226 @@ impl App {
                     self.handle_repository_key(key);
                 }
             }
-            SetupStep::Automation | SetupStep::Theme => {
-                // These steps are completed by IS03. Keep first-run setup active
-                // rather than exposing partially configured main tabs.
-                if key.code == KeyCode::Esc {
-                    if let Some(setup) = self.setup.as_mut() {
-                        setup.step = SetupStep::Namespace;
-                    }
-                    self.repo_screen.mode = screens::repository::RepoMode::Namespaces;
+            SetupStep::Automation => self.handle_setup_automation_key(key),
+            SetupStep::Theme => self.handle_setup_theme_key(key),
+        }
+    }
+
+    fn handle_setup_automation_key(&mut self, key: crossterm::event::KeyEvent) {
+        use crossterm::event::KeyCode;
+        use setup::{AutomationField, SetupStep};
+
+        let field = self
+            .setup
+            .as_ref()
+            .map(|setup| setup.automation_field)
+            .unwrap_or(AutomationField::Backend);
+        match key.code {
+            KeyCode::Esc => {
+                if let Some(setup) = self.setup.as_mut() {
+                    setup.step = SetupStep::Namespace;
+                    setup.automation_error = None;
+                }
+                self.repo_screen.mode = screens::repository::RepoMode::Namespaces;
+            }
+            KeyCode::Tab | KeyCode::BackTab => {
+                if let Some(setup) = self.setup.as_mut() {
+                    setup.automation_field = match setup.automation_field {
+                        AutomationField::Backend => AutomationField::Interval,
+                        AutomationField::Interval => AutomationField::Backend,
+                    };
+                    setup.automation_error = None;
+                }
+            }
+            KeyCode::Left | KeyCode::Up if field == AutomationField::Backend => {
+                if let Some(setup) = self.setup.as_mut() {
+                    setup.previous_backend();
+                }
+            }
+            KeyCode::Right | KeyCode::Down if field == AutomationField::Backend => {
+                if let Some(setup) = self.setup.as_mut() {
+                    setup.next_backend();
+                }
+            }
+            KeyCode::Up if field == AutomationField::Interval => {
+                if let Some(setup) = self.setup.as_mut() {
+                    let value = setup.interval_input.parse::<u32>().unwrap_or(0);
+                    setup.interval_input = value.saturating_add(1).to_string();
+                    setup.interval_cursor = setup.interval_input.len();
+                    setup.automation_error = None;
+                }
+            }
+            KeyCode::Down if field == AutomationField::Interval => {
+                if let Some(setup) = self.setup.as_mut() {
+                    let value = setup.interval_input.parse::<u32>().unwrap_or(1);
+                    setup.interval_input = value.saturating_sub(1).max(1).to_string();
+                    setup.interval_cursor = setup.interval_input.len();
+                    setup.automation_error = None;
+                }
+            }
+            KeyCode::Enter => self.save_setup_automation(),
+            KeyCode::Backspace if field == AutomationField::Interval => {
+                if let Some(setup) = self.setup.as_mut() {
+                    text::backspace(&mut setup.interval_input, &mut setup.interval_cursor);
+                    setup.automation_error = None;
+                }
+            }
+            KeyCode::Delete if field == AutomationField::Interval => {
+                if let Some(setup) = self.setup.as_mut() {
+                    text::delete(&mut setup.interval_input, &mut setup.interval_cursor);
+                    setup.automation_error = None;
+                }
+            }
+            KeyCode::Left if field == AutomationField::Interval => {
+                if let Some(setup) = self.setup.as_mut() {
+                    text::move_left(&setup.interval_input, &mut setup.interval_cursor);
+                }
+            }
+            KeyCode::Right if field == AutomationField::Interval => {
+                if let Some(setup) = self.setup.as_mut() {
+                    text::move_right(&setup.interval_input, &mut setup.interval_cursor);
+                }
+            }
+            KeyCode::Char(character)
+                if field == AutomationField::Interval && character.is_ascii_digit() =>
+            {
+                if let Some(setup) = self.setup.as_mut() {
+                    text::insert_char(
+                        &mut setup.interval_input,
+                        &mut setup.interval_cursor,
+                        character,
+                    );
+                    setup.automation_error = None;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn save_setup_automation(&mut self) {
+        let Some(setup_state) = self.setup.as_ref() else {
+            return;
+        };
+        let interval = match setup_state.interval_input.parse::<u32>() {
+            Ok(interval) if interval > 0 => interval,
+            _ => {
+                if let Some(setup) = self.setup.as_mut() {
+                    setup.automation_error = Some(
+                        "Interval must be a whole number of minutes greater than zero.".into(),
+                    );
+                }
+                return;
+            }
+        };
+        if setup_state.automation_backend == crate::config::AutomationBackend::Cron && interval > 59
+        {
+            if let Some(setup) = self.setup.as_mut() {
+                setup.automation_error =
+                    Some("Cron supports intervals from 1 through 59 minutes.".into());
+            }
+            return;
+        }
+        let backend = setup_state.automation_backend;
+        let Some(paths) = self.paths.as_ref() else {
+            return;
+        };
+        let Some(mut config) = self.config.clone() else {
+            if let Some(setup) = self.setup.as_mut() {
+                setup.automation_error = Some("Repository setup is incomplete.".into());
+            }
+            return;
+        };
+        config.automation_backend = backend;
+        config.interval_minutes = interval;
+        match config.save(paths.config_file()) {
+            Ok(()) => {
+                self.config = Some(config);
+                if let Some(setup) = self.setup.as_mut() {
+                    setup.step = setup::SetupStep::Theme;
+                    setup.theme_previous = theme::active_id();
+                    setup.theme_selected = theme::active_id();
+                    setup.automation_error = None;
+                }
+            }
+            Err(error) => {
+                if let Some(setup) = self.setup.as_mut() {
+                    setup.automation_error =
+                        Some(format!("Failed to save automation settings: {error}"));
                 }
             }
         }
+    }
+
+    fn handle_setup_theme_key(&mut self, key: crossterm::event::KeyEvent) {
+        use crossterm::event::KeyCode;
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                if let Some(setup) = self.setup.as_mut() {
+                    setup.theme_selected = setup.theme_selected.prev();
+                    setup.theme_error = None;
+                    theme::set_active(setup.theme_selected);
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if let Some(setup) = self.setup.as_mut() {
+                    setup.theme_selected = setup.theme_selected.next();
+                    setup.theme_error = None;
+                    theme::set_active(setup.theme_selected);
+                }
+            }
+            KeyCode::Home => {
+                if let Some(setup) = self.setup.as_mut() {
+                    setup.theme_selected = theme::ThemeId::ALL[0];
+                    setup.theme_error = None;
+                    theme::set_active(setup.theme_selected);
+                }
+            }
+            KeyCode::End => {
+                if let Some(setup) = self.setup.as_mut() {
+                    setup.theme_selected = *theme::ThemeId::ALL
+                        .last()
+                        .unwrap_or(&theme::ThemeId::default());
+                    setup.theme_error = None;
+                    theme::set_active(setup.theme_selected);
+                }
+            }
+            KeyCode::Esc => {
+                if let Some(setup) = self.setup.as_mut() {
+                    theme::set_active(setup.theme_previous);
+                    setup.theme_selected = setup.theme_previous;
+                    setup.theme_error = None;
+                    setup.step = setup::SetupStep::Automation;
+                }
+            }
+            KeyCode::Enter => self.finish_setup(),
+            _ => {}
+        }
+    }
+
+    fn finish_setup(&mut self) {
+        let Some(theme_id) = self.setup.as_ref().map(|setup| setup.theme_selected) else {
+            return;
+        };
+        let Some(paths) = self.paths.as_ref() else {
+            return;
+        };
+        if let Err(error) = theme::save_preference(paths.config_dir(), theme_id) {
+            if let Some(setup) = self.setup.as_mut() {
+                setup.theme_error = Some(format!("Failed to save theme: {error}"));
+            }
+            return;
+        }
+        if let Err(error) = setup::clear_incomplete(paths.config_dir()) {
+            if let Some(setup) = self.setup.as_mut() {
+                setup.theme_error = Some(format!("Failed to finish setup: {error}"));
+            }
+            return;
+        }
+        theme::set_active(theme_id);
+        self.setup = None;
+        self.active_screen = Screen::Dashboard;
+        self.focus = Focus::TabBar;
+        self.success("Initial configuration complete.");
     }
 
     fn handle_setup_clone_key(&mut self, key: crossterm::event::KeyEvent) {
@@ -1524,6 +1745,12 @@ impl App {
             self.error("Cannot manage namespace: paths not resolved.");
             return;
         };
+        if self.setup.is_some()
+            && let Err(error) = setup::mark_incomplete(paths.config_dir())
+        {
+            self.error(format!("Cannot record setup progress: {error}"));
+            return;
+        }
         let mut config = if let Some(config) = self.config.clone() {
             config
         } else if let Some(info) = self.repo_screen.validation.data() {

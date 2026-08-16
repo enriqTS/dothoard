@@ -1780,6 +1780,36 @@ fn first_run_setup_renders_repository_choices_and_clone_errors() {
     assert!(rendered.contains("authentication required"));
 }
 
+#[test]
+fn first_run_setup_renders_all_automation_backends_and_themes() {
+    let backend = TestBackend::new(100, 28);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = app_on(Screen::Repository);
+    let mut setup = crate::tui::setup::SetupState::new();
+    setup.step = crate::tui::setup::SetupStep::Automation;
+    setup.automation_backend = crate::config::AutomationBackend::Cron;
+    setup.interval_input = "15".to_string();
+    app.setup = Some(setup);
+
+    terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+    let rendered = buffer_text(terminal.backend());
+    assert!(rendered.contains("systemd"));
+    assert!(rendered.contains("cron"));
+    assert!(rendered.contains("external"));
+    assert!(rendered.contains("Interval (minutes): 15"));
+
+    app.setup.as_mut().unwrap().step = crate::tui::setup::SetupStep::Theme;
+    terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+    let rendered = buffer_text(terminal.backend());
+    for theme in crate::tui::theme::ThemeId::ALL {
+        assert!(
+            rendered.contains(theme.label()),
+            "missing {}",
+            theme.label()
+        );
+    }
+}
+
 /// Verify sources browse renders at various sizes without panic.
 #[test]
 fn sources_browse_renders_at_various_sizes() {

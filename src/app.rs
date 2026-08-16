@@ -6,6 +6,7 @@ pub const BINARY_NAME: &str = "dothoard";
 pub const CONFIG_DIR_NAME: &str = "dothoard";
 pub const CONFIG_FILE_NAME: &str = "config.toml";
 pub const THEME_FILE_NAME: &str = "theme.toml";
+pub const SETUP_MARKER_FILE_NAME: &str = "setup-incomplete";
 pub const STATE_DIR_NAME: &str = "dothoard";
 pub const MANIFEST_FILE_NAME: &str = ".dothoard-manifest.toml";
 pub const LOG_DIR_NAME: &str = "logs";

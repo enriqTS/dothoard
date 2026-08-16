@@ -1484,6 +1484,80 @@ fn first_run_namespace_selection_restores_sources_from_manifest() {
 }
 
 #[test]
+fn first_run_automation_validates_persists_and_advances_to_theme() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let (mut app, _temp) = configured_test_app();
+    app.setup = Some(setup::SetupState::resume(
+        app.config.as_ref().unwrap(),
+        theme::ThemeId::System,
+    ));
+    let setup = app.setup.as_mut().unwrap();
+    setup.automation_backend = crate::config::AutomationBackend::Cron;
+    setup.interval_input = "90".to_string();
+    setup.interval_cursor = 2;
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(
+        app.setup.as_ref().unwrap().step,
+        setup::SetupStep::Automation
+    );
+    assert!(
+        app.setup
+            .as_ref()
+            .unwrap()
+            .automation_error
+            .as_deref()
+            .is_some_and(|error| error.contains("1 through 59"))
+    );
+
+    let setup = app.setup.as_mut().unwrap();
+    setup.interval_input = "15".to_string();
+    setup.interval_cursor = 2;
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(app.setup.as_ref().unwrap().step, setup::SetupStep::Theme);
+    let saved = crate::config::Config::load(app.paths.as_ref().unwrap().config_file()).unwrap();
+    assert_eq!(
+        saved.automation_backend,
+        crate::config::AutomationBackend::Cron
+    );
+    assert_eq!(saved.interval_minutes, 15);
+}
+
+#[test]
+fn first_run_theme_navigation_live_previews_and_finish_opens_main_tabs() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let (mut app, _temp) = configured_test_app();
+    setup::mark_incomplete(app.paths.as_ref().unwrap().config_dir()).unwrap();
+    let mut setup = setup::SetupState::resume(app.config.as_ref().unwrap(), theme::ThemeId::System);
+    setup.step = setup::SetupStep::Theme;
+    app.setup = Some(setup);
+    theme::set_active(theme::ThemeId::System);
+
+    app.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    assert_eq!(theme::active_id(), theme::ThemeId::CatppuccinMocha);
+    assert_eq!(
+        app.setup.as_ref().unwrap().theme_selected,
+        theme::ThemeId::CatppuccinMocha
+    );
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(app.setup.is_none());
+    assert_eq!(app.active_screen, Screen::Dashboard);
+    assert_eq!(app.focus, Focus::TabBar);
+    assert!(!setup::is_incomplete(
+        app.paths.as_ref().unwrap().config_dir()
+    ));
+    assert_eq!(
+        theme::load_preference(app.paths.as_ref().unwrap().config_dir()),
+        Some(theme::ThemeId::CatppuccinMocha)
+    );
+    theme::set_active(theme::ThemeId::default());
+}
+
+#[test]
 fn repository_validation_does_not_run_inline() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
