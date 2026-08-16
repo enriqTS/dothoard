@@ -804,7 +804,8 @@ managed-path and sibling-namespace safety boundaries remain unchanged.
 ## Maintenance
 
 - [x] **UI01 - Simplify configured repository selection.** Hide `.git`
-  directories from filesystem pickers. Once configured, root browsing at the
+  directories from filesystem pickers and mark their containing repositories
+  with a Git icon. Once configured, root browsing at the
   selected repository so its contents remain visible but its parent is
   inaccessible; expose `c` as an explicit change action that restarts selection
   at `$HOME`. Cover listing, interaction,

@@ -278,7 +278,8 @@ The keyboard-first TUI has seven screens:
 
 Repository and source selection use a shared no-follow filesystem browser.
 Repository browsing may traverse the local filesystem; source browsing cannot
-move above `$HOME`. `.git` metadata directories are hidden from pickers. After
+move above `$HOME`. `.git` metadata directories are hidden from pickers, while
+their containing directories use a Git-repository icon. After
 a repository is configured, Repository browsing is rooted at the selected
 repository: its contents remain visible, but its parent cannot be viewed or
 entered. The explicit `c` change action restarts selection at `$HOME`.
