@@ -278,8 +278,9 @@ The keyboard-first TUI has seven screens:
 
 Repository and source selection use a shared no-follow filesystem browser.
 Its Preview pane shows directory contents, symlink metadata, and the actual
-content of selected regular files through `cat`; regular-file output is cached,
-refreshable, display-safe, and limited to 256 KiB. Repository browsing may
+content of selected regular files. Regular-file content is independently
+scrollable, cached, refreshable, display-safe, and limited to 256 KiB.
+Repository browsing may
 traverse the local filesystem; source browsing cannot move above `$HOME`.
 `.git` metadata directories are hidden from pickers, while
 their containing directories use a Git-repository icon. After

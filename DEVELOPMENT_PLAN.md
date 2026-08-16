@@ -811,7 +811,12 @@ managed-path and sibling-namespace safety boundaries remain unchanged.
   at `$HOME`. Cover listing, interaction,
   root-boundary, help, and rendering behavior with regressions.
 - [x] **UI02 - Preview selected file contents.** Extend the shared picker Preview
-  pane to show cached, refreshable regular-file content using a direct `cat`
-  invocation while preserving no-follow safety. Limit previews to 256 KiB,
-  sanitize control characters for terminal rendering, retain file metadata,
-  and cover content, refresh, and oversized-file behavior with regressions.
+  pane to show cached, refreshable regular-file content using a direct external
+  reader while preserving no-follow safety. Limit previews to 256 KiB, sanitize
+  control characters for terminal rendering, retain file metadata, and cover
+  content, refresh, and oversized-file behavior with regressions.
+- [x] **UI03 - Scroll file content previews from the keyboard.** Keep file
+  metadata visible while independently scrolling wrapped content with
+  `Ctrl+Up`/`Ctrl+Down` or `Ctrl+k`/`Ctrl+j`. Reset the content viewport when the
+  selected entry changes, show its visible range, update contextual help, and
+  keep implementation details out of user-facing labels and documentation.

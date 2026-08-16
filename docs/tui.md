@@ -73,8 +73,9 @@ everywhere dothoard runs.
    and ignore rules. Review them, or select source files, directories, or
    source-root symlinks below `$HOME` for a new namespace. Space toggles
    selection in the browser. When a regular file is highlighted, the picker
-   Preview pane shows its metadata and cached `cat` output (up to 256 KiB);
-   `Ctrl+R` reloads the directory and content preview.
+   Preview pane shows its metadata and cached content (up to 256 KiB).
+   `Ctrl+↑`/`Ctrl+↓` or `Ctrl+k`/`Ctrl+j` scrolls the content without moving the
+   selected file; `Ctrl+R` reloads the directory and content preview.
 3. **Ignore:** edit source-relative ignore rules and inspect matches.
 4. **Preview:** review planned additions, changes, deletions, exclusions, and
    warnings.

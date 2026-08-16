@@ -80,8 +80,9 @@ must be rotated.
    selected clone but cannot move to its parent; press `c` to choose another
    location starting from `~/`.
 5. In **Sources**, review or change files and directories below `$HOME`. The
-   browser Preview pane shows a selected regular file's content using `cat`
-   (up to 256 KiB). Then inspect **Preview** and run the first backup.
+   browser Preview pane shows a selected regular file's content (up to 256
+   KiB); use `Ctrl+↑`/`Ctrl+↓` or `Ctrl+k`/`Ctrl+j` to scroll it. Then inspect
+   **Preview** and run the first backup.
 6. When the manual flow is working, install automation:
 
    ```bash
