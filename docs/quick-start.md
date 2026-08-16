@@ -61,11 +61,13 @@ Run:
 dothoard
 ```
 
-1. Open **Repository** and select the repository clone.
-2. Create or select a namespace, for example `desktop`. A namespace identifies
-   this machine's independent directory in the repository.
-3. Open **Sources** and select regular files, directories, or source-root
-   symlinks below `$HOME`.
+1. First launch opens **Repository** setup automatically. Select the repository
+   clone.
+2. Select an existing namespace or explicitly create one, for example
+   `desktop`. Dothoard does not choose a default. Selecting an owned namespace
+   restores its manifest's source paths and ignore rules.
+3. Open **Sources** and review the restored selections or select regular files,
+   directories, or source-root symlinks below `$HOME` for a new namespace.
 4. Open **Ignore** to add source-relative Git-style exclusions when needed.
 5. Open **Preview** and inspect the exact changes and warnings.
 6. Start a manual backup only after the preview looks correct.

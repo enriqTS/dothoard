@@ -725,6 +725,7 @@ Bootstrap
   -> Multiple-Machine Namespaces
   -> TUI Usability and Visual Design
   -> Project Visibility and Documentation
+  -> Portable Namespace Setup
 ```
 
 The explicit naming prerequisite avoids introducing installed paths and unit
@@ -776,3 +777,26 @@ what dothoard does, who it is for, how to try it, and why its safety model is
 trustworthy. Visuals are current and sanitized, unfinished functionality is not
 presented as stable, documentation links and site builds pass, and CI covers
 the documented quality baseline.
+
+## 16. Portable Namespace Setup
+
+Make namespace manifests useful when attaching a fresh installation, and remove
+the implicit first-run namespace.
+
+- [x] **PN01 - Restore namespace source configuration.** When an owned namespace
+  is selected, validate and copy its manifest source paths and ignore rules into
+  local configuration. Selecting a new namespace clears sources, and selecting
+  a replacement during deletion loads the replacement manifest. Invalid
+  manifest source configuration is refused.
+- [x] **PN02 - Require first-run namespace choice.** Start an unconfigured TUI in
+  Repository setup. Validate the repository before namespace ownership, list
+  discovered namespaces, and require explicit selection or creation without a
+  `desktop` or hostname-derived default.
+- [x] **PN03 - Document and verify portable setup.** Update product and user
+  documentation, add backend and TUI regressions, and run the complete Rust
+  quality baseline.
+
+**Milestone gate: Complete.** A fresh installation selects its repository and
+then explicitly selects or creates a namespace. Selecting an existing owned
+namespace restores its validated source and ignore configuration, while all
+managed-path and sibling-namespace safety boundaries remain unchanged.

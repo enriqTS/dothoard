@@ -73,9 +73,11 @@ must be rotated.
    dothoard
    ```
 
-4. In **Repository**, choose the clone and create/select a namespace such as
-   `desktop`.
-5. In **Sources**, select files or directories below `$HOME`; inspect **Preview**
+4. On first launch, dothoard opens **Repository** setup. Choose the clone, then
+   select an existing namespace or explicitly create one—there is no default.
+   Selecting an existing namespace restores its source selections and ignore
+   rules from the manifest.
+5. In **Sources**, review or change files and directories below `$HOME`; inspect **Preview**
    and run the first backup.
 6. When the manual flow is working, install automation:
 
@@ -149,8 +151,11 @@ repository/
 `-- other repository content (untouched)
 ```
 
-Each configured machine owns only its selected namespace. Root-level legacy
-`home/` data and sibling namespaces are unmanaged and untouched. See
+Each configured machine owns only its selected namespace. Selecting an owned
+namespace loads its manifest's source paths and ignore rules into this machine's
+local configuration; selecting a new namespace starts with an empty source
+list. Root-level legacy `home/` data and sibling namespaces are unmanaged and
+untouched. See
 [Namespaces](docs/namespaces.md) for setup and lifecycle details.
 
 ## Development

@@ -29,7 +29,10 @@ weakening backend safety or adding unrelated functionality.
 - Report failures and recovery through desktop notifications when available.
 - Create, select, rename, and delete namespaces through the TUI under strict
   ownership rules.
-- Backup only; restore remains deferred.
+- Require explicit repository and namespace selection during first-run setup.
+- Restore a selected owned namespace's source paths and ignore rules from its
+  validated manifest into local configuration.
+- Backup only; restoring file contents remains deferred.
 
 ## Commands
 
@@ -103,9 +106,11 @@ repository/
 
 The namespace manifest uses format identifier `dothoard-manifest`, schema
 version 2, and records the namespace, source mapping, and ignore configuration.
-Its declared namespace must match its containing directory. The local
-configuration remains authoritative; a manifest is an ownership marker and a
-portable description, not configuration applied without review.
+Its declared namespace must match its containing directory. The manifest is both the namespace ownership marker and the portable source
+selection record. Selecting an owned namespace copies its source paths and
+ignore rules into local configuration after validation; selecting a new
+namespace starts with no sources. Local edits remain authoritative until the
+next successful backup updates that namespace's manifest.
 
 Ownership inspection is confined to the selected namespace:
 
@@ -274,7 +279,10 @@ The keyboard-first TUI has seven screens:
 Repository and source selection use a shared no-follow filesystem browser.
 Repository browsing may traverse the local filesystem; source browsing cannot
 move above `$HOME`. Non-UTF-8 entries may be displayed lossily for navigation
-but cannot be stored in configuration.
+but cannot be stored in configuration. On a fresh installation, the TUI opens
+repository setup directly; after repository validation it lists existing
+namespaces and requires the user to select one or explicitly create one. No
+`desktop` or hostname-derived namespace is chosen implicitly.
 
 ## Current Objective: TUI Usability and Visual Design
 

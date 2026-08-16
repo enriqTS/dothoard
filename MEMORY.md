@@ -42,6 +42,11 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   complete**: controlled end-to-end preview, automation failure/recovery, and
   History log flows plus the complete serialized baseline pass. Milestone 14
   is accepted; next work is Milestone 15 PV04.
+- **Milestone 16 complete**: PN01–PN03 make namespace manifests portable across
+  fresh installations. Selecting an owned namespace validates and restores its
+  source paths and ignore rules; selecting a new namespace clears sources.
+  First run now opens Repository setup and requires an explicit namespace after
+  repository validation, with no implicit `desktop` default.
 - **Milestone 15 is partially complete**: PV01–PV03 provide the GitHub landing
   page, sanitized SVG visual demonstrations, and reorganized user
   documentation. **PV04 is complete**: a simple Astro Starlight website uses
@@ -113,6 +118,12 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   `$XDG_RUNTIME_DIR/dothoard.lock`.
 - Notifications use notify-send with --urgency critical/normal.
 - The backup coordinator auto-initializes new namespaces in headless mode.
+- Selecting an owned namespace copies its validated manifest sources and ignore
+  rules into local configuration. Selecting a new namespace clears sources;
+  namespace switching never carries another namespace's source configuration.
+- An unconfigured TUI starts in Repository content, validates the clone, then
+  requires explicit selection or creation from discovered namespaces. There is
+  no implicit namespace default.
 - Commit messages use format `backup(<hostname>): <timestamp>`.
 - Permanent name: `dothoard`.
 - Systemd units written to `~/.config/systemd/user/`.
@@ -183,6 +194,13 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- PN01–PN03 verified with Rust 1.97.1: `cargo +1.97.1 fmt --check`, `cargo
+  +1.97.1 clippy --all-targets --all-features -- -D warnings`, and `cargo
+  +1.97.1 test --all-targets --all-features -- --test-threads=1` pass (960
+  library tests plus all integration suites). Regressions cover full source and
+  ignore restoration, new-namespace clearing, invalid manifest-source refusal,
+  replacement loading, no implicit namespace, first-run namespace discovery,
+  and first-run manifest attachment.
 - CI/MSRV fix verified with Rust 1.97.1: `cargo +1.97.1 fmt --check`, `cargo
   +1.97.1 clippy --all-targets --all-features -- -D warnings`, and `cargo
   +1.97.1 test --all-targets --all-features -- --test-threads=1` all pass (935

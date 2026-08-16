@@ -65,10 +65,13 @@ everywhere dothoard runs.
 
 ## First-run workflow
 
-1. **Repository:** select an existing dedicated clone and create or choose a
-   namespace.
-2. **Sources:** select source files, directories, or source-root symlinks below
-   `$HOME`. Space toggles selection in the browser.
+1. **Repository:** an unconfigured installation starts here. Select an existing
+   dedicated clone, then explicitly create or choose a discovered namespace;
+   no namespace is preselected.
+2. **Sources:** selecting an owned namespace restores its manifest selections
+   and ignore rules. Review them, or select source files, directories, or
+   source-root symlinks below `$HOME` for a new namespace. Space toggles
+   selection in the browser.
 3. **Ignore:** edit source-relative ignore rules and inspect matches.
 4. **Preview:** review planned additions, changes, deletions, exclusions, and
    warnings.
@@ -100,5 +103,7 @@ replacement. Confirmation dialogs show the affected path. Invalid and ambiguous
 namespaces, root-level legacy paths, and siblings remain unmanaged and are
 never adopted or changed.
 
-Changing namespaces invalidates source, ignore, and backup previews. Review the
-new namespace's Sources, Ignore, and Preview before running a backup.
+Changing namespaces reloads source paths and ignore rules from an owned
+namespace's validated manifest; a new namespace starts empty. It also
+invalidates source, ignore, and backup previews. Review the new namespace's
+Sources, Ignore, and Preview before running a backup.
