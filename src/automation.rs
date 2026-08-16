@@ -103,6 +103,11 @@ pub enum AutomationError {
     Cron(#[from] cron::CronError),
 }
 
+fn systemd_unit_dir(paths: &AppPaths) -> std::path::PathBuf {
+    let config_home = paths.config_dir().parent().unwrap_or_else(|| paths.home());
+    systemd::user_unit_dir_from(config_home)
+}
+
 pub fn validate(config: &Config, paths: &AppPaths) -> Result<(), AutomationError> {
     match selected_backend(config) {
         Backend::Systemd => {
@@ -120,7 +125,7 @@ pub fn install(config: &Config, paths: &AppPaths) -> Result<(), AutomationError>
     match selected_backend(config) {
         Backend::Systemd => {
             let params = systemd::params_from_config(config)?;
-            systemd::install(&params, &systemd::user_unit_dir(paths.home()))?;
+            systemd::install(&params, &systemd_unit_dir(paths))?;
         }
         Backend::Cron => cron::install(&cron::params_from_config(config, paths.runtime_dir())?)?,
     }
@@ -129,7 +134,7 @@ pub fn install(config: &Config, paths: &AppPaths) -> Result<(), AutomationError>
 
 pub fn remove(config: &Config, paths: &AppPaths) -> Result<(), AutomationError> {
     match selected_backend(config) {
-        Backend::Systemd => systemd::remove(&systemd::user_unit_dir(paths.home()))?,
+        Backend::Systemd => systemd::remove(&systemd_unit_dir(paths))?,
         Backend::Cron => cron::remove()?,
     }
     Ok(())
@@ -139,10 +144,7 @@ pub fn status(config: &Config, paths: &AppPaths) -> Result<Status, AutomationErr
     let status = match selected_backend(config) {
         Backend::Systemd => {
             let params = systemd::params_from_config(config)?;
-            Status::from(systemd::status(
-                &params,
-                &systemd::user_unit_dir(paths.home()),
-            )?)
+            Status::from(systemd::status(&params, &systemd_unit_dir(paths))?)
         }
         Backend::Cron => Status::from(cron::status(&cron::params_from_config(
             config,
@@ -156,7 +158,7 @@ pub fn refresh(config: &Config, paths: &AppPaths) -> Result<(), AutomationError>
     match selected_backend(config) {
         Backend::Systemd => {
             let params = systemd::params_from_config(config)?;
-            systemd::update_interval(&params, &systemd::user_unit_dir(paths.home()))?;
+            systemd::update_interval(&params, &systemd_unit_dir(paths))?;
         }
         Backend::Cron => cron::install(&cron::params_from_config(config, paths.runtime_dir())?)?,
     }
@@ -166,7 +168,7 @@ pub fn refresh(config: &Config, paths: &AppPaths) -> Result<(), AutomationError>
 pub fn is_installed(config: &Config, paths: &AppPaths) -> Result<bool, AutomationError> {
     let installed = match selected_backend(config) {
         Backend::Systemd => {
-            let unit_dir = systemd::user_unit_dir(paths.home());
+            let unit_dir = systemd_unit_dir(paths);
             systemd::service_unit_path(&unit_dir).is_file()
                 && systemd::timer_unit_path(&unit_dir).is_file()
         }
@@ -182,7 +184,7 @@ pub fn is_stale(config: &Config, paths: &AppPaths) -> Result<bool, AutomationErr
     let stale = match selected_backend(config) {
         Backend::Systemd => {
             let params = systemd::params_from_config(config)?;
-            systemd::is_stale(&params, &systemd::user_unit_dir(paths.home()))?
+            systemd::is_stale(&params, &systemd_unit_dir(paths))?
         }
         Backend::Cron => {
             match cron::status(&cron::params_from_config(config, paths.runtime_dir())?)? {

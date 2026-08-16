@@ -447,6 +447,13 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Active Resume Point
 
+- **CI fixture and automation path bugs fixed:** TUI rendering fixtures now set
+  their intended screen and focus explicitly instead of inheriting first-run
+  state from the host configuration. Scheduler operations now derive systemd
+  unit paths from injected `AppPaths`, so tests and alternate XDG configurations
+  cannot accidentally inspect or target the process environment's user units.
+  Clean-XDG TUI regressions and the complete Rust baseline pass (994 library
+  tests plus all integration suites).
 - No portable-automation implementation task remains. Milestone 17 is accepted.
   The only previously recorded open milestone item is PV06's manual GitHub Pages
   activation and visual review, which requires repository settings/browser

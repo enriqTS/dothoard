@@ -2437,7 +2437,9 @@ fn automation_backend_selection_is_explicit_and_persisted() {
 
     assert_eq!(
         app.config.as_ref().unwrap().automation_backend,
-        crate::config::AutomationBackend::Cron
+        crate::config::AutomationBackend::Cron,
+        "backend selection status: {:?}",
+        app.status_message
     );
     let saved = crate::config::Config::load(app.paths.as_ref().unwrap().config_file()).unwrap();
     assert_eq!(

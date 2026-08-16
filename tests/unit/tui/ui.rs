@@ -42,7 +42,10 @@ fn compact_tab_bar_preserves_active_tab_and_selection_style() {
 /// Create a test App with a specific screen.
 fn app_on(screen: Screen) -> App {
     let mut app = App::new();
+    // Rendering fixtures must not inherit first-run focus or screen selection
+    // from the machine running the tests.
     app.active_screen = screen;
+    app.focus = crate::tui::Focus::TabBar;
     app
 }
 
@@ -109,7 +112,7 @@ fn rendered_source_rows_are_clickable() {
 fn app_with_state() -> App {
     use chrono::Utc;
 
-    let mut app = App::new();
+    let mut app = app_on(Screen::Dashboard);
     app.state = Some(crate::state::AppState {
         last_attempt: Some(Utc::now()),
         last_success: Some(Utc::now()),
@@ -1136,7 +1139,7 @@ fn navigation_transitions_render_correctly() {
 
     let backend = TestBackend::new(100, 30);
     let mut terminal = Terminal::new(backend).unwrap();
-    let mut app = App::new();
+    let mut app = app_on(Screen::Dashboard);
 
     // Start on Dashboard with TabBar focus, use Right to navigate tabs.
     for expected in Screen::ALL.iter().skip(1) {
@@ -1200,7 +1203,7 @@ fn help_bar_shows_tab_bar_hints_when_tab_focused() {
     let backend = TestBackend::new(100, 30);
     let mut terminal = Terminal::new(backend).unwrap();
 
-    let mut app = App::new(); // Default: TabBar focus, Dashboard.
+    let mut app = app_on(Screen::Dashboard);
     assert_eq!(app.focus, crate::tui::Focus::TabBar);
 
     terminal

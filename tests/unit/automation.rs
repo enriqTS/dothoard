@@ -19,6 +19,29 @@ fn selected_backend_comes_from_configuration() {
 }
 
 #[test]
+fn systemd_paths_follow_injected_app_paths_instead_of_process_environment() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let config_home = temp.path().join("isolated-config");
+    let config_dir = config_home.join("dothoard");
+    let state_dir = temp.path().join("state");
+    let runtime_dir = temp.path().join("run");
+    for directory in [&home, &config_dir, &state_dir, &runtime_dir] {
+        std::fs::create_dir_all(directory).unwrap();
+    }
+    let paths = AppPaths::resolve(crate::paths::PathInputs {
+        home: Some(home),
+        config_dir: Some(config_dir),
+        state_dir: Some(state_dir),
+        runtime_dir: Some(runtime_dir),
+        use_environment: false,
+    })
+    .unwrap();
+
+    assert_eq!(systemd_unit_dir(&paths), config_home.join("systemd/user"));
+}
+
+#[test]
 fn provider_status_maps_to_scheduler_neutral_status() {
     assert_eq!(
         Status::from(systemd::AutomationStatus::Installed { stale: true }),
