@@ -1,6 +1,6 @@
 # TUI Guide
 
-Open the keyboard-first interface with `dothoard`.
+Open the keyboard-first, pointer-capable interface with `dothoard`.
 
 ## Navigation
 
@@ -13,6 +13,14 @@ content. Tab or Shift+Tab returns to the tab bar from any content state.
   source changes.
 - `q` and Ctrl+C quit only outside text entry and confirmations.
 - `r` refreshes data where a screen supports it.
+
+Mouse and touchpad users can click tabs, list rows, browser entries and
+checkboxes, themes, and the visible shortcut labels in the footer. Use the
+pointer wheel over a list to navigate it, over the browser's Files pane to move
+its selection, or over a regular file's Preview pane to scroll its content.
+Pointer actions follow the same focus and confirmation rules as their keyboard
+equivalents. Availability of touchscreen gestures depends on whether the
+terminal reports them as mouse events.
 
 The bottom shortcut footer is the authoritative list of keys for the current
 mode. A separate status row reports progress, warnings, and errors. On narrow
@@ -30,6 +38,7 @@ Dashboard and History stack their primary panes before secondary details.
 | Configured repository | Browse within the selected clone; its parent is inaccessible. `c`: choose a replacement starting at `~/` |
 | Refreshable screens | `r`: refresh; Preview and Automation load automatically on first entry when configured |
 | History | Enter: view the selected run's logs; Esc: return from logs |
+| Pointer | Click tabs, rows, entries, checkboxes, themes, or visible footer actions; wheel over the scrollable pane to navigate |
 | Anywhere | `Ctrl+T`: open the theme picker |
 
 Focus is explicit: `▶` and underline identify tab/content or nested-control

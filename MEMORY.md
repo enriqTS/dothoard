@@ -67,14 +67,16 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   quick-start, releases, and development docs describe both. PV06 remains the
   only open item in Milestone 15 (manual GitHub Pages activation and visual
   review).
-- **Maintenance UI01–UI03 complete**: filesystem pickers hide `.git` and mark
+- **Maintenance UI01–UI04 complete**: filesystem pickers hide `.git` and mark
   Git repository directories with `⎇` (or ASCII `G`); configured Repository
   browsing remains inside the selected clone without exposing its parent, and
   `c` explicitly restarts replacement selection at `$HOME`. Highlighted regular
   files show cached, refreshable content in the Preview pane with a 256 KiB
-  limit and no-follow opened-file safety. `Ctrl+Up`/`Ctrl+Down` and
-  `Ctrl+k`/`Ctrl+j` scroll wrapped content independently while metadata remains
-  visible.
+  limit and no-follow opened-file safety. Keyboard shortcuts and pointer wheels
+  scroll wrapped content independently while metadata remains visible. Terminal
+  pointer capture now makes tabs, rendered rows, picker entries and checkboxes,
+  themes, and visible footer actions clickable; wheel events target the list or
+  picker pane beneath the pointer without bypassing modal ownership.
 
 ## Durable Decisions
 
@@ -137,7 +139,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - Systemd units written to `~/.config/systemd/user/`.
 - Service timeout = network_timeout_seconds + 60s buffer.
 - Timer uses OnStartupSec=1min and OnUnitInactiveSec={interval_minutes}min.
-- TUI uses ratatui + crossterm with 250ms tick rate event loop.
+- TUI uses ratatui + crossterm with a 250ms tick rate event loop. Mouse capture
+  is enabled only for the TUI lifetime; render-time hit regions keep pointer
+  input aligned with responsive layouts and keyboard-equivalent actions.
 - TUI has 7 tabs: Dashboard, Repository, Sources, Ignore, Preview, Automation,
   History.
 - Post-V1 TUI navigation separates tab-bar focus from content focus and starts
@@ -204,6 +208,13 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- UI04 verified with Rust 1.97.1: `cargo +1.97.1 fmt --check`, `cargo +1.97.1
+  clippy --all-targets --all-features -- -D warnings`, and `cargo +1.97.1 test
+  --all-targets --all-features -- --test-threads=1` pass (977 library tests plus
+  all integration suites). Regressions cover tab/content focus, clickable
+  shortcuts and rendered source rows, wheel dispatch, and keyboard-equivalent
+  repository initialization. Mouse capture is disabled during normal and panic
+  restoration.
 - UI03 verified with Rust 1.97.1: `cargo +1.97.1 fmt --check`, `cargo +1.97.1
   clippy --all-targets --all-features -- -D warnings`, and `cargo +1.97.1 test
   --all-targets --all-features -- --test-threads=1` pass (971 library tests plus

@@ -261,7 +261,7 @@ after a previous failure produces a notification.
 
 ## TUI Screens
 
-The keyboard-first TUI has seven screens:
+The keyboard-first, pointer-capable TUI has seven screens:
 
 - **Dashboard:** Backup health, repository, active namespace, automation,
   synchronization state, and actionable errors.
@@ -318,6 +318,10 @@ unchanged.
 
 ### Focus, Navigation, and Modes
 
+- Mouse clicks and terminal-reported touch input select tabs, rows, picker
+  entries, checkboxes, themes, and visible shortcut actions. The pointer wheel
+  scrolls the list or picker pane beneath it; keyboard operation remains fully
+  available.
 - Distinguish tab-bar focus, content focus, nested-control focus, and selected
   items through more than color alone.
 - Show a concise mode where useful, such as `Browsing`, `Editing`,

@@ -81,8 +81,9 @@ must be rotated.
    location starting from `~/`.
 5. In **Sources**, review or change files and directories below `$HOME`. The
    browser Preview pane shows a selected regular file's content (up to 256
-   KiB); use `Ctrl+↑`/`Ctrl+↓` or `Ctrl+k`/`Ctrl+j` to scroll it. Then inspect
-   **Preview** and run the first backup.
+   KiB); use `Ctrl+↑`/`Ctrl+↓`, `Ctrl+k`/`Ctrl+j`, or the pointer wheel over the
+   Preview pane to scroll it. Tabs, rows, browser checkboxes, and visible footer
+   actions are also clickable. Then inspect **Preview** and run the first backup.
 6. When the manual flow is working, install automation:
 
    ```bash
@@ -103,7 +104,7 @@ repository guides below.
 | I want to… | Read |
 |---|---|
 | Install and make a first backup | [Quick start](docs/quick-start.md) |
-| Use the terminal UI and keyboard controls | [TUI guide](docs/tui.md) |
+| Use the terminal UI with keyboard or pointer controls | [TUI guide](docs/tui.md) |
 | Edit the configuration file | [Configuration reference](docs/configuration.md) |
 | Exclude files safely | [Ignore rules](docs/ignore-rules.md) |
 | Use one repository from several machines | [Namespaces](docs/namespaces.md) |

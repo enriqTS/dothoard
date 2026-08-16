@@ -820,3 +820,9 @@ managed-path and sibling-namespace safety boundaries remain unchanged.
   `Ctrl+Up`/`Ctrl+Down` or `Ctrl+k`/`Ctrl+j`. Reset the content viewport when the
   selected entry changes, show its visible range, update contextual help, and
   keep implementation details out of user-facing labels and documentation.
+- [x] **UI04 - Add general pointer support.** Enable terminal mouse capture and
+  use render-time hit regions so clicks select tabs, list rows, namespace/source
+  controls, picker entries, checkboxes, themes, and visible shortcut actions.
+  Route touchpad/mouse wheel input to the scrollable list or picker pane beneath
+  the pointer, preserve modal input ownership, restore terminal capture state,
+  and cover pointer dispatch and rendered geometry with regressions.
