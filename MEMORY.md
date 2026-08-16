@@ -67,7 +67,7 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   quick-start, releases, and development docs describe both. PV06 remains the
   only open item in Milestone 15 (manual GitHub Pages activation and visual
   review).
-- **Maintenance UI01–UI04 complete**: filesystem pickers hide `.git` and mark
+- **Maintenance UI01–UI05 complete**: filesystem pickers hide `.git` and mark
   Git repository directories with `⎇` (or ASCII `G`); configured Repository
   browsing remains inside the selected clone without exposing its parent, and
   `c` explicitly restarts replacement selection at `$HOME`. Highlighted regular
@@ -76,7 +76,9 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   scroll wrapped content independently while metadata remains visible. Terminal
   pointer capture now makes tabs, rendered rows, picker entries and checkboxes,
   themes, and visible footer actions clickable; wheel events target the list or
-  picker pane beneath the pointer without bypassing modal ownership.
+  picker pane beneath the pointer without bypassing modal ownership. System
+  (Terminal) is now the default theme and inherits terminal default/ANSI colors
+  while fixed RGB themes remain selectable and persistent.
 
 ## Durable Decisions
 
@@ -187,7 +189,10 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
   separate typed status row; severity priority prevents lower-priority
   replacement, event-loop ticks expire non-running messages, and narrow status
   text is truncated by display width.
-- TUI semantic styles are centralized in `src/tui/theme.rs`. Color reinforces
+- TUI semantic styles are centralized in `src/tui/theme.rs`. System (Terminal)
+  is the default and uses terminal-resolved default and ANSI colors, allowing
+  live terminal palette updates to propagate without Qt/GTK-specific discovery;
+  fixed RGB themes remain explicit persisted alternatives. Color reinforces
   rather than owns meaning: focus uses visible `▶` labels plus underline,
   selection uses markers plus reverse video, screen titles name the active
   mode, and the picker labels Parent, Files, and Preview with explicit focus.
@@ -208,6 +213,11 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- UI05 verified with Rust 1.97.1: `cargo +1.97.1 fmt --check`, `cargo +1.97.1
+  clippy --all-targets --all-features -- -D warnings`, and `cargo +1.97.1 test
+  --all-targets --all-features -- --test-threads=1` pass (977 library tests plus
+  all integration suites). Regressions cover the System default, terminal color
+  roles, theme cycling, persistence, and theme-picker rendering.
 - UI04 verified with Rust 1.97.1: `cargo +1.97.1 fmt --check`, `cargo +1.97.1
   clippy --all-targets --all-features -- -D warnings`, and `cargo +1.97.1 test
   --all-targets --all-features -- --test-threads=1` pass (977 library tests plus

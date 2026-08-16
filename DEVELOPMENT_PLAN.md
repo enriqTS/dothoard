@@ -826,3 +826,8 @@ managed-path and sibling-namespace safety boundaries remain unchanged.
   Route touchpad/mouse wheel input to the scrollable list or picker pane beneath
   the pointer, preserve modal input ownership, restore terminal capture state,
   and cover pointer dispatch and rendered geometry with regressions.
+- [x] **UI05 - Follow terminal personalization by default.** Add a default
+  System theme that uses the terminal's configured foreground, background, and
+  ANSI colors so compatible live palette changes propagate automatically.
+  Preserve fixed RGB themes and preference persistence, and document how to
+  return to System from the theme picker.

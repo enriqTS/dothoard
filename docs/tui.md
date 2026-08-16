@@ -55,9 +55,17 @@ The picker owns all input while it is open, so it can be opened mid-dialog
 or mid-edit without disturbing whatever the rest of the interface is doing
 underneath it.
 
-dothoard ships ten built-in themes, defaulting to Catppuccin Mocha:
+dothoard defaults to **System (Terminal)**, which inherits the terminal's
+configured default foreground/background and ANSI colors. This is the portable
+way for a TUI to follow desktop personalization: when shells such as Noctalia
+update the terminal palette, dothoard follows it automatically. Direct Qt/GTK
+theme discovery is intentionally unnecessary and would not reliably describe
+the colors of the terminal that is displaying the application.
 
-- Catppuccin Mocha (default)
+Ten fixed-color themes remain available when a consistent application-specific
+palette is preferred:
+
+- Catppuccin Mocha
 - Catppuccin Latte
 - Dracula
 - Nord
@@ -68,10 +76,10 @@ dothoard ships ten built-in themes, defaulting to Catppuccin Mocha:
 - Everforest
 - Kanagawa
 
-Each theme paints an explicit set of colors for the whole interface —
-background, chrome, borders, and every semantic color — rather than
-inheriting the host terminal's palette, so the chosen theme looks the same
-everywhere dothoard runs.
+The fixed themes paint an explicit set of RGB colors for the whole interface,
+so they look the same everywhere. Select **System (Terminal)** again to resume
+following terminal colors. A previously saved fixed theme remains selected
+until it is changed in the picker.
 
 ## First-run workflow
 

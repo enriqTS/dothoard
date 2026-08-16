@@ -113,6 +113,11 @@ repository guides below.
 | Solve a common problem | [Troubleshooting](docs/troubleshooting.md) and [FAQ](docs/faq.md) |
 | Build or contribute | [Development](docs/development.md) and [Contributing](docs/contributing.md) |
 
+The TUI follows the terminal's configured foreground, background, and ANSI
+colors by default, including live palette updates from desktop personalization
+tools. Press `Ctrl+T` to choose a fixed built-in theme or return to the system
+palette.
+
 ## Commands
 
 ```text

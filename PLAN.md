@@ -391,6 +391,9 @@ Destructive or ownership-sensitive actions use visually distinct modal dialogs:
 
 - Define reusable styles for focused controls, selections, headings, labels,
   muted text, success, warnings, errors, and dialogs.
+- Default to the terminal's configured foreground, background, and ANSI palette
+  so desktop-driven terminal color changes are inherited automatically; retain
+  fixed RGB themes as explicit alternatives.
 - Avoid low-contrast muted text for essential information and avoid color-only
   semantics. Reinforce focus and selection with borders, markers, bold text,
   or reverse video.
