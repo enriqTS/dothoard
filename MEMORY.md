@@ -226,6 +226,11 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 
 ## Verification
 
+- IS01 verified with Rust 1.97.1: `cargo +1.97.1 fmt --check`, full Clippy with
+  warnings denied, and the complete serialized all-target/all-feature suite pass
+  (1004 library tests plus all integration suites). Clone tests use an isolated
+  local bare remote and cover validation, existing-path preservation, symlinked
+  parents, failure reporting, and credential redaction.
 - UI05 verified with Rust 1.97.1: `cargo +1.97.1 fmt --check`, `cargo +1.97.1
   clippy --all-targets --all-features -- -D warnings`, and `cargo +1.97.1 test
   --all-targets --all-features -- --test-threads=1` pass (977 library tests plus
@@ -452,8 +457,11 @@ in `PLAN.md`; the complete task list belongs in `DEVELOPMENT_PLAN.md`.
 - **Milestone 18 started from the requested first-run configuration flow.**
   PLAN.md now includes existing-or-clone repository setup, explicit namespace,
   automation backend/interval, and live theme preview before the main tabs.
-  **IS01 is active:** add the bounded noninteractive repository-clone backend
-  and its success/failure/destination-safety tests.
+  **IS01 is complete:** the bounded noninteractive clone backend refuses empty
+  URLs, relative/existing destinations, missing or symlinked parents, redacts
+  credentials on failure, and preserves existing paths. **IS02 is active:**
+  build the dedicated first-run repository/namespace setup with background
+  cloning and retryable errors.
 - **AP05 complete:** `automation_backend = "external"` records user-owned
   scheduling without executing setup commands. `dothoard service print-command`
   emits a shell-quoted invocation containing the resolved executable and

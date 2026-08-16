@@ -849,7 +849,7 @@ Replace first-run entry into the already-open tabbed application with a guided,
 nonblocking configuration flow. Preserve explicit namespace ownership and all
 existing repository, scheduler, and theme safety behavior.
 
-- [ ] **IS01 - Add safe repository cloning.** Implement a reusable backend that
+- [x] **IS01 - Add safe repository cloning.** Implement a reusable backend that
   clones a user-provided Git URL into a new user-provided local path through the
   bounded, noninteractive Git runner. Refuse empty URLs, existing destinations,
   invalid parents, and destination symlink hazards; redact credential-bearing
