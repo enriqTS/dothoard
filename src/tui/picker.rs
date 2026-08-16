@@ -12,7 +12,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, Borders, List, ListItem, Paragraph},
 };
 
 use super::browser::{Browser, DirListing, EntryKind, Selection, SelectionError};
@@ -80,6 +80,15 @@ pub fn handle_key(browser: &mut Browser, key: KeyEvent, viewport_height: usize) 
     };
 
     match (key.modifiers, key.code) {
+        // Scroll selected regular-file content without moving the file selection.
+        (KeyModifiers::CONTROL, KeyCode::Up) | (KeyModifiers::CONTROL, KeyCode::Char('k')) => {
+            browser.scroll_preview_up();
+            PickerAction::Consumed
+        }
+        (KeyModifiers::CONTROL, KeyCode::Down) | (KeyModifiers::CONTROL, KeyCode::Char('j')) => {
+            browser.scroll_preview_down();
+            PickerAction::Consumed
+        }
         // Navigation: Up/k
         (KeyModifiers::NONE, KeyCode::Up) | (KeyModifiers::NONE, KeyCode::Char('k')) => {
             if browser.move_up() {
@@ -452,17 +461,16 @@ fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser, ascii
             }
         }
         Some(entry) => {
-            // Show metadata, followed by `cat` output for regular files.
+            // Keep metadata visible while regular-file content scrolls below it.
             let file_preview = if entry.kind == EntryKind::File {
                 browser.selected_file_preview().cloned()
             } else {
                 None
             };
-            let mut lines: Vec<Line> = Vec::new();
-            lines.push(Line::from(Span::styled(
+            let mut metadata: Vec<Line> = vec![Line::from(Span::styled(
                 format!(" {}", entry.display_name),
                 Style::default().add_modifier(Modifier::BOLD),
-            )));
+            ))];
 
             let kind_str = match entry.kind {
                 EntryKind::File => "Regular file",
@@ -471,76 +479,51 @@ fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser, ascii
                 EntryKind::Error => "Unreadable",
                 EntryKind::Directory => "Directory",
             };
-            lines.push(Line::from(vec![
+            metadata.push(Line::from(vec![
                 Span::styled(" Type: ", theme::current().label()),
                 Span::raw(kind_str),
             ]));
 
             if let Some(size) = entry.size {
-                lines.push(Line::from(vec![
+                metadata.push(Line::from(vec![
                     Span::styled(" Size: ", theme::current().label()),
                     Span::raw(format_size(size)),
                 ]));
             }
 
             if entry.executable {
-                lines.push(Line::from(vec![
+                metadata.push(Line::from(vec![
                     Span::styled(" Exec: ", theme::current().label()),
                     Span::styled("yes", theme::current().success()),
                 ]));
             }
 
             if let Some(ref target) = entry.link_target {
-                lines.push(Line::from(vec![
+                metadata.push(Line::from(vec![
                     Span::styled(" Target: ", theme::current().label()),
                     Span::styled(target.clone(), theme::current().symlink()),
                 ]));
             }
 
             if entry.is_lossy {
-                lines.push(Line::from(Span::styled(
+                metadata.push(Line::from(Span::styled(
                     " ⚠ Non-UTF-8 name (cannot select)",
                     theme::current().warning(),
                 )));
             }
 
-            if let Some(preview) = file_preview {
-                lines.push(Line::from(""));
-                lines.push(Line::from(Span::styled(
-                    " Content (cat):",
-                    theme::current().label(),
-                )));
-                match preview {
-                    Ok(preview) => {
-                        if preview.content.is_empty() {
-                            lines.push(Line::from(Span::styled(
-                                " (empty file)",
-                                theme::current().muted(),
-                            )));
-                        } else {
-                            lines.extend(
-                                preview
-                                    .content
-                                    .split('\n')
-                                    .map(|line| Line::from(format!(" {line}"))),
-                            );
-                        }
-                        if preview.truncated {
-                            lines.push(Line::from(Span::styled(
-                                " … preview truncated",
-                                theme::current().warning(),
-                            )));
-                        }
-                    }
-                    Err(error) => lines.push(Line::from(Span::styled(
-                        format!(" {error}"),
-                        theme::current().warning(),
-                    ))),
-                }
-            }
+            let metadata_height = (metadata.len() as u16).min(inner.height);
+            let sections = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Length(metadata_height), Constraint::Min(0)])
+                .split(inner);
+            frame.render_widget(Paragraph::new(metadata), sections[0]);
 
-            let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
-            frame.render_widget(paragraph, inner);
+            if let Some(preview) = file_preview
+                && sections[1].height > 0
+            {
+                draw_file_content(frame, sections[1], browser, preview);
+            }
         }
         None => {
             let msg = Paragraph::new(Line::from(Span::styled(
@@ -550,6 +533,65 @@ fn draw_preview_pane(frame: &mut Frame, area: Rect, browser: &mut Browser, ascii
             frame.render_widget(msg, inner);
         }
     }
+}
+
+/// Draw the selected regular file's independently scrollable content region.
+fn draw_file_content(
+    frame: &mut Frame,
+    area: Rect,
+    browser: &mut Browser,
+    preview: Result<super::browser::FilePreview, String>,
+) {
+    let body = Rect {
+        x: area.x,
+        y: area.y.saturating_add(1),
+        width: area.width,
+        height: area.height.saturating_sub(1),
+    };
+    let content_width = body.width.saturating_sub(1) as usize;
+    let (rows, row_style) = match preview {
+        Ok(preview) if preview.content.is_empty() => {
+            (vec![" (empty file)".to_string()], theme::current().muted())
+        }
+        Ok(preview) => {
+            let mut rows: Vec<String> = text::wrap(&preview.content, content_width)
+                .into_iter()
+                .map(|line| format!(" {line}"))
+                .collect();
+            if preview.truncated {
+                rows.push(" … preview truncated".to_string());
+            }
+            (rows, Style::default())
+        }
+        Err(error) => (
+            text::wrap(&error, content_width)
+                .into_iter()
+                .map(|line| format!(" {line}"))
+                .collect(),
+            theme::current().warning(),
+        ),
+    };
+
+    browser.set_preview_extent(rows.len(), body.height as usize);
+    let offset = browser.preview_scroll();
+    let visible_end = (offset + body.height as usize).min(rows.len());
+    let title = if rows.len() > body.height as usize && body.height > 0 {
+        format!(" Content {}-{}/{}", offset + 1, visible_end, rows.len())
+    } else {
+        " Content".to_string()
+    };
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(title, theme::current().label()))),
+        Rect { height: 1, ..area },
+    );
+
+    let lines: Vec<Line> = rows
+        .into_iter()
+        .skip(offset)
+        .take(body.height as usize)
+        .map(|row| Line::from(Span::styled(row, row_style)))
+        .collect();
+    frame.render_widget(Paragraph::new(lines), body);
 }
 
 /// Get a short icon character for an entry.

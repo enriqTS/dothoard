@@ -229,6 +229,55 @@ fn unrecognized_key_not_consumed() {
 }
 
 #[test]
+fn ctrl_arrows_and_ctrl_jk_scroll_preview_without_moving_selection() {
+    let tmp = setup_test_dir();
+    let mut browser = Browser::new(BrowserConfig {
+        root: tmp.path().to_path_buf(),
+        start: tmp.path().to_path_buf(),
+    });
+    browser.set_preview_extent(10, 3);
+    let selected = browser.selected();
+
+    assert_eq!(
+        handle_key(
+            &mut browser,
+            KeyEvent::new(KeyCode::Down, KeyModifiers::CONTROL),
+            20,
+        ),
+        PickerAction::Consumed
+    );
+    assert_eq!(
+        handle_key(
+            &mut browser,
+            KeyEvent::new(KeyCode::Char('j'), KeyModifiers::CONTROL),
+            20,
+        ),
+        PickerAction::Consumed
+    );
+    assert_eq!(browser.preview_scroll(), 2);
+    assert_eq!(browser.selected(), selected);
+
+    handle_key(
+        &mut browser,
+        KeyEvent::new(KeyCode::Up, KeyModifiers::CONTROL),
+        20,
+    );
+    handle_key(
+        &mut browser,
+        KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL),
+        20,
+    );
+    assert_eq!(browser.preview_scroll(), 0);
+    assert_eq!(browser.selected(), selected);
+
+    browser.set_preview_extent(10, 3);
+    browser.scroll_preview_down();
+    browser.move_down();
+    assert_eq!(browser.preview_scroll(), 0);
+    assert_eq!(browser.selected(), selected + 1);
+}
+
+#[test]
 fn ctrl_r_refreshes() {
     let tmp = setup_test_dir();
     let mut browser = Browser::new(BrowserConfig {
@@ -388,7 +437,7 @@ fn selected_regular_file_preview_renders_cat_content() {
         .map(|cell| cell.symbol())
         .collect();
     assert!(content.contains("Type: Regular file"));
-    assert!(content.contains("Content (cat):"));
+    assert!(content.contains("Content"));
     assert!(content.contains("set editor helix"));
     assert!(content.contains("set greeting olá"));
 }
@@ -415,8 +464,53 @@ fn oversized_regular_file_preview_explains_limit() {
         .iter()
         .map(|cell| cell.symbol())
         .collect();
-    assert!(content.contains("Content (cat):"));
+    assert!(content.contains("Content"));
     assert!(content.contains("file exceeds 256 KB"));
+}
+
+#[test]
+fn regular_file_content_scrolls_independently() {
+    let tmp = TempDir::new().unwrap();
+    let content = (0..30)
+        .map(|index| format!("preview-row-{index:02}-value"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write(tmp.path().join("scroll.conf"), content).unwrap();
+    let mut browser = Browser::new(BrowserConfig {
+        root: tmp.path().to_path_buf(),
+        start: tmp.path().to_path_buf(),
+    });
+    let backend = TestBackend::new(100, 20);
+    let mut terminal = Terminal::new(backend).unwrap();
+
+    terminal
+        .draw(|frame| draw(frame, frame.area(), &mut browser, None))
+        .unwrap();
+    handle_key(
+        &mut browser,
+        KeyEvent::new(KeyCode::Down, KeyModifiers::CONTROL),
+        20,
+    );
+    handle_key(
+        &mut browser,
+        KeyEvent::new(KeyCode::Char('j'), KeyModifiers::CONTROL),
+        20,
+    );
+    terminal
+        .draw(|frame| draw(frame, frame.area(), &mut browser, None))
+        .unwrap();
+
+    let rendered: String = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .map(|cell| cell.symbol())
+        .collect();
+    assert!(rendered.contains("Content 3-"));
+    assert!(!rendered.contains("preview-row-00-value"));
+    assert!(rendered.contains("preview-row-02-value"));
+    assert!(rendered.contains("Type: Regular file"));
 }
 
 #[test]

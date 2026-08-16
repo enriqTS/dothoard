@@ -825,6 +825,8 @@ fn help_bar_repository(app: &App) -> Line<'static> {
             spans.extend([
                 Span::styled("↑↓←→", theme::current().key()),
                 Span::raw(" navigate  "),
+                Span::styled("Ctrl+↑↓/jk", theme::current().key()),
+                Span::raw(" content  "),
             ]);
             if !app.repo_screen.repository_locked {
                 spans.extend([
@@ -913,6 +915,8 @@ fn help_bar_sources(app: &App) -> Line<'static> {
             Span::raw(" toggle  "),
             Span::styled("↑↓←→", theme::current().key()),
             Span::raw(" navigate  "),
+            Span::styled("Ctrl+↑↓/jk", theme::current().key()),
+            Span::raw(" content  "),
             Span::styled("Esc", theme::current().key()),
             Span::raw(" review changes  "),
             Span::styled(":/", theme::current().key()),

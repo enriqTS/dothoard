@@ -88,8 +88,12 @@ pub struct Browser {
     scroll_offset: usize,
     /// Cache of directory listings by path.
     cache: HashMap<PathBuf, DirListing>,
-    /// Cached `cat` output for regular-file previews.
+    /// Cached content for regular-file previews.
     file_previews: HashMap<PathBuf, Result<FilePreview, String>>,
+    /// First visible row in the selected regular file's content preview.
+    preview_scroll: usize,
+    /// Largest valid content-preview scroll offset from the latest render.
+    preview_max_scroll: usize,
 }
 
 /// Text returned by `cat` for a regular-file preview.
@@ -118,6 +122,8 @@ impl Browser {
             scroll_offset: 0,
             cache: HashMap::new(),
             file_previews: HashMap::new(),
+            preview_scroll: 0,
+            preview_max_scroll: 0,
         }
     }
 
@@ -208,7 +214,36 @@ impl Browser {
         }
     }
 
-    /// Return cached `cat` output for the selected regular file.
+    /// Current regular-file content preview offset.
+    pub fn preview_scroll(&self) -> usize {
+        self.preview_scroll
+    }
+
+    /// Update and clamp the content-preview range after rendering geometry is known.
+    pub fn set_preview_extent(&mut self, total_rows: usize, viewport_rows: usize) {
+        self.preview_max_scroll = total_rows.saturating_sub(viewport_rows);
+        self.preview_scroll = self.preview_scroll.min(self.preview_max_scroll);
+    }
+
+    /// Scroll selected regular-file content up by one row.
+    pub fn scroll_preview_up(&mut self) -> bool {
+        if self.preview_scroll == 0 {
+            return false;
+        }
+        self.preview_scroll -= 1;
+        true
+    }
+
+    /// Scroll selected regular-file content down by one row.
+    pub fn scroll_preview_down(&mut self) -> bool {
+        if self.preview_scroll >= self.preview_max_scroll {
+            return false;
+        }
+        self.preview_scroll += 1;
+        true
+    }
+
+    /// Return cached content for the selected regular file.
     ///
     /// The command reads an already-opened, no-follow regular file through
     /// standard input, so a path race cannot make `cat` follow a symlink. Large
@@ -243,6 +278,7 @@ impl Browser {
     pub fn move_up(&mut self) -> bool {
         if self.selected > 0 {
             self.selected -= 1;
+            self.reset_preview_scroll();
             self.adjust_scroll();
             true
         } else {
@@ -255,6 +291,7 @@ impl Browser {
         let count = self.entry_count();
         if count > 0 && self.selected < count - 1 {
             self.selected += 1;
+            self.reset_preview_scroll();
             self.adjust_scroll();
             true
         } else {
@@ -266,6 +303,7 @@ impl Browser {
     pub fn move_home(&mut self) {
         self.selected = 0;
         self.scroll_offset = 0;
+        self.reset_preview_scroll();
     }
 
     /// Move to the last entry.
@@ -274,6 +312,7 @@ impl Browser {
         if count > 0 {
             self.selected = count - 1;
         }
+        self.reset_preview_scroll();
         self.adjust_scroll();
     }
 
@@ -283,6 +322,7 @@ impl Browser {
             return false;
         }
         self.selected = self.selected.saturating_sub(viewport_height);
+        self.reset_preview_scroll();
         self.adjust_scroll();
         true
     }
@@ -294,6 +334,7 @@ impl Browser {
             return false;
         }
         self.selected = (self.selected + viewport_height).min(count - 1);
+        self.reset_preview_scroll();
         self.adjust_scroll();
         true
     }
@@ -321,6 +362,7 @@ impl Browser {
                 self.current_dir = new_dir;
                 self.selected = 0;
                 self.scroll_offset = 0;
+                self.reset_preview_scroll();
                 return true;
             }
         }
@@ -342,6 +384,7 @@ impl Browser {
                 self.current_dir = parent;
                 self.selected = 0;
                 self.scroll_offset = 0;
+                self.reset_preview_scroll();
 
                 // Select the entry we came from if possible.
                 if let Some(old_name) = old_name {
@@ -365,12 +408,14 @@ impl Browser {
         self.cache.remove(path);
         self.file_previews
             .retain(|entry, _| !entry.starts_with(path));
+        self.reset_preview_scroll();
     }
 
     /// Invalidate the entire cache.
     pub fn invalidate_all(&mut self) {
         self.cache.clear();
         self.file_previews.clear();
+        self.reset_preview_scroll();
     }
 
     /// Refresh the current directory listing from disk.
@@ -378,6 +423,7 @@ impl Browser {
         self.cache.remove(&self.current_dir.clone());
         self.file_previews
             .retain(|entry, _| entry.parent() != Some(self.current_dir.as_path()));
+        self.reset_preview_scroll();
         let dir = self.current_dir.clone();
         self.ensure_cached(&dir);
         // Clamp selection.
@@ -401,6 +447,11 @@ impl Browser {
     /// Adjust scroll offset to keep selection visible.
     fn adjust_scroll(&mut self) {
         self.adjust_scroll_with_height(Self::DEFAULT_VIEWPORT);
+    }
+
+    fn reset_preview_scroll(&mut self) {
+        self.preview_scroll = 0;
+        self.preview_max_scroll = 0;
     }
 
     /// Adjust scroll offset to keep selection visible with a specific viewport height.
@@ -432,6 +483,7 @@ impl Browser {
         self.current_dir = target.to_path_buf();
         self.selected = 0;
         self.scroll_offset = 0;
+        self.reset_preview_scroll();
         true
     }
 
@@ -581,15 +633,9 @@ fn load_file_preview(path: &Path) -> Result<FilePreview, String> {
         .arg("--")
         .stdin(Stdio::from(file))
         .output()
-        .map_err(|error| format!("Cannot run cat: {error}"))?;
+        .map_err(|error| format!("Cannot load content: {error}"))?;
     if !output.status.success() {
-        let detail = String::from_utf8_lossy(&output.stderr);
-        let detail = detail.trim();
-        return Err(if detail.is_empty() {
-            format!("cat exited with {}", output.status)
-        } else {
-            format!("cat failed: {detail}")
-        });
+        return Err(format!("Cannot read content ({})", output.status));
     }
 
     let limit = MAX_FILE_PREVIEW_BYTES as usize;

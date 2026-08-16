@@ -1205,6 +1205,10 @@ fn help_bar_repository_browser_mode() {
         content.contains("text input"),
         "should mention text input switch"
     );
+    assert!(
+        content.contains("content"),
+        "should mention preview scrolling"
+    );
 }
 
 #[test]
@@ -1295,6 +1299,10 @@ fn help_bar_sources_browse_mode() {
     assert!(
         content.contains("review changes"),
         "should make Esc review rather than apply changes"
+    );
+    assert!(
+        content.contains("content"),
+        "should mention preview scrolling"
     );
 }
 
