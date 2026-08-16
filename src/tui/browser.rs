@@ -540,6 +540,11 @@ pub fn read_directory(path: &Path) -> DirListing {
         };
 
         let name = dir_entry.file_name();
+        // Git metadata is never a useful picker target and exposing its internals
+        // makes a selected repository look like an ordinary directory tree.
+        if name == ".git" {
+            continue;
+        }
         let display_name = name.to_string_lossy().to_string();
         let is_lossy = name.to_str().is_none();
         let hidden = display_name.starts_with('.');

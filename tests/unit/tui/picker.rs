@@ -561,7 +561,7 @@ fn pane_focus_and_selection_are_visible_without_color() {
     let tmp = setup_test_dir();
     let mut browser = Browser::new(BrowserConfig {
         root: tmp.path().to_path_buf(),
-        start: tmp.path().to_path_buf(),
+        start: tmp.path().join("alpha"),
     });
     let backend = TestBackend::new(100, 30);
     let mut terminal = Terminal::new(backend).unwrap();

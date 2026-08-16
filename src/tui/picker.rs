@@ -199,8 +199,14 @@ fn draw_panes(
     ascii: bool,
     label: &'static str,
 ) {
-    // Adaptive layout: if terminal is narrow, collapse parent/preview.
-    let constraints = if area.width >= 80 {
+    // Adaptive layout: at the browser root there is no parent context to show.
+    let constraints = if browser.at_root() && area.width >= 40 {
+        vec![
+            Constraint::Percentage(0),  // No parent above the root boundary
+            Constraint::Percentage(65), // Current
+            Constraint::Percentage(35), // Preview
+        ]
+    } else if area.width >= 80 {
         vec![
             Constraint::Percentage(20), // Parent
             Constraint::Percentage(50), // Current

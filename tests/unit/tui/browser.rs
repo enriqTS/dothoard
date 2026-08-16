@@ -74,8 +74,9 @@ fn read_directory_returns_sorted_entries() {
 }
 
 #[test]
-fn read_directory_includes_hidden_entries() {
+fn read_directory_includes_hidden_entries_except_git_metadata() {
     let tmp = setup_test_dir();
+    std::fs::create_dir(tmp.path().join(".git")).unwrap();
     let listing = read_directory(tmp.path());
     match listing {
         DirListing::Entries(entries) => {
@@ -83,6 +84,7 @@ fn read_directory_includes_hidden_entries() {
             assert!(hidden.len() >= 2); // .hidden_dir, .hidden_file
             assert!(hidden.iter().any(|e| e.display_name == ".hidden_dir"));
             assert!(hidden.iter().any(|e| e.display_name == ".hidden_file"));
+            assert!(!hidden.iter().any(|e| e.display_name == ".git"));
         }
         DirListing::Error(e) => panic!("unexpected error: {e}"),
     }

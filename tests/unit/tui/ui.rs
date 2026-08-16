@@ -1193,6 +1193,7 @@ fn help_bar_repository_browser_mode() {
     app.focus = crate::tui::Focus::Content;
     app.active_screen = Screen::Repository;
     app.repo_screen.mode = crate::tui::screens::repository::RepoMode::Browser;
+    app.repo_screen.repository_locked = false;
 
     terminal
         .draw(|frame| draw(frame, &mut app))
@@ -1204,6 +1205,26 @@ fn help_bar_repository_browser_mode() {
         content.contains("text input"),
         "should mention text input switch"
     );
+}
+
+#[test]
+fn configured_repository_shows_only_the_selected_path_and_change_action() {
+    let backend = TestBackend::new(120, 30);
+    let mut terminal = Terminal::new(backend).unwrap();
+    let mut app = App::new();
+    app.focus = crate::tui::Focus::Content;
+    app.active_screen = Screen::Repository;
+    app.repo_screen.mode = crate::tui::screens::repository::RepoMode::Browser;
+    app.repo_screen.repository_locked = true;
+    app.repo_screen.input = "/home/user/dotfiles".to_string();
+
+    terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+
+    let content = buffer_text(terminal.backend());
+    assert!(content.contains("Selected repository"));
+    assert!(content.contains("/home/user/dotfiles"));
+    assert!(content.contains("change repository"));
+    assert!(!content.contains("Parent"));
 }
 
 /// Verify help bar shows text-entry hints for repository in text mode.

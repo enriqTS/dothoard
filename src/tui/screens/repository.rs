@@ -35,6 +35,8 @@ pub struct RepoScreen {
     pub cursor: usize,
     /// The filesystem browser state (for Browser mode).
     pub browser: Option<Browser>,
+    /// Whether browsing is rooted at the configured repository.
+    pub repository_locked: bool,
     /// Lifecycle and last successful repository validation.
     pub validation: LoadState<RepoInfo>,
     /// Whether a confirmation dialog is active.
@@ -141,6 +143,7 @@ impl RepoScreen {
             input: String::new(),
             cursor: 0,
             browser: None,
+            repository_locked: false,
             validation: LoadState::NotLoaded,
             confirm_state: ConfirmState::None,
             selection_error: None,
@@ -162,6 +165,7 @@ impl RepoScreen {
             input: path.to_string(),
             cursor,
             browser: None,
+            repository_locked: true,
             validation: LoadState::NotLoaded,
             confirm_state: ConfirmState::None,
             selection_error: None,
@@ -257,28 +261,41 @@ impl RepoScreen {
         }
     }
 
-    /// Initialize the browser if not yet created. Uses `/` as root.
+    /// Initialize the browser if not yet created.
+    ///
+    /// A configured repository is its own root so its parent is not exposed.
+    /// Repository changes explicitly restart unrestricted browsing at `$HOME`.
     pub fn ensure_browser(&mut self, home: &Path) {
         if self.browser.is_none() {
-            let start = if !self.input.is_empty() {
-                let expanded = expand_tilde(&self.input, home);
-                if expanded.is_dir() {
-                    expanded
-                } else {
-                    expanded
-                        .parent()
-                        .map(|p| p.to_path_buf())
-                        .unwrap_or_else(|| home.to_path_buf())
-                }
+            let repository = expand_tilde(&self.input, home);
+            let (root, start) = if self.repository_locked && repository.is_dir() {
+                (repository.clone(), repository)
             } else {
-                home.to_path_buf()
+                (PathBuf::from("/"), home.to_path_buf())
             };
 
-            self.browser = Some(Browser::new(BrowserConfig {
-                root: PathBuf::from("/"),
-                start,
-            }));
+            self.browser = Some(Browser::new(BrowserConfig { root, start }));
         }
+    }
+
+    /// Leave the selected-repository view and browse for a replacement from `$HOME`.
+    pub fn browse_from_home(&mut self, home: &Path) {
+        self.repository_locked = false;
+        self.browser = Some(Browser::new(BrowserConfig {
+            root: PathBuf::from("/"),
+            start: home.to_path_buf(),
+        }));
+        self.validation.reset();
+        self.confirm_state = ConfirmState::None;
+        self.selection_error = None;
+    }
+
+    pub fn lock_to_repository(&mut self, repository: &Path) {
+        self.repository_locked = true;
+        self.browser = Some(Browser::new(BrowserConfig {
+            root: repository.to_path_buf(),
+            start: repository.to_path_buf(),
+        }));
     }
 
     /// Handle a key event for this screen.
@@ -656,6 +673,7 @@ impl RepoScreen {
         initialize_or_attach(&info.path, namespace, &state, true).map_err(|e| e.to_string())?;
 
         self.confirm_state = ConfirmState::Done;
+        self.lock_to_repository(&info.path);
         Ok(info.path)
     }
 }

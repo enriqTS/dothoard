@@ -1602,6 +1602,45 @@ fn repository_browser_initializes_on_focus_entry() {
     assert!(app.repo_screen.browser.is_some());
 }
 
+#[test]
+fn configured_repository_change_key_restarts_browser_at_home() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let mut app = test_app();
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path();
+    let repository = home.join("repo");
+    std::fs::create_dir(&repository).unwrap();
+    std::fs::create_dir_all(home.join(".config/dothoard")).unwrap();
+    std::fs::create_dir_all(home.join(".local/share/dothoard")).unwrap();
+    std::fs::create_dir_all(home.join(".run")).unwrap();
+    app.paths = Some(
+        crate::paths::AppPaths::resolve(crate::paths::PathInputs {
+            home: Some(home.to_path_buf()),
+            config_dir: Some(home.join(".config/dothoard")),
+            state_dir: Some(home.join(".local/share/dothoard")),
+            runtime_dir: Some(home.join(".run")),
+            use_environment: false,
+        })
+        .unwrap(),
+    );
+    app.config = Some(crate::config::Config::new(
+        repository.display().to_string(),
+        "desktop".to_string(),
+    ));
+    app.repo_screen = screens::repository::RepoScreen::with_path(repository.to_str().unwrap());
+    app.repo_screen.ensure_browser(home);
+    app.active_screen = Screen::Repository;
+    app.focus = Focus::Content;
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
+
+    assert!(!app.repo_screen.repository_locked);
+    assert_eq!(
+        app.repo_screen.browser.as_ref().unwrap().current_dir(),
+        home
+    );
+}
+
 // --- TU03: explicit source apply/discard integration tests ---
 
 #[test]

@@ -1211,6 +1211,7 @@ impl App {
                 let _ = self.repo_screen.refresh_namespaces(&repository, &requested);
                 self.repo_screen.namespace_action = screens::repository::NamespaceAction::None;
                 self.repo_screen.mode = screens::repository::RepoMode::Browser;
+                self.repo_screen.lock_to_repository(&repository);
                 self.invalidate_repository_validation();
                 self.invalidate_dependent_previews();
                 self.invalidate_automation_status();
@@ -1235,6 +1236,12 @@ impl App {
                 .map(|c| c.namespace.as_str())
                 .unwrap_or("");
             match key.code {
+                KeyCode::Char('c') if self.config.is_some() => {
+                    if let Some(paths) = &self.paths {
+                        self.repo_screen.browse_from_home(paths.home());
+                    }
+                    return true;
+                }
                 KeyCode::Char('m') => {
                     if let Some(config) = &self.config
                         && let Some(paths) = &self.paths
@@ -1266,6 +1273,12 @@ impl App {
                     return true;
                 }
                 _ => {}
+            }
+            if self.repo_screen.repository_locked {
+                return !matches!(
+                    key.code,
+                    KeyCode::Esc | KeyCode::Up | KeyCode::Char('k' | 'q')
+                );
             }
         }
         // Ensure the browser is initialized when entering this screen.

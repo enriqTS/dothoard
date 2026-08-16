@@ -433,7 +433,7 @@ fn draw_modal_overlay(frame: &mut Frame, area: Rect, app: &App) {
                 modal::ModalSpec {
                     title: "Review source changes",
                     affected: None,
-                    consequence: "Source selection changed. Choose whether to apply it, discard it, or continue editing.",
+                    consequence: "Pending source changes require a decision. Apply them, discard them, or continue editing.",
                     validation: None,
                     confirm: "a: apply  d: discard",
                     cancel: "c / Esc: continue editing",
@@ -796,13 +796,24 @@ fn help_bar_repository(app: &App) -> Line<'static> {
             let mut spans = vec![
                 Span::styled("Tab", theme::current().key()),
                 Span::raw(" tabs  "),
-                Span::styled("Space", theme::current().key()),
-                Span::raw(" select  "),
+            ];
+            if app.repo_screen.repository_locked {
+                spans.extend([
+                    Span::styled("c", theme::current().key()),
+                    Span::raw(" change repository  "),
+                ]);
+            } else {
+                spans.extend([
+                    Span::styled("Space", theme::current().key()),
+                    Span::raw(" select  "),
+                ]);
+            }
+            spans.extend([
                 Span::styled("m", theme::current().key()),
                 Span::raw(" namespaces  "),
                 Span::styled("n", theme::current().key()),
                 Span::raw(" create  "),
-            ];
+            ]);
             if app.config.is_some() {
                 spans.extend([
                     Span::styled("r", theme::current().key()),
@@ -811,12 +822,14 @@ fn help_bar_repository(app: &App) -> Line<'static> {
                     Span::raw(" delete  "),
                 ]);
             }
-            spans.extend([
-                Span::styled("↑↓←→", theme::current().key()),
-                Span::raw(" navigate  "),
-                Span::styled(":/", theme::current().key()),
-                Span::raw(" text input"),
-            ]);
+            if !app.repo_screen.repository_locked {
+                spans.extend([
+                    Span::styled("↑↓←→", theme::current().key()),
+                    Span::raw(" navigate  "),
+                    Span::styled(":/", theme::current().key()),
+                    Span::raw(" text input"),
+                ]);
+            }
             Line::from(spans)
         }
         RepoMode::Namespaces => Line::from(vec![
@@ -2420,8 +2433,28 @@ fn draw_repository(frame: &mut Frame, area: Rect, app: &mut App) {
                 ])
                 .split(inner);
 
-            // Draw the filesystem browser.
-            if let Some(ref mut browser) = app.repo_screen.browser {
+            // Once configured, show only the selected repository. Browsing the
+            // surrounding filesystem is an explicit change action.
+            if app.repo_screen.repository_locked {
+                let selected = Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(theme::current().border(true))
+                    .title(Line::from(Span::styled(
+                        " ▶ Selected repository ",
+                        theme::current().focused(),
+                    )));
+                let selected_inner = selected.inner(chunks[0]);
+                frame.render_widget(selected, chunks[0]);
+                frame.render_widget(
+                    Paragraph::new(vec![
+                        Line::from(""),
+                        field_line(" Path", app.repo_screen.input.clone()),
+                        Line::from(""),
+                        dim_line(" Press c to choose a different repository from ~/"),
+                    ]),
+                    selected_inner,
+                );
+            } else if let Some(ref mut browser) = app.repo_screen.browser {
                 crate::tui::picker::draw_with_presentation(
                     frame,
                     chunks[0],

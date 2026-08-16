@@ -121,10 +121,37 @@ fn new_screen_is_empty() {
 }
 
 #[test]
-fn with_path_prefills_input() {
-    let screen = RepoScreen::with_path("~/dotfiles");
-    assert_eq!(screen.input, "~/dotfiles");
-    assert_eq!(screen.cursor, 10);
+fn with_path_prefills_input_and_locks_the_browser_to_the_repository() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repository = tmp.path().join("dotfiles");
+    std::fs::create_dir(&repository).unwrap();
+    let mut screen = RepoScreen::with_path(repository.to_str().unwrap());
+
+    screen.ensure_browser(tmp.path());
+
+    assert_eq!(screen.input, repository.to_str().unwrap());
+    assert_eq!(screen.cursor, screen.input.len());
+    assert!(screen.repository_locked);
+    let browser = screen.browser.as_ref().unwrap();
+    assert_eq!(browser.root(), repository);
+    assert_eq!(browser.current_dir(), repository);
+    assert!(browser.at_root());
+}
+
+#[test]
+fn change_repository_restarts_browsing_at_home() {
+    let tmp = tempfile::tempdir().unwrap();
+    let repository = tmp.path().join("dotfiles");
+    std::fs::create_dir(&repository).unwrap();
+    let mut screen = RepoScreen::with_path(repository.to_str().unwrap());
+    screen.ensure_browser(tmp.path());
+
+    screen.browse_from_home(tmp.path());
+
+    assert!(!screen.repository_locked);
+    let browser = screen.browser.as_ref().unwrap();
+    assert_eq!(browser.root(), Path::new("/"));
+    assert_eq!(browser.current_dir(), tmp.path());
 }
 
 #[test]
