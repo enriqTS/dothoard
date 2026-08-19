@@ -1291,6 +1291,7 @@ fn help_bar_repository_browser_mode() {
     let mut terminal = Terminal::new(backend).unwrap();
 
     let mut app = App::new();
+    app.setup = None;
     app.focus = crate::tui::Focus::Content;
     app.active_screen = Screen::Repository;
     app.repo_screen.mode = crate::tui::screens::repository::RepoMode::Browser;
@@ -1319,6 +1320,7 @@ fn configured_repository_browses_inside_the_selected_root_without_parent_context
     let backend = TestBackend::new(120, 30);
     let mut terminal = Terminal::new(backend).unwrap();
     let mut app = App::new();
+    app.setup = None;
     app.focus = crate::tui::Focus::Content;
     app.active_screen = Screen::Repository;
     app.repo_screen.mode = crate::tui::screens::repository::RepoMode::Browser;
@@ -1347,6 +1349,7 @@ fn help_bar_repository_text_mode() {
     let mut terminal = Terminal::new(backend).unwrap();
 
     let mut app = App::new();
+    app.setup = None;
     app.focus = crate::tui::Focus::Content;
     app.active_screen = Screen::Repository;
     app.repo_screen.mode = crate::tui::screens::repository::RepoMode::TextInput;
@@ -1367,6 +1370,7 @@ fn help_bar_repository_confirm_mode() {
     let mut terminal = Terminal::new(backend).unwrap();
 
     let mut app = App::new();
+    app.setup = None;
     app.focus = crate::tui::Focus::Content;
     app.active_screen = Screen::Repository;
     app.repo_screen.confirm_state = crate::tui::screens::repository::ConfirmState::AskInitialize;
@@ -1387,6 +1391,7 @@ fn help_bar_sources_browse_mode() {
     let mut terminal = Terminal::new(backend).unwrap();
 
     let mut app = App::new();
+    app.setup = None;
     app.focus = crate::tui::Focus::Content;
     app.active_screen = Screen::Sources;
     app.sources_screen.mode = crate::tui::screens::sources::Mode::Browse;
@@ -1414,6 +1419,7 @@ fn help_bar_sources_list_mode() {
     let mut terminal = Terminal::new(backend).unwrap();
 
     let mut app = App::new();
+    app.setup = None;
     app.focus = crate::tui::Focus::Content;
     app.active_screen = Screen::Sources;
     app.sources_screen.mode = crate::tui::screens::sources::Mode::List;
@@ -1440,6 +1446,7 @@ fn help_bar_sources_confirm_mode() {
     let mut terminal = Terminal::new(backend).unwrap();
 
     let mut app = App::new();
+    app.setup = None;
     app.focus = crate::tui::Focus::Content;
     app.active_screen = Screen::Sources;
     app.sources_screen.mode = crate::tui::screens::sources::Mode::ConfirmDelete;
@@ -1580,6 +1587,7 @@ fn help_bar_sources_confirm_apply_mode() {
     let mut terminal = Terminal::new(backend).unwrap();
 
     let mut app = App::new();
+    app.setup = None;
     app.focus = crate::tui::Focus::Content;
     app.active_screen = Screen::Sources;
     app.sources_screen.mode = crate::tui::screens::sources::Mode::ConfirmApply;
